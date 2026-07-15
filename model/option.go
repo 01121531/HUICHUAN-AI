@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/performance_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -30,6 +31,12 @@ func AllOption() ([]*Option, error) {
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
+	datasetCaptureEnabled := common.GetEnvOrDefaultBool("DATASET_CAPTURE_ENABLED", false)
+	_ = dataset_capture_setting.Apply(dataset_capture_setting.Policy{
+		Enabled:   datasetCaptureEnabled,
+		ModelMode: dataset_capture_setting.ModelModeAll,
+		Models:    []string{},
+	})
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -48,6 +55,9 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
+	common.OptionMap["DatasetCaptureEnabled"] = strconv.FormatBool(datasetCaptureEnabled)
+	common.OptionMap["DatasetCaptureModelMode"] = dataset_capture_setting.ModelModeAll
+	common.OptionMap["DatasetCaptureModels"] = "[]"
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -188,10 +198,23 @@ func InitOptionMap() {
 
 func loadOptionsFromDatabase() {
 	options, _ := AllOption()
+	datasetCaptureOptionsChanged := false
 	for _, option := range options {
+		if isDatasetCapturePolicyOption(option.Key) {
+			common.OptionMapRWMutex.Lock()
+			common.OptionMap[option.Key] = option.Value
+			common.OptionMapRWMutex.Unlock()
+			datasetCaptureOptionsChanged = true
+			continue
+		}
 		err := updateOptionMap(option.Key, option.Value)
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
+		}
+	}
+	if datasetCaptureOptionsChanged {
+		if err := applyDatasetCapturePolicyFromOptionMap(); err != nil {
+			common.SysLog("failed to apply dataset capture policy: " + err.Error())
 		}
 	}
 }
@@ -253,6 +276,61 @@ func UpdateOptionsBulk(values map[string]string) error {
 	return nil
 }
 
+func UpdateDatasetCapturePolicy(policy dataset_capture_setting.Policy) error {
+	normalized, err := dataset_capture_setting.Normalize(policy)
+	if err != nil {
+		return err
+	}
+	modelsJSON, err := common.Marshal(normalized.Models)
+	if err != nil {
+		return err
+	}
+	values := map[string]string{
+		"DatasetCaptureEnabled":   strconv.FormatBool(normalized.Enabled),
+		"DatasetCaptureModelMode": normalized.ModelMode,
+		"DatasetCaptureModels":    string(modelsJSON),
+	}
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		for key, value := range values {
+			option := Option{Key: key}
+			if err := tx.FirstOrCreate(&option, Option{Key: key}).Error; err != nil {
+				return err
+			}
+			option.Value = value
+			if err := tx.Save(&option).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	common.OptionMapRWMutex.Lock()
+	for key, value := range values {
+		common.OptionMap[key] = value
+	}
+	common.OptionMapRWMutex.Unlock()
+	return dataset_capture_setting.Apply(normalized)
+}
+
+func isDatasetCapturePolicyOption(key string) bool {
+	return key == "DatasetCaptureEnabled" || key == "DatasetCaptureModelMode" || key == "DatasetCaptureModels"
+}
+
+func applyDatasetCapturePolicyFromOptionMap() error {
+	common.OptionMapRWMutex.RLock()
+	enabled := common.OptionMap["DatasetCaptureEnabled"]
+	mode := common.OptionMap["DatasetCaptureModelMode"]
+	models := common.OptionMap["DatasetCaptureModels"]
+	common.OptionMapRWMutex.RUnlock()
+	policy, err := dataset_capture_setting.Parse(enabled, mode, models)
+	if err != nil {
+		return err
+	}
+	return dataset_capture_setting.Apply(policy)
+}
+
 func updateOptionMap(key string, value string) (err error) {
 	common.OptionMapRWMutex.Lock()
 	defer common.OptionMapRWMutex.Unlock()
@@ -308,6 +386,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticEnableChannelEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
+		case "DatasetCaptureEnabled":
+			return dataset_capture_setting.SetEnabled(boolValue)
 		case "DisplayInCurrencyEnabled":
 			// 兼容旧字段：同步到新配置 general_setting.quota_display_type（运行时生效）
 			// true -> USD, false -> TOKENS

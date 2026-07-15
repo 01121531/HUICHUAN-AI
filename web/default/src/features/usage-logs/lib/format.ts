@@ -330,6 +330,11 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   'option.payment_compliance': 'Confirmed payment compliance',
   'option.reset_ratio': 'Reset model ratios',
   'option.clear_affinity_cache': 'Cleared channel affinity cache',
+  // Dataset captures
+  'dataset_capture.view':
+    'Viewed {{rows}} dataset capture records from {{file}} (page {{page}})',
+  'dataset_capture.download': 'Downloaded dataset capture data from {{file}}',
+  'dataset_capture.delete': 'Deleted dataset capture data from {{file}}',
   // Custom OAuth
   'custom_oauth.create': 'Created a custom OAuth provider',
   'custom_oauth.update': 'Updated a custom OAuth provider',

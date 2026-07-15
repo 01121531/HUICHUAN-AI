@@ -67,6 +67,7 @@ export interface ContentPart {
 
 export interface ChatCompletionRequest {
   model: string
+  conversation_id?: string
   group?: string
   messages: ChatCompletionMessage[]
   stream: boolean

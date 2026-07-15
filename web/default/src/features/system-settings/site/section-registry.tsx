@@ -23,6 +23,7 @@ import {
   serializeHeaderNavModules,
   serializeSidebarModulesAdmin,
 } from '../maintenance/config'
+import { DatasetCaptureSettingsSection } from '../maintenance/dataset-capture-settings-section'
 import { HeaderNavigationSection } from '../maintenance/header-navigation-section'
 import { NoticeSection } from '../maintenance/notice-section'
 import { SidebarModulesSection } from '../maintenance/sidebar-modules-section'
@@ -59,6 +60,11 @@ const SITE_SECTIONS = [
     build: (settings: SiteSettings) => (
       <NoticeSection defaultValue={settings.Notice ?? ''} />
     ),
+  },
+  {
+    id: 'dataset-capture',
+    titleKey: 'Dataset Capture',
+    build: () => <DatasetCaptureSettingsSection />,
   },
   {
     id: 'header-navigation',

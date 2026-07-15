@@ -20,6 +20,9 @@ import { api } from '@/lib/api'
 
 import type {
   ConfirmPaymentComplianceResponse,
+  DatasetCaptureModelsResponse,
+  DatasetCapturePolicy,
+  DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
   LogCleanupTask,
   SystemOptionsResponse,
@@ -38,6 +41,28 @@ export async function getSystemOptions() {
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
   const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  return res.data
+}
+
+export async function getDatasetCapturePolicy() {
+  const res = await api.get<DatasetCapturePolicyResponse>(
+    '/api/dataset-capture-policy'
+  )
+  return res.data
+}
+
+export async function updateDatasetCapturePolicy(policy: DatasetCapturePolicy) {
+  const res = await api.put<DatasetCapturePolicyResponse>(
+    '/api/dataset-capture-policy',
+    policy
+  )
+  return res.data
+}
+
+export async function getDatasetCaptureModels() {
+  const res = await api.get<DatasetCaptureModelsResponse>(
+    '/api/dataset-capture-policy/models'
+  )
   return res.data
 }
 

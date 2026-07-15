@@ -13,6 +13,7 @@ import (
 
 	common2 "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/datasetcapture"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -327,9 +328,17 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
+		if err := captureSession.CaptureUpstreamRequest(req); err != nil {
+			return nil, fmt.Errorf("capture upstream request failed: %w", err)
+		}
+	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
+	}
+	if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
+		captureSession.WrapUpstreamResponse(resp)
 	}
 	return resp, nil
 }
@@ -359,9 +368,17 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
+		if err := captureSession.CaptureUpstreamRequest(req); err != nil {
+			return nil, fmt.Errorf("capture upstream form request failed: %w", err)
+		}
+	}
 	resp, err := doRequest(c, req, info)
 	if err != nil {
 		return nil, fmt.Errorf("do request failed: %w", err)
+	}
+	if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
+		captureSession.WrapUpstreamResponse(resp)
 	}
 	return resp, nil
 }

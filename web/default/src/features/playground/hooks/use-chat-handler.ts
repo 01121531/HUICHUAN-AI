@@ -75,6 +75,8 @@ export function useChatHandler({
   const [isRequesting, setIsRequesting] = useState(false)
   const abortControllerRef = useRef<AbortController | null>(null)
   const requestIdRef = useRef(0)
+  const conversationIdRef = useRef('')
+  const lastSentMessageCountRef = useRef(0)
   const pendingStreamChunksRef = useRef<PendingStreamChunks>({
     content: '',
     reasoning: '',
@@ -203,12 +205,13 @@ export function useChatHandler({
 
   // Send streaming chat request
   const sendStreamingChat = useCallback(
-    (messages: Message[]) => {
+    (messages: Message[], conversationId: string) => {
       setIsRequesting(true)
       const payload = buildChatCompletionPayload(
         messages,
         config,
-        parameterEnabled
+        parameterEnabled,
+        conversationId
       )
       sendStreamRequest(
         payload,
@@ -229,11 +232,12 @@ export function useChatHandler({
 
   // Send non-streaming chat request
   const sendNonStreamingChat = useCallback(
-    async (messages: Message[]) => {
+    async (messages: Message[], conversationId: string) => {
       const payload = buildChatCompletionPayload(
         messages,
         config,
-        parameterEnabled
+        parameterEnabled,
+        conversationId
       )
       const requestId = requestIdRef.current + 1
       const abortController = new AbortController()
@@ -282,10 +286,18 @@ export function useChatHandler({
   // Send chat request (stream or non-stream based on config)
   const sendChat = useCallback(
     (messages: Message[]) => {
+      if (
+        !conversationIdRef.current ||
+        messages.length <= lastSentMessageCountRef.current
+      ) {
+        conversationIdRef.current = crypto.randomUUID()
+      }
+      lastSentMessageCountRef.current = messages.length
+      const conversationId = conversationIdRef.current
       if (config.stream) {
-        sendStreamingChat(messages)
+        sendStreamingChat(messages, conversationId)
       } else {
-        sendNonStreamingChat(messages)
+        sendNonStreamingChat(messages, conversationId)
       }
     },
     [config.stream, sendStreamingChat, sendNonStreamingChat]

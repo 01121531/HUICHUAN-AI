@@ -3,6 +3,7 @@ package router
 import (
 	"github.com/QuantumNous/new-api/controller"
 	"github.com/QuantumNous/new-api/middleware"
+	"github.com/QuantumNous/new-api/service/authz"
 
 	// Import oauth package to register providers via init()
 	_ "github.com/QuantumNous/new-api/oauth"
@@ -221,6 +222,40 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		datasetCaptureRoute := apiRouter.Group("/dataset-captures")
+		datasetCaptureRoute.Use(middleware.AdminAuth())
+		{
+			datasetCaptureRoute.GET("/users", middleware.RequirePermission(authz.DatasetCaptureView), controller.ListDatasetCaptureUsers)
+			datasetCaptureRoute.GET("/users/:user_id/records", middleware.RequirePermission(authz.DatasetCaptureView), controller.ListDatasetCaptureUserRecords)
+			datasetCaptureRoute.GET("/facets", middleware.RequirePermission(authz.DatasetCaptureView), controller.GetDatasetCaptureFacets)
+			datasetCaptureRoute.GET("/records/:capture_id", middleware.RequirePermission(authz.DatasetCaptureView), controller.GetDatasetCaptureRecord)
+			datasetCaptureRoute.POST("/export",
+				middleware.RequirePermission(authz.DatasetCaptureView),
+				middleware.RequirePermission(authz.DatasetCaptureDownload),
+				controller.ExportDatasetCaptures,
+			)
+			datasetCaptureRoute.DELETE("/records/batch", middleware.RootAuth(), controller.DeleteDatasetCaptureRecords)
+			datasetCaptureRoute.GET("", middleware.RequirePermission(authz.DatasetCaptureView), controller.ListDatasetCaptureFiles)
+			datasetCaptureRoute.GET("/:file_id/records", middleware.RequirePermission(authz.DatasetCaptureView), controller.ListDatasetCaptureRecords)
+			datasetCaptureRoute.GET("/:file_id/download",
+				middleware.RequirePermission(authz.DatasetCaptureView),
+				middleware.RequirePermission(authz.DatasetCaptureDownload),
+				controller.DownloadDatasetCaptureFile,
+			)
+			datasetCaptureRoute.GET("/:file_id/records/:row/download",
+				middleware.RequirePermission(authz.DatasetCaptureView),
+				middleware.RequirePermission(authz.DatasetCaptureDownload),
+				controller.DownloadDatasetCaptureRecord,
+			)
+			datasetCaptureRoute.DELETE("/:file_id", middleware.RootAuth(), controller.DeleteDatasetCaptureFile)
+		}
+		datasetCapturePolicyRoute := apiRouter.Group("/dataset-capture-policy")
+		datasetCapturePolicyRoute.Use(middleware.RootAuth())
+		{
+			datasetCapturePolicyRoute.GET("", controller.GetDatasetCapturePolicy)
+			datasetCapturePolicyRoute.PUT("", controller.UpdateDatasetCapturePolicy)
+			datasetCapturePolicyRoute.GET("/models", controller.ListDatasetCapturePolicyModels)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{
@@ -293,6 +328,7 @@ func SetApiRouter(router *gin.Engine) {
 		}
 
 		dataRoute := apiRouter.Group("/data")
+		dataRoute.GET("", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/", middleware.AdminAuth(), controller.GetAllQuotaDates)
 		dataRoute.GET("/users", middleware.AdminAuth(), controller.GetQuotaDatesByUser)
 		dataRoute.GET("/self", middleware.UserAuth(), controller.GetUserQuotaDates)

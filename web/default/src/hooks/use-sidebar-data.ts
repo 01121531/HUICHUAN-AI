@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  Archive,
   Box,
   CreditCard,
   FileText,
@@ -36,8 +37,14 @@ import {
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { type SidebarData } from '@/components/layout/types'
+import type { SidebarData } from '@/components/layout/types'
+import {
+  ADMIN_PERMISSION_ACTIONS,
+  ADMIN_PERMISSION_RESOURCES,
+  hasPermission,
+} from '@/lib/admin-permissions'
 import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
 
 /**
  * Root navigation groups for the application sidebar.
@@ -47,6 +54,12 @@ import { ROLE } from '@/lib/roles'
  */
 export function useSidebarData(): SidebarData {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const canViewDatasetCaptures = hasPermission(
+    user,
+    ADMIN_PERMISSION_RESOURCES.DATASET_CAPTURE,
+    ADMIN_PERMISSION_ACTIONS.VIEW
+  )
 
   return {
     navGroups: [
@@ -144,6 +157,15 @@ export function useSidebarData(): SidebarData {
             url: '/subscriptions',
             icon: CreditCard,
           },
+          ...(canViewDatasetCaptures
+            ? [
+                {
+                  title: t('Dataset Captures'),
+                  url: '/dataset-captures',
+                  icon: Archive,
+                },
+              ]
+            : []),
           {
             title: t('System Info'),
             url: '/system-info',

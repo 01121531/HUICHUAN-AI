@@ -39,6 +39,33 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type DatasetCaptureModelMode = 'all' | 'selected'
+
+export type DatasetCapturePolicy = {
+  enabled: boolean
+  model_mode: DatasetCaptureModelMode
+  models: string[]
+}
+
+export type DatasetCapturePolicyResponse = {
+  success: boolean
+  message?: string
+  data: DatasetCapturePolicy
+}
+
+export type DatasetCaptureModelOption = {
+  id: string
+  available: boolean
+}
+
+export type DatasetCaptureModelsResponse = {
+  success: boolean
+  message?: string
+  data: {
+    models: DatasetCaptureModelOption[]
+  }
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string

@@ -53,6 +53,7 @@ var classicBuildFS embed.FS
 var classicIndexPage []byte
 
 func main() {
+	defer middleware.CloseDatasetCapture()
 	startTime := time.Now()
 
 	err := InitResources()
@@ -330,6 +331,16 @@ func InitResources() error {
 
 	// Initialize options, should after model.InitDB()
 	model.InitOptionMap()
+	if err = authz.MigrateLegacyDatasetCapturePermissions(model.DB); err != nil {
+		common.FatalLog("failed to migrate dataset capture permissions: " + err.Error())
+		return err
+	}
+	if err = service.ReconcileDatasetCaptureIndex(
+		middleware.DatasetCapturePathTemplate(),
+		middleware.DatasetCaptureNode(),
+	); err != nil {
+		common.SysError("failed to reconcile dataset capture index: " + err.Error())
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()
