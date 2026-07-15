@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { ExternalLinkIcon, RefreshCcwIcon } from 'lucide-react'
+import { ExternalLinkIcon, GitBranchIcon, RefreshCcwIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -35,6 +35,10 @@ type ReleaseInfo = {
   html_url?: string
   published_at?: string
 }
+
+const UPDATE_REPOSITORY_URL = 'https://github.com/01121531/HUICHUAN-AI'
+const LATEST_RELEASE_API_URL =
+  'https://api.github.com/repos/01121531/HUICHUAN-AI/releases/latest'
 
 type UpdateCheckerSectionProps = {
   currentVersion?: string | null
@@ -56,15 +60,25 @@ export function UpdateCheckerSection({
   const handleCheckUpdates = async () => {
     setChecking(true)
     try {
-      const response = await fetch(
-        'https://api.github.com/repos/Calcium-Ion/new-api/releases/latest',
-        {
-          headers: {
-            Accept: 'application/vnd.github+json',
-            'User-Agent': 'new-api-dashboard',
-          },
-        }
-      )
+      const response = await fetch(LATEST_RELEASE_API_URL, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+        },
+      })
+
+      if (response.status === 404) {
+        toast.info(t('No releases have been published yet.'))
+        return
+      }
+
+      if (
+        response.status === 403 &&
+        response.headers.get('x-ratelimit-remaining') === '0'
+      ) {
+        throw new Error(
+          t('GitHub API rate limit exceeded. Please try again later.')
+        )
+      }
 
       if (!response.ok) {
         throw new Error(t('Failed to contact GitHub releases API'))
@@ -103,6 +117,10 @@ export function UpdateCheckerSection({
     }
   }
 
+  const goToRepository = () => {
+    window.open(UPDATE_REPOSITORY_URL, '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <>
       <SettingsSection title={t('System maintenance')}>
@@ -122,16 +140,22 @@ export function UpdateCheckerSection({
             </div>
           </div>
 
-          <Button onClick={handleCheckUpdates} disabled={checking}>
-            {checking ? (
-              t('Checking updates...')
-            ) : (
-              <>
-                <RefreshCcwIcon className='me-2 h-4 w-4' />
-                {t('Check for updates')}
-              </>
-            )}
-          </Button>
+          <div className='flex flex-wrap items-center gap-2'>
+            <Button onClick={handleCheckUpdates} disabled={checking}>
+              {checking ? (
+                t('Checking updates...')
+              ) : (
+                <>
+                  <RefreshCcwIcon className='me-2 h-4 w-4' />
+                  {t('Check for updates')}
+                </>
+              )}
+            </Button>
+            <Button type='button' variant='outline' onClick={goToRepository}>
+              <GitBranchIcon className='me-2 h-4 w-4' />
+              {t('Open repository')}
+            </Button>
+          </div>
         </div>
       </SettingsSection>
 
