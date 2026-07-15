@@ -296,6 +296,7 @@ HUICHUAN-AI/
 ├── controller/                  # HTTP 接口控制器
 ├── model/                       # 数据模型与数据库逻辑
 ├── pkg/datasetcapture/          # 采集、归一化、Schema 与写入核心
+├── pkg/systemupdate/            # 在线升级检查、校验、替换、健康验证与回滚
 ├── relay/                       # 模型请求转发与适配
 ├── router/                      # 路由定义
 ├── service/                     # 查询、导出、删除与索引服务
@@ -305,6 +306,39 @@ HUICHUAN-AI/
 ├── docker-compose.dev.yml
 └── main.go
 ```
+
+## 网页端在线升级
+
+Root 可以在“系统设置 → 运维设置 → 版本更新”中检查
+[`01121531/HUICHUAN-AI`](https://github.com/01121531/HUICHUAN-AI)
+的最新正式 Release。Windows 64 位独立 EXE 部署支持直接在线安装：
+
+1. 服务端重新获取固定仓库的最新 Release，浏览器不能指定下载地址。
+2. 下载匹配平台的 EXE 和 `checksums-windows.txt`，验证文件大小与 SHA-256。
+3. 将当前 EXE 复制为临时更新辅助程序并暂存新版本。
+4. Root 二次确认后进行受控重启；辅助程序备份旧版本并替换当前 EXE。
+5. 新进程必须在规定时间内通过 `/api/status` 健康检查并报告目标版本，否则自动恢复旧版本。
+
+在线安装仅接受 `vMAJOR.MINOR.PATCH` 格式的稳定版本。Docker、Kubernetes、
+`go run`、非 Windows amd64、只读可执行目录和设置了 `VERSION` 环境覆盖的部署会显示明确的禁用原因，
+这些环境应继续使用镜像或外部发布系统升级。
+
+可选环境变量：
+
+```env
+# 显式关闭应用内在线升级
+SYSTEM_UPDATE_ENABLED=false
+
+# 私有仓库或需要提高 GitHub API 限额时使用；不会返回给前端
+SYSTEM_UPDATE_GITHUB_TOKEN=
+
+# 在线升级时等待当前服务优雅退出的秒数
+SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS=30
+```
+
+更新状态保存在可执行文件相邻的 `.huichuan-update/state.json`，用于重启后恢复进度；
+API 不会返回下载 URL、本地路径或认证信息。完整设计和状态机见
+[`docs/adr/ADR-online-system-update.md`](docs/adr/ADR-online-system-update.md)。
 
 ## 数据与发布安全
 

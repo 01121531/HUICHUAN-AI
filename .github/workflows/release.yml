@@ -5,13 +5,12 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      name:
-        description: 'reason'
-        required: false
+      version:
+        description: 'SemVer build version (for example v1.0.1)'
+        required: true
   push:
     tags:
-      - '*'
-      - '!*-alpha*'
+      - 'v*.*.*'
 
 jobs:
   linux:
@@ -24,7 +23,12 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid SemVer: $VERSION"; exit 1; }
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -54,21 +58,21 @@ jobs:
       - name: Build Backend (amd64)
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION' -extldflags '-static'" -o new-api-$VERSION
+          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-amd64
       - name: Build Backend (arm64)
         run: |
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gcc-aarch64-linux-gnu
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION' -extldflags '-static'" -o new-api-arm64-$VERSION
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-arm64
       - name: Generate checksums
-        run: sha256sum new-api-* > checksums-linux.txt
+        run: sha256sum huichuan-ai-$VERSION-linux-* > checksums-linux.txt
 
       - name: Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            new-api-*
+            huichuan-ai-*-linux-*
             checksums-linux.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,7 +87,12 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid SemVer: $VERSION"; exit 1; }
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -114,16 +123,16 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-X 'new-api/common.Version=$VERSION'" -o new-api-macos-$VERSION
+          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o huichuan-ai-$VERSION-macos-amd64
       - name: Generate checksums
-        run: shasum -a 256 new-api-macos-* > checksums-macos.txt
+        run: shasum -a 256 huichuan-ai-$VERSION-macos-* > checksums-macos.txt
 
       - name: Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            new-api-macos-*
+            huichuan-ai-*-macos-*
             checksums-macos.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -141,7 +150,12 @@ jobs:
           fetch-depth: 0
       - name: Determine Version
         run: |
-          VERSION=$(git describe --tags)
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME}"
+          else
+            VERSION="${{ inputs.version }}"
+          fi
+          [[ "$VERSION" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "Invalid SemVer: $VERSION"; exit 1; }
           echo "VERSION=$VERSION" >> $GITHUB_ENV
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
@@ -171,16 +185,16 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION'" -o new-api-$VERSION.exe
+          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o huichuan-ai-$VERSION-windows-amd64.exe
       - name: Generate checksums
-        run: sha256sum new-api-*.exe > checksums-windows.txt
+        run: sha256sum huichuan-ai-$VERSION-windows-amd64.exe > checksums-windows.txt
 
       - name: Release
         uses: softprops/action-gh-release@718ea10b132b3b2eba29c1007bb80653f286566b # v3.0.1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            new-api-*.exe
+            huichuan-ai-*-windows-amd64.exe
             checksums-windows.txt
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

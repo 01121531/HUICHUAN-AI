@@ -319,6 +319,14 @@ func SetApiRouter(router *gin.Engine) {
 			systemTaskRoute.GET("/current", controller.GetCurrentSystemTask)
 			systemTaskRoute.GET("/:task_id", controller.GetSystemTask)
 		}
+		systemUpdateRoute := apiRouter.Group("/system-update")
+		systemUpdateRoute.Use(middleware.RootAuth())
+		{
+			systemUpdateRoute.GET("/capability", controller.GetSystemUpdateCapability)
+			systemUpdateRoute.GET("/latest", controller.GetLatestSystemUpdate)
+			systemUpdateRoute.GET("/status", controller.GetSystemUpdateStatus)
+			systemUpdateRoute.POST("", controller.StartSystemUpdate)
+		}
 		systemInfoRoute := apiRouter.Group("/system-info")
 		systemInfoRoute.Use(middleware.RootAuth())
 		{

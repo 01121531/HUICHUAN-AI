@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
 	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
+	"github.com/QuantumNous/new-api/pkg/systemupdate"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/router"
 	"github.com/QuantumNous/new-api/service"
@@ -53,6 +54,9 @@ var classicBuildFS embed.FS
 var classicIndexPage []byte
 
 func main() {
+	if systemupdate.RunHelperIfRequested() {
+		return
+	}
 	defer middleware.CloseDatasetCapture()
 	startTime := time.Now()
 
@@ -232,11 +236,18 @@ func main() {
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
+	shutdownTimeoutSeconds := common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)
+	select {
+	case sig := <-quit:
+		common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
+	case reason := <-systemupdate.ShutdownRequests():
+		shutdownTimeoutSeconds = common.GetEnvOrDefault("SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS", 30)
+		common.SysLog("received internal shutdown request for " + reason)
+	}
+	signal.Stop(quit)
 
 	// SSE streams may run for minutes; give them time to finish before forced exit
-	shutdownTimeout := time.Duration(common.GetEnvOrDefault("SHUTDOWN_TIMEOUT_SECONDS", 120)) * time.Second
+	shutdownTimeout := time.Duration(shutdownTimeoutSeconds) * time.Second
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
