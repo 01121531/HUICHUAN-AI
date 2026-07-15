@@ -1,6 +1,7 @@
 package dataset_capture_setting
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -47,4 +48,16 @@ func TestParsePolicy(t *testing.T) {
 	policy, err := Parse("true", "selected", `["gpt-5.2"]`)
 	require.NoError(t, err)
 	assert.Equal(t, Policy{Enabled: true, ModelMode: ModelModeSelected, Models: []string{"gpt-5.2"}}, policy)
+}
+
+func TestGetSerializesEmptyModelsAsArray(t *testing.T) {
+	original := Get()
+	t.Cleanup(func() { require.NoError(t, Apply(original)) })
+	require.NoError(t, Apply(Policy{ModelMode: ModelModeAll, Models: nil}))
+
+	policy := Get()
+	assert.NotNil(t, policy.Models)
+	encoded, err := json.Marshal(policy)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"enabled":false,"model_mode":"all","models":[]}`, string(encoded))
 }

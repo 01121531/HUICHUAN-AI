@@ -80,7 +80,7 @@ func Apply(policy Policy) error {
 func Get() Policy {
 	runtime := current.Load().(runtimePolicy)
 	policy := runtime.policy
-	policy.Models = append([]string(nil), runtime.policy.Models...)
+	policy.Models = append(make([]string, 0, len(runtime.policy.Models)), runtime.policy.Models...)
 	return policy
 }
 

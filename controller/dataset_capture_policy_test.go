@@ -28,3 +28,23 @@ func TestUpdateDatasetCapturePolicyRejectsEmptySelectedModels(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, response.Code)
 	assert.Equal(t, original, dataset_capture_setting.Get())
 }
+
+func TestGetDatasetCapturePolicyReturnsEmptyModelsArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	original := dataset_capture_setting.Get()
+	t.Cleanup(func() { _ = dataset_capture_setting.Apply(original) })
+	assert.NoError(t, dataset_capture_setting.Apply(dataset_capture_setting.Policy{
+		ModelMode: dataset_capture_setting.ModelModeAll,
+	}))
+
+	response := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(response)
+	context.Request = httptest.NewRequest(http.MethodGet, "/api/dataset-capture-policy", nil)
+	GetDatasetCapturePolicy(context)
+
+	assert.Equal(t, http.StatusOK, response.Code)
+	assert.JSONEq(t, `{
+		"success": true,
+		"data": {"enabled": false, "model_mode": "all", "models": []}
+	}`, response.Body.String())
+}

@@ -54,6 +54,8 @@ import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import type { DatasetCaptureModelMode, DatasetCapturePolicy } from '../types'
 
+const EMPTY_MODELS: string[] = []
+
 function createDatasetCaptureSchema(translate: (key: string) => string) {
   return z
     .object({
@@ -82,6 +84,13 @@ const EMPTY_POLICY: DatasetCapturePolicy = {
   models: [],
 }
 
+function normalizePolicy(policy: DatasetCapturePolicy): DatasetCapturePolicy {
+  return {
+    ...policy,
+    models: Array.isArray(policy.models) ? policy.models : [],
+  }
+}
+
 export function DatasetCaptureSettingsSection() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
@@ -101,7 +110,7 @@ export function DatasetCaptureSettingsSection() {
 
   useEffect(() => {
     if (policyQuery.data?.data) {
-      form.reset(policyQuery.data.data)
+      form.reset(normalizePolicy(policyQuery.data.data))
     }
   }, [form, policyQuery.data?.data])
 
@@ -109,7 +118,7 @@ export function DatasetCaptureSettingsSection() {
     mutationFn: (policy: DatasetCapturePolicy) =>
       updateDatasetCapturePolicy(policy),
     onSuccess: (result) => {
-      form.reset(result.data)
+      form.reset(normalizePolicy(result.data))
       void queryClient.invalidateQueries({
         queryKey: ['dataset-capture-policy-models'],
       })
@@ -120,25 +129,31 @@ export function DatasetCaptureSettingsSection() {
     },
   })
 
+  const catalogModels = useMemo(() => {
+    const models = modelsQuery.data?.data?.models
+    return Array.isArray(models) ? models : []
+  }, [modelsQuery.data?.data?.models])
   const modelOptions = useMemo(
     () =>
-      (modelsQuery.data?.data.models ?? []).map((model) => ({
+      catalogModels.map((model) => ({
         value: model.id,
         label: model.available ? model.id : `${model.id} (${t('Unavailable')})`,
       })),
-    [modelsQuery.data?.data.models, t]
+    [catalogModels, t]
   )
   const availableModels = useMemo(
     () =>
-      (modelsQuery.data?.data.models ?? [])
+      catalogModels
         .filter((model) => model.available)
         .map((model) => model.id),
-    [modelsQuery.data?.data.models]
+    [catalogModels]
   )
   const selectedModels = form.watch('models')
   const unavailableModels = useMemo(() => {
     const available = new Set(availableModels)
-    return selectedModels.filter((model) => !available.has(model))
+    return (selectedModels ?? EMPTY_MODELS).filter(
+      (model) => !available.has(model)
+    )
   }, [availableModels, selectedModels])
   const selectedMode = form.watch('model_mode')
 
@@ -267,7 +282,7 @@ export function DatasetCaptureSettingsSection() {
                   <FormControl>
                     <MultiSelect
                       options={modelOptions}
-                      selected={field.value}
+                      selected={field.value ?? EMPTY_MODELS}
                       onChange={field.onChange}
                       placeholder={t('Select site models...')}
                       maxVisibleChips={6}
