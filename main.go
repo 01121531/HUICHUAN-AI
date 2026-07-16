@@ -66,6 +66,7 @@ func main() {
 		return
 	}
 
+	systemupdate.RecoverInterruptedUpdate(common.Version)
 	common.SysLog("HUICHUAN " + common.Version + " started")
 	if os.Getenv("GIN_MODE") != "debug" {
 		gin.SetMode(gin.ReleaseMode)

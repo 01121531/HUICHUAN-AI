@@ -136,3 +136,59 @@ func TestNormalizeStaleActiveState(t *testing.T) {
 	require.Equal(t, 0, stale.Progress)
 	require.False(t, stale.RestartRequired)
 }
+
+func TestRecoverInterruptedUpdateMarksMatchingVersionSucceeded(t *testing.T) {
+	originalNow := now
+	defer func() { now = originalNow }()
+	now = func() time.Time { return time.Unix(2_000_000, 0) }
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, saveState(path, UpdateState{
+		TaskID:          "update_test",
+		Phase:           PhaseRestarting,
+		Progress:        94,
+		CurrentVersion:  "98f68d2",
+		TargetVersion:   "v1.0.5",
+		ReleaseID:       1005,
+		MessageCode:     "waiting_for_shutdown",
+		StartedAt:       now().Add(-2 * time.Minute).Unix(),
+		UpdatedAt:       now().Add(-time.Minute).Unix(),
+		RestartRequired: true,
+	}))
+
+	state, changed := recoverInterruptedUpdateAt(path, "v1.0.5")
+	require.True(t, changed)
+	require.Equal(t, PhaseSucceeded, state.Phase)
+	require.Equal(t, 100, state.Progress)
+	require.Equal(t, "succeeded", state.MessageCode)
+	require.Empty(t, state.ErrorCode)
+	require.False(t, state.RestartRequired)
+	require.Equal(t, now().Unix(), state.UpdatedAt)
+	require.Equal(t, now().Unix(), state.CompletedAt)
+
+	saved, err := loadState(path)
+	require.NoError(t, err)
+	require.Equal(t, PhaseSucceeded, saved.Phase)
+	require.Equal(t, 100, saved.Progress)
+}
+
+func TestRecoverInterruptedUpdateDoesNotSucceedMismatchedVersion(t *testing.T) {
+	originalNow := now
+	defer func() { now = originalNow }()
+	now = func() time.Time { return time.Unix(2_000_000, 0) }
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, saveState(path, UpdateState{
+		Phase:           PhaseRestarting,
+		Progress:        94,
+		TargetVersion:   "v1.0.5",
+		UpdatedAt:       now().Add(-time.Minute).Unix(),
+		RestartRequired: true,
+	}))
+
+	state, changed := recoverInterruptedUpdateAt(path, "v1.0.4")
+	require.False(t, changed)
+	require.Equal(t, PhaseRestarting, state.Phase)
+	require.Equal(t, 94, state.Progress)
+	require.True(t, state.RestartRequired)
+}

@@ -133,6 +133,12 @@ func GetState() UpdateState {
 	return state
 }
 
+func RecoverInterruptedUpdate(currentVersion string) {
+	managerMu.Lock()
+	defer managerMu.Unlock()
+	_, _ = recoverInterruptedUpdateAt(statePath(), currentVersion)
+}
+
 func BeginUpdate(ctx context.Context, releaseID int64, currentVersion string, healthPort string) (UpdateState, error) {
 	capability := CapabilityStatus()
 	if !capability.Supported {
@@ -659,6 +665,45 @@ func normalizeStaleActiveState(state UpdateState) (UpdateState, bool) {
 	state.CompletedAt = now().Unix()
 	state.UpdatedAt = state.CompletedAt
 	return state, true
+}
+
+func recoverInterruptedUpdateAt(path string, currentVersion string) (UpdateState, bool) {
+	state, err := loadState(path)
+	if err != nil || !state.Active() {
+		return state, false
+	}
+	if updateVersionMatches(state.TargetVersion, currentVersion) {
+		completedAt := now().Unix()
+		state.Phase = PhaseSucceeded
+		state.Progress = 100
+		state.MessageCode = "succeeded"
+		state.ErrorCode = ""
+		state.RestartRequired = false
+		state.UpdatedAt = completedAt
+		state.CompletedAt = completedAt
+		_ = saveState(path, state)
+		return state, true
+	}
+	if normalized, changed := normalizeStaleActiveState(state); changed {
+		_ = saveState(path, normalized)
+		return normalized, true
+	}
+	return state, false
+}
+
+func updateVersionMatches(targetVersion string, currentVersion string) bool {
+	targetVersion = strings.TrimSpace(targetVersion)
+	currentVersion = strings.TrimSpace(currentVersion)
+	if targetVersion == "" || currentVersion == "" {
+		return false
+	}
+	if targetVersion == currentVersion {
+		return true
+	}
+	if isSemanticVersion(targetVersion) && isSemanticVersion(currentVersion) {
+		return compareVersions(targetVersion, currentVersion) == 0
+	}
+	return strings.TrimPrefix(targetVersion, "v") == strings.TrimPrefix(currentVersion, "v")
 }
 
 func writeJSONAtomic(path string, value any, mode os.FileMode) error {

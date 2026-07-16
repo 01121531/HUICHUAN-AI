@@ -8,11 +8,13 @@ Description=HUICHUAN Service
 After=network.target
 
 [Service]
-User=ubuntu  # 娉ㄦ剰淇敼鐢ㄦ埛鍚?
-WorkingDirectory=/path/to/huichuan  # 娉ㄦ剰淇敼璺緞
-ExecStart=/path/to/huichuan/huichuan --port 3000 --log-dir /path/to/huichuan/logs  # 娉ㄦ剰淇敼璺緞鍜岀鍙ｅ彿
+User=ubuntu
+WorkingDirectory=/path/to/huichuan
+ExecStart=/path/to/huichuan/huichuan --port 3000 --log-dir /path/to/huichuan/logs
 Restart=always
 RestartSec=5
+KillMode=process
+TimeoutStopSec=35
 
 [Install]
 WantedBy=multi-user.target
