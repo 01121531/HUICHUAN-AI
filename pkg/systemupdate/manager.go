@@ -48,7 +48,7 @@ func CapabilityStatus() Capability {
 			return capability
 		}
 	}
-	if runtime.GOOS != "windows" || runtime.GOARCH != "amd64" {
+	if !platformSupported(runtime.GOOS, runtime.GOARCH) {
 		capability.Reason = "unsupported_platform"
 		return capability
 	}
@@ -219,7 +219,7 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 		return
 	}
 
-	checksumPath := filepath.Join(taskDir, "checksums-windows.txt")
+	checksumPath := filepath.Join(taskDir, checksumAsset.Name)
 	if _, err := downloadAsset(context.Background(), checksumAsset, checksumPath, maxChecksumBytes, nil); err != nil {
 		fail("checksum_download_failed", err)
 		return
@@ -230,7 +230,7 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 		return
 	}
 
-	stagedPath := filepath.Join(taskDir, "new-version.exe")
+	stagedPath := filepath.Join(taskDir, stagedBinaryName())
 	progress := func(downloaded, total int64) {
 		if total <= 0 {
 			total = binaryAsset.Size
@@ -270,10 +270,16 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 			return
 		}
 	}
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(stagedPath, 0700); err != nil {
+			fail("binary_permission_failed", err)
+			return
+		}
+	}
 
 	// Avoid installer-like filenames (update/setup/install) because Windows
 	// application compatibility heuristics may require elevation for them.
-	helperPath := filepath.Join(taskDir, "huichuan-swap.exe")
+	helperPath := filepath.Join(taskDir, helperBinaryName())
 	if err := copyFile(executable, helperPath, 0700); err != nil {
 		fail("helper_prepare_failed", err)
 		return
@@ -291,7 +297,7 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 		ParentPID:            os.Getpid(),
 		TargetPath:           executable,
 		StagedPath:           stagedPath,
-		BackupPath:           filepath.Join(taskDir, "previous-version.exe"),
+		BackupPath:           filepath.Join(taskDir, backupBinaryName()),
 		StatePath:            statePath(),
 		ReadyPath:            filepath.Join(taskDir, "helper.ready"),
 		WorkingDir:           workingDir,
@@ -400,26 +406,80 @@ func publicReleaseInfo(release githubRelease, currentVersion string) ReleaseInfo
 }
 
 func selectAssets(release githubRelease) (githubAsset, githubAsset, error) {
-	preferredNames := []string{
-		fmt.Sprintf("huichuan-ai-%s-windows-amd64.exe", release.TagName),
-		fmt.Sprintf("huichuan-%s.exe", release.TagName),
-	}
+	artifactPlatform := releaseArtifactPlatform(runtime.GOOS)
+	binaryName := releaseBinaryName(release.TagName, runtime.GOOS, runtime.GOARCH)
+	legacyNames := legacyReleaseBinaryNames(release.TagName, runtime.GOOS, runtime.GOARCH)
+	checksumName := fmt.Sprintf("checksums-%s.txt", artifactPlatform)
 	var binary githubAsset
 	var checksum githubAsset
 	for _, asset := range release.Assets {
-		if asset.Name == "checksums-windows.txt" {
+		if asset.Name == checksumName {
 			checksum = asset
 		}
-		for _, name := range preferredNames {
+		for _, name := range append([]string{binaryName}, legacyNames...) {
 			if asset.Name == name {
 				binary = asset
 			}
 		}
 	}
 	if binary.ID == 0 || checksum.ID == 0 {
-		return githubAsset{}, githubAsset{}, errors.New("matching Windows release assets are missing")
+		return githubAsset{}, githubAsset{}, fmt.Errorf("matching %s/%s release assets are missing", runtime.GOOS, runtime.GOARCH)
 	}
 	return binary, checksum, nil
+}
+
+func platformSupported(goos string, goarch string) bool {
+	switch goos {
+	case "windows":
+		return goarch == "amd64"
+	case "linux", "darwin":
+		return goarch == "amd64" || goarch == "arm64"
+	default:
+		return false
+	}
+}
+
+func releaseArtifactPlatform(goos string) string {
+	if goos == "darwin" {
+		return "macos"
+	}
+	return goos
+}
+
+func releaseBinaryName(version string, goos string, goarch string) string {
+	name := fmt.Sprintf("huichuan-ai-%s-%s-%s", version, releaseArtifactPlatform(goos), goarch)
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+func legacyReleaseBinaryNames(version string, goos string, goarch string) []string {
+	if goos == "windows" && goarch == "amd64" {
+		return []string{fmt.Sprintf("huichuan-%s.exe", version)}
+	}
+	return nil
+}
+
+func stagedBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "new-version.exe"
+	}
+	return "new-version"
+}
+
+func helperBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "huichuan-swap.exe"
+	}
+	return "huichuan-swap"
+}
+
+func backupBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "previous-version.exe"
+	}
+	return "previous-version"
 }
 
 func downloadAsset(ctx context.Context, asset githubAsset, destination string, limit int64, progress func(int64, int64)) (string, error) {

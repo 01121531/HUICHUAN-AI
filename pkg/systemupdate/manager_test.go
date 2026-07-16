@@ -52,6 +52,23 @@ func TestSelectAssets(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestPlatformReleaseAssetNames(t *testing.T) {
+	require.True(t, platformSupported("windows", "amd64"))
+	require.True(t, platformSupported("linux", "amd64"))
+	require.True(t, platformSupported("linux", "arm64"))
+	require.True(t, platformSupported("darwin", "amd64"))
+	require.True(t, platformSupported("darwin", "arm64"))
+	require.False(t, platformSupported("windows", "arm64"))
+	require.False(t, platformSupported("freebsd", "amd64"))
+
+	require.Equal(t, "windows", releaseArtifactPlatform("windows"))
+	require.Equal(t, "linux", releaseArtifactPlatform("linux"))
+	require.Equal(t, "macos", releaseArtifactPlatform("darwin"))
+	require.Equal(t, "huichuan-ai-v1.2.3-windows-amd64.exe", releaseBinaryName("v1.2.3", "windows", "amd64"))
+	require.Equal(t, "huichuan-ai-v1.2.3-linux-arm64", releaseBinaryName("v1.2.3", "linux", "arm64"))
+	require.Equal(t, "huichuan-ai-v1.2.3-macos-arm64", releaseBinaryName("v1.2.3", "darwin", "arm64"))
+}
+
 func TestPublicReleaseInfoShowsInvalidDifferentTag(t *testing.T) {
 	info := publicReleaseInfo(githubRelease{ID: 1, TagName: "api"}, "v1.0.0")
 	require.True(t, info.UpdateAvailable)

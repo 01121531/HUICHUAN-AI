@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "La mise à jour en ligne est disponible pour {{platform}}/{{arch}}.",
     "Online updates are disabled by the server environment.": "Les mises à jour en ligne sont désactivées par l’environnement serveur.",
     "Online updates can only run on the master node.": "Les mises à jour en ligne ne peuvent être exécutées que sur le nœud maître.",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "Les mises à jour en ligne prennent actuellement en charge uniquement les déploiements Windows 64 bits autonomes.",
     "Only allow specific email domains": "Autoriser uniquement des domaines d'e-mail spécifiques",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Uniquement disponible pour les administrateurs. Lorsque cette option est activée, vous recevrez une notification récapitulative via votre méthode sélectionnée lorsque la vérification planifiée des modèles détecte des changements de modèles en amont ou des échecs de vérification.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Seules les combinaisons configurées sont remplacées. Tous les autres appels gardent le taux de base du groupe de facturation.",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "Cette page n'a pas encore été créée.",
     "This plan does not allow balance redemption": "Ce forfait ne permet pas le paiement avec le solde",
     "This project must be used in compliance with the": "Ce projet doit être utilisé conformément aux",
-    "This release does not contain a matching Windows update package.": "Cette version ne contient pas de paquet de mise à jour Windows correspondant.",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "Cette version utilise une étiquette invalide. Publiez une version vMAJOR.MINOR.PATCH pour activer l’installation en ligne.",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "Cela supprime {{count}} modèles en échec de ce canal. Cette action est irréversible.",
     "This site currently has {{count}} models enabled": "Ce site compte actuellement {{count}} modèles activés",
@@ -5400,6 +5398,8 @@
     "Zero retention": "Aucune rétention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "Les mises à jour en ligne prennent actuellement en charge les déploiements autonomes Windows, Linux et macOS uniquement.",
+    "This release does not contain a matching update package for the current platform.": "Cette version ne contient pas de paquet de mise à jour correspondant à la plateforme actuelle."
   }
 }

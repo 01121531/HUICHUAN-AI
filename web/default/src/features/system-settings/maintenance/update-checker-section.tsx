@@ -166,7 +166,7 @@ export function UpdateCheckerSection({
           'The active server instance topology could not be verified.'
         ),
         matching_asset_missing: t(
-          'This release does not contain a matching Windows update package.'
+          'This release does not contain a matching update package for the current platform.'
         ),
         multi_instance_deployment: t(
           'Multi-instance deployments must be upgraded by an external rolling update system.'
@@ -180,7 +180,7 @@ export function UpdateCheckerSection({
           'This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.'
         ),
         unsupported_platform: t(
-          'Online updates currently support Windows 64-bit standalone deployments only.'
+          'Online updates currently support Windows, Linux, and macOS standalone deployments only.'
         ),
         version_overridden_by_environment: t(
           'Remove the VERSION environment override before using online updates.'

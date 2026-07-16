@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "Онлайн-обновление доступно для {{platform}}/{{arch}}.",
     "Online updates are disabled by the server environment.": "Онлайн-обновления отключены окружением сервера.",
     "Online updates can only run on the master node.": "Онлайн-обновления можно запускать только на главном узле.",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "Онлайн-обновления пока поддерживают только автономные 64-битные развертывания Windows.",
     "Only allow specific email domains": "Разрешить только определенные домены электронной почты",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Доступно только для администраторов. При включении вы будете получать сводное уведомление выбранным способом, когда запланированная проверка моделей обнаружит изменения в вышестоящих моделях или сбои проверки.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Переопределяются только настроенные комбинации. Остальные вызовы используют базовый коэффициент тарифной группы.",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "Эта страница еще не создана.",
     "This plan does not allow balance redemption": "Этот план не разрешает оплату балансом",
     "This project must be used in compliance with the": "Этот проект должен использоваться в соответствии с",
-    "This release does not contain a matching Windows update package.": "Этот релиз не содержит подходящего пакета обновления Windows.",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "У этого релиза неверный тег версии. Опубликуйте версию vMAJOR.MINOR.PATCH, чтобы включить онлайн-установку.",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "Это удалит {{count}} неуспешных моделей из этого канала. Действие необратимо.",
     "This site currently has {{count}} models enabled": "На этом сайте сейчас включено моделей: {{count}}",
@@ -5400,6 +5398,8 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "Онлайн-обновления сейчас поддерживают только автономные одноузловые развертывания Windows, Linux и macOS.",
+    "This release does not contain a matching update package for the current platform.": "В этом выпуске нет пакета обновления для текущей платформы."
   }
 }

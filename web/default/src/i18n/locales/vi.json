@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "Có thể cập nhật trực tuyến cho {{platform}}/{{arch}}.",
     "Online updates are disabled by the server environment.": "Môi trường máy chủ đã tắt cập nhật trực tuyến.",
     "Online updates can only run on the master node.": "Chỉ có thể chạy cập nhật trực tuyến trên nút chính.",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "Cập nhật trực tuyến hiện chỉ hỗ trợ bản triển khai Windows 64-bit độc lập.",
     "Only allow specific email domains": "Chỉ cho phép các tên miền email cụ thể",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Chỉ khả dụng cho quản trị viên. Khi bật, bạn sẽ nhận được thông báo tổng hợp qua phương thức đã chọn khi kiểm tra mô hình định kỳ phát hiện thay đổi mô hình nguồn hoặc lỗi kiểm tra.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Chỉ các tổ hợp đã cấu hình mới bị ghi đè. Các cuộc gọi khác vẫn dùng hệ số cơ bản của nhóm tính phí.",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "Trang này chưa được tạo.",
     "This plan does not allow balance redemption": "Gói này không cho phép thanh toán bằng số dư",
     "This project must be used in compliance with the": "Dự án này phải được sử dụng tuân thủ theo",
-    "This release does not contain a matching Windows update package.": "Bản phát hành này không có gói cập nhật Windows phù hợp.",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "Bản phát hành này dùng thẻ phiên bản không hợp lệ. Hãy phát hành phiên bản vMAJOR.MINOR.PATCH để bật cài đặt trực tuyến.",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "Thao tác này sẽ xóa {{count}} mô hình thất bại khỏi kênh này. Không thể hoàn tác.",
     "This site currently has {{count}} models enabled": "Trang này hiện đã bật {{count}} mô hình",
@@ -5400,6 +5398,8 @@
     "Zero retention": "Không lưu dữ liệu",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "Cập nhật trực tuyến hiện hỗ trợ các bản triển khai độc lập một nút trên Windows, Linux và macOS.",
+    "This release does not contain a matching update package for the current platform.": "Bản phát hành này không có gói cập nhật phù hợp với nền tảng hiện tại."
   }
 }

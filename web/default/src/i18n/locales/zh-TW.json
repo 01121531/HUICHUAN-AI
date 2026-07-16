@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "{{platform}}/{{arch}} 支援線上升級。",
     "Online updates are disabled by the server environment.": "伺服器環境已停用線上升級。",
     "Online updates can only run on the master node.": "線上升級只能在主節點上執行。",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "線上升級目前僅支援 Windows 64 位元獨立部署。",
     "Only allow specific email domains": "僅允許特定的電郵域名",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "僅管理員可用。啟用後，當定時模型檢查偵測到上游模型變更或檢查失敗時，您將透過所選方式收到摘要通知。",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "只有設定過的組合才會被覆蓋，其餘呼叫仍使用收費分組的基礎倍率。",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "此頁面尚未建立。",
     "This plan does not allow balance redemption": "該套餐不允許使用餘額兌換",
     "This project must be used in compliance with the": "此項目的使用必須遵守",
-    "This release does not contain a matching Windows update package.": "此版本不包含相符的 Windows 更新套件。",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "此版本使用無效的版本標籤。請發佈 vMAJOR.MINOR.PATCH 格式的版本以啟用線上安裝。",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "此操作將從該渠道移除 {{count}} 個測試失敗的模型，且無法撤銷。",
     "This site currently has {{count}} models enabled": "本站目前已啟用模型，總計 {{count}} 個",
@@ -5400,6 +5398,8 @@
     "Zero retention": "零數據保留",
     "Zhipu": "智譜",
     "Zhipu V4": "智譜 V4",
-    "Zoom": "縮放"
+    "Zoom": "縮放",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "線上升級目前支援 Windows、Linux 和 macOS 的單節點獨立部署。",
+    "This release does not contain a matching update package for the current platform.": "此版本不包含適用於目前平台的升級套件。"
   }
 }

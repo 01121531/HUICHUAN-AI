@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "Online update is available for {{platform}}/{{arch}}.",
     "Online updates are disabled by the server environment.": "Online updates are disabled by the server environment.",
     "Online updates can only run on the master node.": "Online updates can only run on the master node.",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "Online updates currently support Windows 64-bit standalone deployments only.",
     "Only allow specific email domains": "Only allow specific email domains",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "Only configured combinations are overridden. All other calls keep the billing group base ratio.",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "This page has not been created yet.",
     "This plan does not allow balance redemption": "This plan does not allow balance redemption",
     "This project must be used in compliance with the": "This project must be used in compliance with the",
-    "This release does not contain a matching Windows update package.": "This release does not contain a matching Windows update package.",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "This removes {{count}} failed models from this channel. This action cannot be undone.",
     "This site currently has {{count}} models enabled": "This site currently has {{count}} models enabled",
@@ -5400,6 +5398,8 @@
     "Zero retention": "Zero retention",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "Online updates currently support Windows, Linux, and macOS standalone deployments only.",
+    "This release does not contain a matching update package for the current platform.": "This release does not contain a matching update package for the current platform."
   }
 }

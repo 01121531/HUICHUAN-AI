@@ -3207,7 +3207,6 @@
     "Online update is available for {{platform}}/{{arch}}.": "{{platform}}/{{arch}} ではオンライン更新を利用できます。",
     "Online updates are disabled by the server environment.": "サーバー環境でオンライン更新が無効になっています。",
     "Online updates can only run on the master node.": "オンライン更新はマスターノードでのみ実行できます。",
-    "Online updates currently support Windows 64-bit standalone deployments only.": "オンライン更新は現在、Windows 64 ビットの単体構成のみ対応しています。",
     "Only allow specific email domains": "特定のEメール ドメインのみを許可する",
     "Only available for admins. When enabled, you will receive a summary notification via your selected method when the scheduled model check detects upstream model changes or check failures.": "管理者のみ利用可能です。有効にすると、スケジュールされたモデルチェックでアップストリームモデルの変更やチェック失敗が検出された際に、選択した方法で概要通知を受け取ります。",
     "Only configured combinations are overridden. All other calls keep the billing group base ratio.": "設定された組み合わせだけが上書きされます。それ以外の呼び出しは課金グループの基本倍率のままです。",
@@ -4717,7 +4716,6 @@
     "This page has not been created yet.": "このページはまだ作成されていません。",
     "This plan does not allow balance redemption": "このプランでは残高での交換は許可されていません",
     "This project must be used in compliance with the": "このプロジェクトは、以下を遵守して使用する必要があります",
-    "This release does not contain a matching Windows update package.": "このリリースには対応する Windows 更新パッケージがありません。",
     "This release uses an invalid version tag. Publish a vMAJOR.MINOR.PATCH release to enable online installation.": "このリリースのバージョンタグは無効です。オンラインインストールを有効にするには vMAJOR.MINOR.PATCH 形式で公開してください。",
     "This removes {{count}} failed models from this channel. This action cannot be undone.": "この操作はこのチャンネルから失敗した {{count}} 個のモデルを削除します。元に戻せません。",
     "This site currently has {{count}} models enabled": "このサイトでは現在 {{count}} 個のモデルが有効です",
@@ -5400,6 +5398,8 @@
     "Zero retention": "データ保持なし",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V 4",
-    "Zoom": "ズーム"
+    "Zoom": "ズーム",
+    "Online updates currently support Windows, Linux, and macOS standalone deployments only.": "オンライン更新は現在、Windows、Linux、macOS の単一ノード単体構成のみ対応しています。",
+    "This release does not contain a matching update package for the current platform.": "このリリースには現在のプラットフォームに一致する更新パッケージが含まれていません。"
   }
 }
