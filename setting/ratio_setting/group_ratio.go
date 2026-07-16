@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/config"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/setting/config"
+	"github.com/01121531/HUICHUAN-AI/types"
 )
 
 var defaultGroupRatio = map[string]float64{

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 )
 
 var ErrDatasetCaptureContentSearchTooBroad = errors.New("dataset capture content search is too broad; narrow the metadata filters")

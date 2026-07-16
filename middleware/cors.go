@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"github.com/QuantumNous/new-api/common"
+	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +17,7 @@ func CORS() gin.HandlerFunc {
 
 func Version() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Header("X-New-Api-Version", common.Version)
+		c.Header("X-HUICHUAN-Version", common.Version)
 		c.Next()
 	}
 }

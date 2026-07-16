@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync/atomic"
 
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/01121531/HUICHUAN-AI/setting/config"
 )
 
 // ---------------------------------------------------------------------------

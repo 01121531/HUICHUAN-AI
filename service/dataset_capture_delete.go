@@ -3,8 +3,8 @@ package service
 import (
 	"sort"
 
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 )
 
 type DatasetCaptureDeleteResult struct {

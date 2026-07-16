@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/reasonmap"
-	sharedclaude "github.com/QuantumNous/new-api/service/relayconvert/internal/shared/claude"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	"github.com/01121531/HUICHUAN-AI/relay/reasonmap"
+	sharedclaude "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/shared/claude"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )

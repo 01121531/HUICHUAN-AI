@@ -5,10 +5,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/gin-gonic/gin"
 )
@@ -32,7 +32,7 @@ func ConvertRerankRequest(request dto.RerankRequest) *AliRerankRequest {
 	}
 }
 
-func RerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.NewAPIError, *dto.Usage) {
+func RerankHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*types.HUICHUANError, *dto.Usage) {
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError), nil

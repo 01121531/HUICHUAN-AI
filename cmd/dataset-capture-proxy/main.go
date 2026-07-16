@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 )
 
 type proxyHandler struct {

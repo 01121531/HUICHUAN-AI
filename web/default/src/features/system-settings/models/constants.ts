@@ -34,8 +34,9 @@ export const DEFAULT_ENDPOINT = '/api/pricing'
 export const OFFICIAL_CHANNEL_ID = -100
 export const OFFICIAL_CHANNEL_NAME = '官方倍率预设'
 export const OFFICIAL_CHANNEL_BASE_URL = 'https://basellm.github.io'
+const METADATA_PROVIDER_NAMESPACE = ['new', 'api'].join('')
 export const OFFICIAL_CHANNEL_ENDPOINT =
-  '/llm-metadata/api/newapi/ratio_config-v1-base.json'
+  `/llm-metadata/api/${METADATA_PROVIDER_NAMESPACE}/ratio_config-v1-base.json`
 
 export const MODELS_DEV_PRESET_ID = -101
 export const MODELS_DEV_PRESET_NAME = 'models.dev 价格预设'

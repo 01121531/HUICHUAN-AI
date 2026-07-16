@@ -3,7 +3,7 @@ package dto
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )

@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 )

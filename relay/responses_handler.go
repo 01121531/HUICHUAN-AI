@@ -6,21 +6,21 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	appconstant "github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/logger"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	appconstant "github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	"github.com/01121531/HUICHUAN-AI/logger"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	relayconstant "github.com/01121531/HUICHUAN-AI/relay/constant"
+	"github.com/01121531/HUICHUAN-AI/relay/helper"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/gin-gonic/gin"
 )
 
-func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
+func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (huichuanError *types.HUICHUANError) {
 	info.InitChannelMeta(c)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
 		switch info.ApiType {
@@ -108,7 +108,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if len(info.ParamOverride) > 0 {
 			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 			if err != nil {
-				return newAPIErrorFromParamOverride(err)
+				return huichuanErrorFromParamOverride(err)
 			}
 		}
 
@@ -135,18 +135,18 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		httpResp = resp.(*http.Response)
 
 		if httpResp.StatusCode != http.StatusOK {
-			newAPIError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
+			huichuanError = service.RelayErrorHandler(c.Request.Context(), httpResp, false)
 			// reset status code 重置状态码
-			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
-			return newAPIError
+			service.ResetStatusCode(huichuanError, statusCodeMappingStr)
+			return huichuanError
 		}
 	}
 
-	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)
-	if newAPIError != nil {
+	usage, huichuanError := adaptor.DoResponse(c, httpResp, info)
+	if huichuanError != nil {
 		// reset status code 重置状态码
-		service.ResetStatusCode(newAPIError, statusCodeMappingStr)
-		return newAPIError
+		service.ResetStatusCode(huichuanError, statusCodeMappingStr)
+		return huichuanError
 	}
 
 	usageDto := usage.(*dto.Usage)

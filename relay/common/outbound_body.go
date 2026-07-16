@@ -3,7 +3,7 @@ package common
 import (
 	"io"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/01121531/HUICHUAN-AI/common"
 )
 
 // NewOutboundJSONBody wraps the already-marshaled upstream request body into a

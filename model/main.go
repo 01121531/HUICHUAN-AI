@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/driver/clickhouse"
@@ -300,6 +300,8 @@ func migrateDB() error {
 		&CasbinRule{},
 		&AuthzRole{},
 		&DatasetCaptureIndex{},
+		&DatasetCaptureAccessAudit{},
+		&DatasetCaptureAccessAuditItem{},
 	)
 	if err != nil {
 		return err
@@ -353,6 +355,8 @@ func migrateDBFast() error {
 		{&SystemTask{}, "SystemTask"},
 		{&SystemTaskLock{}, "SystemTaskLock"},
 		{&DatasetCaptureIndex{}, "DatasetCaptureIndex"},
+		{&DatasetCaptureAccessAudit{}, "DatasetCaptureAccessAudit"},
+		{&DatasetCaptureAccessAuditItem{}, "DatasetCaptureAccessAuditItem"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

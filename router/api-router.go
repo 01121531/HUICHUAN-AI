@@ -1,12 +1,12 @@
 package router
 
 import (
-	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/01121531/HUICHUAN-AI/controller"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/service/authz"
 
 	// Import oauth package to register providers via init()
-	_ "github.com/QuantumNous/new-api/oauth"
+	_ "github.com/01121531/HUICHUAN-AI/oauth"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-gonic/gin"
@@ -255,6 +255,7 @@ func SetApiRouter(router *gin.Engine) {
 			datasetCapturePolicyRoute.GET("", controller.GetDatasetCapturePolicy)
 			datasetCapturePolicyRoute.PUT("", controller.UpdateDatasetCapturePolicy)
 			datasetCapturePolicyRoute.GET("/models", controller.ListDatasetCapturePolicyModels)
+			datasetCapturePolicyRoute.GET("/access-audits", controller.ListDatasetCaptureAccessAudits)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())

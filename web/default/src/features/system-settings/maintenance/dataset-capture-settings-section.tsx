@@ -53,6 +53,7 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import type { DatasetCaptureModelMode, DatasetCapturePolicy } from '../types'
+import { DatasetCaptureAccessAuditSection } from './dataset-capture-access-audit-section'
 
 const EMPTY_MODELS: string[] = []
 
@@ -300,6 +301,9 @@ export function DatasetCaptureSettingsSection() {
               )}
             />
           )}
+          <div data-settings-form-span='full'>
+            <DatasetCaptureAccessAuditSection />
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

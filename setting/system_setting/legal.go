@@ -1,6 +1,6 @@
 package system_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/01121531/HUICHUAN-AI/setting/config"
 
 type LegalSettings struct {
 	UserAgreement string `json:"user_agreement"`

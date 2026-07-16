@@ -7,13 +7,13 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	claudemessages "github.com/QuantumNous/new-api/service/relayconvert/internal/claude_messages"
-	geminichat "github.com/QuantumNous/new-api/service/relayconvert/internal/gemini_chat"
-	oaichat "github.com/QuantumNous/new-api/service/relayconvert/internal/oai_chat"
-	oairesponses "github.com/QuantumNous/new-api/service/relayconvert/internal/oai_responses"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	claudemessages "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/claude_messages"
+	geminichat "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/gemini_chat"
+	oaichat "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/oai_chat"
+	oairesponses "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/oai_responses"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/gin-gonic/gin"
 )
 

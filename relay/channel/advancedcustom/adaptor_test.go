@@ -8,14 +8,14 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/service/relayconvert"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	relayconstant "github.com/01121531/HUICHUAN-AI/relay/constant"
+	"github.com/01121531/HUICHUAN-AI/service/relayconvert"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -426,10 +426,10 @@ func TestAdaptorResponsesToGeminiUsesResponsesBridge(t *testing.T) {
 	body, err := common.Marshal(payload)
 	require.NoError(t, err)
 
-	usage, newAPIError := adaptor.DoResponse(c, &http.Response{
+	usage, huichuanError := adaptor.DoResponse(c, &http.Response{
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}, info)
-	require.Nil(t, newAPIError)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 
 	got := recorder.Body.String()

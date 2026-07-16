@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 )
 
 func TestUpdateOptionMapUpdatesDatasetCaptureRuntimeState(t *testing.T) {

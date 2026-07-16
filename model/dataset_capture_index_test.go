@@ -3,7 +3,7 @@ package model
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"

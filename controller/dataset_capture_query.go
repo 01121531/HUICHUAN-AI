@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -110,11 +110,18 @@ func GetDatasetCaptureRecord(c *gin.Context) {
 		datasetCaptureQueryError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"metadata": summary, "record": record}})
-	recordDatasetCaptureAudit(c, "dataset_capture.view", map[string]interface{}{
-		"capture_id": captureID, "user_id": index.UserID, "token_id": index.TokenID,
-		"node": middleware.DatasetCaptureNode(),
+	auditEventID, err := beginDatasetCaptureAccessAudit(c, model.DatasetCaptureAccessAuditInput{
+		Action: model.DatasetCaptureAuditActionView, SelectionMode: "single_record",
+		Records: []model.DatasetCaptureRecordSummary{summary},
 	})
+	if err != nil {
+		common.SysError("dataset capture view audit failed: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to create dataset capture access audit"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"metadata": summary, "record": record}})
+	completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeDelivered)
+	recordDatasetCaptureAudit(c, "dataset_capture.record_view", datasetCaptureAuditMetadata(summary))
 }
 
 func datasetCaptureFilterFromRequest(c *gin.Context) (model.DatasetCaptureFilter, string, error) {

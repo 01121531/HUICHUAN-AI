@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
-	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -90,7 +90,7 @@ func datasetCaptureWithPolicy(
 			c.Next()
 			return
 		}
-		responseFile, err := os.CreateTemp("", "new-api-dataset-response-*.spool")
+		responseFile, err := os.CreateTemp("", "huichuan-dataset-response-*.spool")
 		if err != nil {
 			common.SysError("dataset capture could not create response spool: " + err.Error())
 			c.Next()

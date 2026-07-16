@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/logger"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/relayconvert"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	"github.com/01121531/HUICHUAN-AI/logger"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	relayconstant "github.com/01121531/HUICHUAN-AI/relay/constant"
+	"github.com/01121531/HUICHUAN-AI/relay/helper"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/service/relayconvert"
+	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/samber/lo"
 
@@ -85,7 +85,7 @@ func handleGeminiFormat(c *gin.Context, data string, info *relaycommon.RelayInfo
 	}
 
 	// send gemini format response
-	c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+	c.Render(-1, &common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
 	_ = helper.FlushWriter(c)
 	return nil
 }
@@ -231,7 +231,7 @@ func HandleFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, lastStream
 		}
 
 		// 发送最终的 Gemini 响应
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
+		c.Render(-1, &common.CustomEvent{Data: "data: " + string(geminiResponseStr)})
 		_ = helper.FlushWriter(c)
 	}
 }

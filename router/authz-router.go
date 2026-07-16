@@ -1,8 +1,8 @@
 package router
 
 import (
-	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/middleware"
+	"github.com/01121531/HUICHUAN-AI/controller"
+	"github.com/01121531/HUICHUAN-AI/middleware"
 
 	"github.com/gin-gonic/gin"
 )

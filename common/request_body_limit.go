@@ -1,6 +1,6 @@
 package common
 
-import "github.com/QuantumNous/new-api/constant"
+import "github.com/01121531/HUICHUAN-AI/constant"
 
 const defaultAnonymousRequestBodyLimitKB = 512
 

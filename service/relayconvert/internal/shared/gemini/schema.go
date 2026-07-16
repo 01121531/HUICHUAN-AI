@@ -3,7 +3,7 @@ package gemini
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/dto"
+	"github.com/01121531/HUICHUAN-AI/dto"
 )
 
 var geminiOpenAPISchemaAllowedFields = map[string]struct{}{

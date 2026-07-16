@@ -3,13 +3,13 @@ package relayconvert
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	sharedgemini "github.com/QuantumNous/new-api/service/relayconvert/internal/shared/gemini"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	sharedgemini "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/shared/gemini"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

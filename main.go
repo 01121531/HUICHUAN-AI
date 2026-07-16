@@ -15,22 +15,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/controller"
-	"github.com/QuantumNous/new-api/i18n"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/oauth"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-	"github.com/QuantumNous/new-api/pkg/systemupdate"
-	"github.com/QuantumNous/new-api/relay"
-	"github.com/QuantumNous/new-api/router"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
-	_ "github.com/QuantumNous/new-api/setting/performance_setting"
-	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/controller"
+	"github.com/01121531/HUICHUAN-AI/i18n"
+	"github.com/01121531/HUICHUAN-AI/logger"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/oauth"
+	perfmetrics "github.com/01121531/HUICHUAN-AI/pkg/perf_metrics"
+	"github.com/01121531/HUICHUAN-AI/pkg/systemupdate"
+	"github.com/01121531/HUICHUAN-AI/relay"
+	"github.com/01121531/HUICHUAN-AI/router"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/service/authz"
+	_ "github.com/01121531/HUICHUAN-AI/setting/performance_setting"
+	"github.com/01121531/HUICHUAN-AI/setting/ratio_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-contrib/sessions"
@@ -182,8 +182,8 @@ func main() {
 		common.SysLog(fmt.Sprintf("panic detected: %v", err))
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": gin.H{
-				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/new-api", err),
-				"type":    "new_api_panic",
+				"message": fmt.Sprintf("Panic detected, error: %v. Please submit a issue here: https://github.com/Calcium-Ion/huichuan", err),
+				"type":    "huichuan_panic",
 			},
 		})
 	}))

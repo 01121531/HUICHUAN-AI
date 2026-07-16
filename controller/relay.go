@@ -9,22 +9,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
-	perfmetrics "github.com/QuantumNous/new-api/pkg/perf_metrics"
-	"github.com/QuantumNous/new-api/relay"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	"github.com/01121531/HUICHUAN-AI/logger"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
+	perfmetrics "github.com/01121531/HUICHUAN-AI/pkg/perf_metrics"
+	"github.com/01121531/HUICHUAN-AI/relay"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	relayconstant "github.com/01121531/HUICHUAN-AI/relay/constant"
+	"github.com/01121531/HUICHUAN-AI/relay/helper"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/setting"
+	"github.com/01121531/HUICHUAN-AI/setting/operation_setting"
+	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -33,8 +33,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
-	var err *types.NewAPIError
+func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.HUICHUANError {
+	var err *types.HUICHUANError
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		err = relay.ImageHelper(c, info)
@@ -56,8 +56,8 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 	return err
 }
 
-func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
-	var err *types.NewAPIError
+func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.HUICHUANError {
+	var err *types.HUICHUANError
 	if strings.Contains(c.Request.URL.Path, "embed") {
 		err = relay.GeminiEmbeddingHandler(c, info)
 	} else {
@@ -73,8 +73,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	//originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
 
 	var (
-		newAPIError *types.NewAPIError
-		ws          *websocket.Conn
+		huichuanError *types.HUICHUANError
+		ws            *websocket.Conn
 	)
 
 	if relayFormat == types.RelayFormatOpenAIRealtime {
@@ -88,20 +88,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	}
 
 	defer func() {
-		if newAPIError != nil {
-			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(newAPIError.Error())))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+		if huichuanError != nil {
+			logger.LogError(c, fmt.Sprintf("relay error: %s", common.LocalLogPreview(huichuanError.Error())))
+			huichuanError.SetMessage(common.MessageWithRequestId(huichuanError.Error(), requestId))
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
-				helper.WssError(c, ws, newAPIError.ToOpenAIError())
+				helper.WssError(c, ws, huichuanError.ToOpenAIError())
 			case types.RelayFormatClaude:
-				c.JSON(newAPIError.StatusCode, gin.H{
+				c.JSON(huichuanError.StatusCode, gin.H{
 					"type":  "error",
-					"error": newAPIError.ToClaudeError(),
+					"error": huichuanError.ToClaudeError(),
 				})
 			default:
-				c.JSON(newAPIError.StatusCode, gin.H{
-					"error": newAPIError.ToOpenAIError(),
+				c.JSON(huichuanError.StatusCode, gin.H{
+					"error": huichuanError.ToOpenAIError(),
 				})
 			}
 		}
@@ -111,16 +111,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if err != nil {
 		// Map "request body too large" to 413 so clients can handle it correctly
 		if common.IsRequestBodyTooLargeError(err) || errors.Is(err, common.ErrRequestBodyTooLarge) {
-			newAPIError = types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+			huichuanError = types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
 		} else {
-			newAPIError = types.NewError(err, types.ErrorCodeInvalidRequest)
+			huichuanError = types.NewError(err, types.ErrorCodeInvalidRequest)
 		}
 		return
 	}
 
 	relayInfo, err := relaycommon.GenRelayInfo(c, relayFormat, request, ws)
 	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
+		huichuanError = types.NewError(err, types.ErrorCodeGenRelayInfoFailed)
 		return
 	}
 
@@ -138,14 +138,14 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		contains, words := service.CheckSensitiveText(meta.CombineText)
 		if contains {
 			logger.LogWarn(c, fmt.Sprintf("user sensitive words detected: %s", strings.Join(words, ", ")))
-			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
+			huichuanError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
 			return
 		}
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
 	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeCountTokenFailed)
+		huichuanError = types.NewError(err, types.ErrorCodeCountTokenFailed)
 		return
 	}
 
@@ -153,7 +153,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	priceData, err := helper.ModelPriceHelper(c, relayInfo, tokens, meta)
 	if err != nil {
-		newAPIError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
+		huichuanError = types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest))
 		return
 	}
 
@@ -162,20 +162,20 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	if priceData.FreeModel {
 		logger.LogInfo(c, fmt.Sprintf("模型 %s 免费，跳过预扣费", relayInfo.OriginModelName))
 	} else {
-		newAPIError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
-		if newAPIError != nil {
+		huichuanError = service.PreConsumeBilling(c, priceData.QuotaToPreConsume, relayInfo)
+		if huichuanError != nil {
 			return
 		}
 	}
 
 	defer func() {
 		// Only return quota if downstream failed and quota was actually pre-consumed
-		if newAPIError != nil {
-			newAPIError = service.NormalizeViolationFeeError(newAPIError)
+		if huichuanError != nil {
+			huichuanError = service.NormalizeViolationFeeError(huichuanError)
 			if relayInfo.Billing != nil {
 				relayInfo.Billing.Refund(c)
 			}
-			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
+			service.ChargeViolationFeeIfNeeded(c, relayInfo, huichuanError)
 		}
 	}()
 
@@ -197,7 +197,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 				captureSession.FailAttempt()
 			}
 			logger.LogError(c, channelErr.Error())
-			newAPIError = channelErr
+			huichuanError = channelErr
 			break
 		}
 
@@ -209,9 +209,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if bodyErr != nil {
 			// Ensure consistent 413 for oversized bodies even when error occurs later (e.g., retry path)
 			if common.IsRequestBodyTooLargeError(bodyErr) || errors.Is(bodyErr, common.ErrRequestBodyTooLarge) {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
+				huichuanError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusRequestEntityTooLarge, types.ErrOptionWithSkipRetry())
 			} else {
-				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+				huichuanError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
 			break
 		}
@@ -219,16 +219,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 		switch relayFormat {
 		case types.RelayFormatOpenAIRealtime:
-			newAPIError = relay.WssHelper(c, relayInfo)
+			huichuanError = relay.WssHelper(c, relayInfo)
 		case types.RelayFormatClaude:
-			newAPIError = relay.ClaudeHelper(c, relayInfo)
+			huichuanError = relay.ClaudeHelper(c, relayInfo)
 		case types.RelayFormatGemini:
-			newAPIError = geminiRelayHandler(c, relayInfo)
+			huichuanError = geminiRelayHandler(c, relayInfo)
 		default:
-			newAPIError = relayHandler(c, relayInfo)
+			huichuanError = relayHandler(c, relayInfo)
 		}
 
-		if newAPIError == nil {
+		if huichuanError == nil {
 			relayInfo.LastError = nil
 			if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
 				captureSession.SucceedAttempt()
@@ -239,12 +239,12 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if captureSession := datasetcapture.FromContext(c.Request.Context()); captureSession != nil {
 			captureSession.FailAttempt()
 		}
-		newAPIError = service.NormalizeViolationFeeError(newAPIError)
-		relayInfo.LastError = newAPIError
+		huichuanError = service.NormalizeViolationFeeError(huichuanError)
+		relayInfo.LastError = huichuanError
 
-		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
+		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), huichuanError)
 
-		if !shouldRetry(c, newAPIError, common.RetryTimes-retryParam.GetRetry()) {
+		if !shouldRetry(c, huichuanError, common.RetryTimes-retryParam.GetRetry()) {
 			break
 		}
 	}
@@ -254,7 +254,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		retryLogStr := fmt.Sprintf("重试：%s", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(useChannel)), "->"), "[]"))
 		logger.LogInfo(c, retryLogStr)
 	}
-	if newAPIError != nil {
+	if huichuanError != nil {
 		gopool.Go(func() {
 			perfmetrics.RecordRelaySample(relayInfo, false, 0)
 		})
@@ -303,7 +303,7 @@ func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	return meta
 }
 
-func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.NewAPIError) {
+func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service.RetryParam) (*model.Channel, *types.HUICHUANError) {
 	if info.ChannelMeta == nil {
 		autoBan := c.GetBool("auto_ban")
 		autoBanInt := 1
@@ -328,14 +328,14 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
-	newAPIError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
-	if newAPIError != nil {
-		return nil, newAPIError
+	huichuanError := middleware.SetupContextForSelectedChannel(c, channel, info.OriginModelName)
+	if huichuanError != nil {
+		return nil, huichuanError
 	}
 	return channel, nil
 }
 
-func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+func shouldRetry(c *gin.Context, openaiErr *types.HUICHUANError, retryTimes int) bool {
 	if openaiErr == nil {
 		return false
 	}
@@ -367,7 +367,7 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 	return operation_setting.ShouldRetryByStatusCode(code)
 }
 
-func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
+func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.HUICHUANError) {
 	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, common.LocalLogPreview(err.Error())))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
@@ -460,7 +460,7 @@ func RelayMidjourney(c *gin.Context) {
 func RelayNotImplemented(c *gin.Context) {
 	err := types.OpenAIError{
 		Message: "API not implemented",
-		Type:    "new_api_error",
+		Type:    "huichuan_error",
 		Param:   "",
 		Code:    "api_not_implemented",
 	}
@@ -540,7 +540,7 @@ func RelayTask(c *gin.Context) {
 				}
 			}
 		} else {
-			var channelErr *types.NewAPIError
+			var channelErr *types.HUICHUANError
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())

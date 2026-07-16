@@ -335,6 +335,8 @@ const AUDIT_TEMPLATES: Record<string, string> = {
   // Dataset captures
   'dataset_capture.view':
     'Viewed {{rows}} dataset capture records from {{file}} (page {{page}})',
+  'dataset_capture.record_view':
+    'Viewed captured record {{capture_id}} for {{username}}',
   'dataset_capture.download': 'Downloaded dataset capture data from {{file}}',
   'dataset_capture.delete': 'Deleted dataset capture data from {{file}}',
   // Custom OAuth

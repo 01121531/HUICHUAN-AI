@@ -58,12 +58,12 @@ jobs:
       - name: Build Backend (amd64)
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-amd64
+          go build -ldflags "-s -w -X 'github.com/01121531/HUICHUAN-AI/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-amd64
       - name: Build Backend (arm64)
         run: |
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gcc-aarch64-linux-gnu
-          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-arm64
+          CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X 'github.com/01121531/HUICHUAN-AI/common.Version=$VERSION' -extldflags '-static'" -o huichuan-ai-$VERSION-linux-arm64
       - name: Generate checksums
         run: sha256sum huichuan-ai-$VERSION-linux-* > checksums-linux.txt
 
@@ -74,6 +74,7 @@ jobs:
           files: |
             huichuan-ai-*-linux-*
             checksums-linux.txt
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -123,7 +124,7 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o huichuan-ai-$VERSION-macos-amd64
+          go build -ldflags "-s -w -X 'github.com/01121531/HUICHUAN-AI/common.Version=$VERSION'" -o huichuan-ai-$VERSION-macos-amd64
       - name: Generate checksums
         run: shasum -a 256 huichuan-ai-$VERSION-macos-* > checksums-macos.txt
 
@@ -134,6 +135,7 @@ jobs:
           files: |
             huichuan-ai-*-macos-*
             checksums-macos.txt
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -185,7 +187,7 @@ jobs:
       - name: Build Backend
         run: |
           go mod download
-          go build -ldflags "-s -w -X 'github.com/QuantumNous/new-api/common.Version=$VERSION'" -o huichuan-ai-$VERSION-windows-amd64.exe
+          go build -ldflags "-s -w -X 'github.com/01121531/HUICHUAN-AI/common.Version=$VERSION'" -o huichuan-ai-$VERSION-windows-amd64.exe
       - name: Generate checksums
         run: sha256sum huichuan-ai-$VERSION-windows-amd64.exe > checksums-windows.txt
 
@@ -196,5 +198,6 @@ jobs:
           files: |
             huichuan-ai-*-windows-amd64.exe
             checksums-windows.txt
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

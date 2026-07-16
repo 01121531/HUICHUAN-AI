@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import type {
   ConfirmPaymentComplianceResponse,
   DatasetCaptureModelsResponse,
+  DatasetCaptureAccessAuditAction,
+  DatasetCaptureAccessAuditResponse,
   DatasetCapturePolicy,
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
@@ -62,6 +64,26 @@ export async function updateDatasetCapturePolicy(policy: DatasetCapturePolicy) {
 export async function getDatasetCaptureModels() {
   const res = await api.get<DatasetCaptureModelsResponse>(
     '/api/dataset-capture-policy/models'
+  )
+  return res.data
+}
+
+export async function getDatasetCaptureAccessAudits(params: {
+  page: number
+  pageSize: number
+  action?: DatasetCaptureAccessAuditAction
+  admin?: string
+}) {
+  const res = await api.get<DatasetCaptureAccessAuditResponse>(
+    '/api/dataset-capture-policy/access-audits',
+    {
+      params: {
+        page: params.page,
+        page_size: params.pageSize,
+        action: params.action || undefined,
+        admin: params.admin || undefined,
+      },
+    }
   )
   return res.data
 }

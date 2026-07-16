@@ -4,7 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/QuantumNous/new-api/common"
+	"github.com/01121531/HUICHUAN-AI/common"
 )
 
 type RequestInput struct {

@@ -1,6 +1,6 @@
 package meta
 
-import relaycommon "github.com/QuantumNous/new-api/relay/common"
+import relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
 
 func RelayInfoChannelType(info *relaycommon.RelayInfo) int {
 	if info == nil || info.ChannelMeta == nil {

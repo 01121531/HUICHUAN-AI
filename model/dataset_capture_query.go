@@ -180,6 +180,11 @@ func GetDatasetCaptureSummary(index DatasetCaptureIndex) (DatasetCaptureRecordSu
 	return summaries[0], nil
 }
 
+func GetDatasetCaptureSummaries(indices []DatasetCaptureIndex) ([]DatasetCaptureRecordSummary, error) {
+	summaries, _, err := datasetCaptureSummaries(indices)
+	return summaries, err
+}
+
 func GetDatasetCaptureFacets(node string) (DatasetCaptureFacets, error) {
 	facets := DatasetCaptureFacets{
 		Models:     []string{},

@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/01121531/HUICHUAN-AI/service/authz"
 	"github.com/gin-gonic/gin"
 )
 
@@ -74,6 +74,23 @@ func ExportDatasetCaptures(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": "dataset capture download permission was revoked"})
 		return
 	}
+	summaries, err := model.GetDatasetCaptureSummaries(indices)
+	if err != nil {
+		datasetCaptureQueryError(c, err)
+		return
+	}
+	auditEventID, err := beginDatasetCaptureAccessAudit(c, model.DatasetCaptureAccessAuditInput{
+		Action:        model.DatasetCaptureAuditActionDownload,
+		SelectionMode: datasetCaptureAuditSelectionMode(request), Bytes: export.Bytes,
+		StartTime: filter.StartTime, EndTime: filter.EndTime, Models: filter.Models,
+		TokenIDs: filter.TokenIDs, Groups: filter.Groups, ChannelIDs: filter.ChannelIDs,
+		UsernameFilter: filter.Username, Records: summaries,
+	})
+	if err != nil {
+		common.SysError("dataset capture download audit failed: " + err.Error())
+		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to create dataset capture access audit"})
+		return
+	}
 
 	c.Header("Content-Type", "application/x-ndjson")
 	c.Header("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{"filename": export.Filename}))
@@ -81,17 +98,20 @@ func ExportDatasetCaptures(c *gin.Context) {
 	c.Status(http.StatusOK)
 	written, err := io.Copy(c.Writer, export.File)
 	if err != nil || written != export.Bytes {
+		completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeFailed)
 		if err == nil {
 			err = io.ErrShortWrite
 		}
 		common.SysError("dataset capture export delivery failed: " + err.Error())
 		return
 	}
+	completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeDelivered)
 	recordDatasetCaptureAudit(c, "dataset_capture.download", map[string]interface{}{
 		"scope": "selection", "user_count": export.UserCount,
 		"record_count": export.RecordCount, "bytes": export.Bytes,
 		"start_time": filter.StartTime, "end_time": filter.EndTime,
-		"models": filter.Models, "node": middleware.DatasetCaptureNode(),
+		"models": filter.Models, "selection_mode": datasetCaptureAuditSelectionMode(request),
+		"audit_event_id": auditEventID, "node": middleware.DatasetCaptureNode(),
 	})
 }
 

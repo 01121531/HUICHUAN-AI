@@ -3,8 +3,8 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 )
 
 func ReconcileDatasetCaptureIndex(pathTemplate, node string) error {

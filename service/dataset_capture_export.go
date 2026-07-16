@@ -7,8 +7,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 )
 
 var ErrDatasetCaptureExportEmpty = errors.New("no dataset capture records match the selection")
@@ -26,7 +26,7 @@ func BuildDatasetCaptureExport(pathTemplate, node string, indices []model.Datase
 	if len(indices) == 0 {
 		return nil, ErrDatasetCaptureExportEmpty
 	}
-	file, err := os.CreateTemp("", "new-api-dataset-export-*.jsonl")
+	file, err := os.CreateTemp("", "huichuan-dataset-export-*.jsonl")
 	if err != nil {
 		return nil, err
 	}

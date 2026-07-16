@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/new-api/constant"
+	"github.com/01121531/HUICHUAN-AI/constant"
 )
 
 type ChannelSettings struct {

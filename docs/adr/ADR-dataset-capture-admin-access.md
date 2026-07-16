@@ -41,6 +41,9 @@ The administration UI must work with users and capture records rather than expos
 16. Writer append, index callback, file deletion, and deletion index cleanup share the capture-file lock. This prevents deletion from racing between a committed line and its index callback.
 17. Client-supplied paths are never accepted. Every read, export, and delete resolves opaque IDs from a fresh server-side allow-list derived from the configured trusted path template.
 18. JSONL files are storage and export artifacts only. The page never displays file names, paths, or source rows.
+19. Root oversight uses dedicated immutable access-audit events and item rows in the primary database. A detail disclosure creates one event with one item; an export creates one event plus one item for every delivered capture record. Item metadata is snapshotted so deleting the capture later cannot erase who accessed it.
+20. Detail and export handlers must create the access event before disclosing content. Export events transition from `prepared` to `delivered` only after the complete response is written; interrupted delivery transitions to `failed`. A prepared event is retained if completion persistence fails, making the gap visible rather than silently losing the audit.
+21. Only Root can query access-audit history. The query is paginated and may filter by administrator, action, outcome, and time. Each row identifies the operator, event time, capture ID, target user/token, model, group, channel, session, and original capture time without returning captured content.
 
 ## Audit Metadata
 
@@ -51,6 +54,8 @@ The administration UI must work with users and capture records rather than expos
 | `dataset_capture.delete` | Conversation deleted | operator, session ID, selected count, deleted count, node |
 | `dataset_capture.permission_update` | Root changes administrator grants | target administrator ID and before/after grants |
 | `dataset_capture.policy_update` | Root changes capture policy | enabled state, mode, model count, change summary |
+
+The dedicated access-audit tables additionally retain one immutable locator row per viewed or exported capture. They never store prompts, messages, responses, tool payloads, content-search terms, credentials, cookies, authorization headers, or filesystem paths.
 
 Audit metadata must not contain content search terms, system prompts, messages, responses, tool inputs, credentials, API keys, cookies, or absolute paths.
 
@@ -72,3 +77,5 @@ Audit metadata must not contain content search terms, system prompts, messages, 
 - Successful content disclosure and destructive actions create non-content audit events.
 - Administrators cannot obtain delete capability through permission overrides.
 - No page or API operation trusts a client-supplied filesystem path.
+- Successful detail disclosure cannot occur unless its access-audit event and exact item metadata were committed first.
+- Export audit history distinguishes prepared, delivered, and failed delivery instead of treating download preparation as successful delivery.

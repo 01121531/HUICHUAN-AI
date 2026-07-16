@@ -3,7 +3,7 @@ package common
 import (
 	"testing"
 
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/stretchr/testify/require"
 )
 

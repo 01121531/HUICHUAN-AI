@@ -1,6 +1,6 @@
 package perplexity
 
-import "github.com/QuantumNous/new-api/dto"
+import "github.com/01121531/HUICHUAN-AI/dto"
 
 func requestOpenAI2Perplexity(request dto.GeneralOpenAIRequest) *dto.GeneralOpenAIRequest {
 	messages := make([]dto.Message, 0, len(request.Messages))

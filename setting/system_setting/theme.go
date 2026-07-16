@@ -1,8 +1,8 @@
 package system_setting
 
 import (
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/setting/config"
 )
 
 type ThemeSettings struct {

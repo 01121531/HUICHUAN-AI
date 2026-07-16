@@ -6,11 +6,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/logger"
-	"github.com/QuantumNous/new-api/model"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/logger"
+	"github.com/01121531/HUICHUAN-AI/model"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/gin-gonic/gin"
@@ -183,7 +183,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 
 // preConsume 执行预扣费：信任检查 -> 令牌预扣 -> 资金来源预扣。
 // 任一步骤失败时原子回滚已完成的步骤。
-func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIError {
+func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.HUICHUANError {
 	effectiveQuota := quota
 
 	// ---- 信任额度旁路 ----
@@ -339,7 +339,7 @@ func (s *BillingSession) syncRelayInfo() {
 // ---------------------------------------------------------------------------
 
 // NewBillingSession 根据用户计费偏好创建 BillingSession，处理 subscription_first / wallet_first 的回退。
-func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.NewAPIError) {
+func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preConsumedQuota int) (*BillingSession, *types.HUICHUANError) {
 	if relayInfo == nil {
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
@@ -347,7 +347,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 钱包路径需要先检查用户额度
-	tryWallet := func() (*BillingSession, *types.NewAPIError) {
+	tryWallet := func() (*BillingSession, *types.HUICHUANError) {
 		userQuota, err := model.GetUserQuota(relayInfo.UserId, false)
 		if err != nil {
 			return nil, types.NewError(err, types.ErrorCodeQueryDataError, types.ErrOptionWithSkipRetry())
@@ -376,7 +376,7 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return session, nil
 	}
 
-	trySubscription := func() (*BillingSession, *types.NewAPIError) {
+	trySubscription := func() (*BillingSession, *types.HUICHUANError) {
 		subConsume := int64(preConsumedQuota)
 		if subConsume <= 0 {
 			subConsume = 1

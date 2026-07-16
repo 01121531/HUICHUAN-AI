@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/middleware"
-	"github.com/QuantumNous/new-api/model"
-	"github.com/QuantumNous/new-api/pkg/datasetcapture"
-	"github.com/QuantumNous/new-api/setting/dataset_capture_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -227,5 +227,6 @@ func recordDatasetCaptureAudit(c *gin.Context, action string, params map[string]
 		"status":  c.Writer.Status(),
 		"success": true,
 	}
-	model.RecordOperationAuditLog(operatorID, action, c.ClientIP(), action, params, adminInfo, auditInfo)
+	model.RecordOperationAuditLog(operatorID, auditContentEN(action, params), c.ClientIP(), action, params, adminInfo, auditInfo)
+	markAuditLogged(c)
 }

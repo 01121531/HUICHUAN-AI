@@ -3,9 +3,9 @@ package ratio_setting
 import (
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/setting/operation_setting"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/setting/operation_setting"
+	"github.com/01121531/HUICHUAN-AI/types"
 )
 
 // from songquanpeng/one-api
@@ -19,7 +19,7 @@ const (
 // https://platform.openai.com/docs/models/model-endpoint-compatibility
 // https://cloud.baidu.com/doc/WENXINWORKSHOP/s/Blfmc9dlf
 // https://openai.com/pricing
-// TODO: when a new api is enabled, check the pricing here
+// TODO: when a huichuan is enabled, check the pricing here
 // 1 === $0.002 / 1K tokens
 // 1 === ￥0.014 / 1k tokens
 

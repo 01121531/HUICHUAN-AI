@@ -402,7 +402,7 @@ func publicReleaseInfo(release githubRelease, currentVersion string) ReleaseInfo
 func selectAssets(release githubRelease) (githubAsset, githubAsset, error) {
 	preferredNames := []string{
 		fmt.Sprintf("huichuan-ai-%s-windows-amd64.exe", release.TagName),
-		fmt.Sprintf("new-api-%s.exe", release.TagName),
+		fmt.Sprintf("huichuan-%s.exe", release.TagName),
 	}
 	var binary githubAsset
 	var checksum githubAsset

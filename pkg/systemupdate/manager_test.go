@@ -38,7 +38,7 @@ func TestSelectAssets(t *testing.T) {
 		TagName: "v1.2.3",
 		Assets: []githubAsset{
 			{ID: 1, Name: "checksums-windows.txt"},
-			{ID: 2, Name: "new-api-v1.2.3.exe"},
+			{ID: 2, Name: "huichuan-v1.2.3.exe"},
 			{ID: 3, Name: "huichuan-ai-v1.2.3-windows-amd64.exe"},
 		},
 	}

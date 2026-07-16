@@ -66,6 +66,49 @@ export type DatasetCaptureModelsResponse = {
   }
 }
 
+export type DatasetCaptureAccessAuditAction = 'view' | 'download'
+export type DatasetCaptureAccessAuditOutcome =
+  'prepared' | 'delivered' | 'failed'
+
+export type DatasetCaptureAccessAuditEntry = {
+  event_id: string
+  action: DatasetCaptureAccessAuditAction
+  outcome: DatasetCaptureAccessAuditOutcome
+  operator_user_id: number
+  operator_username: string
+  operator_role: number
+  auth_method: string
+  ip: string
+  node: string
+  selection_mode: string
+  record_count: number
+  user_count: number
+  bytes: number
+  created_at: number
+  completed_at: number
+  capture_id: string
+  user_id: number
+  username: string
+  token_id: number
+  token_name: string
+  user_group: string
+  effective_model: string
+  channel_id: number
+  session_id: string
+  capture_created_at: number
+}
+
+export type DatasetCaptureAccessAuditResponse = {
+  success: boolean
+  message?: string
+  data: {
+    items: DatasetCaptureAccessAuditEntry[]
+    total: number
+    page: number
+    page_size: number
+  }
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string

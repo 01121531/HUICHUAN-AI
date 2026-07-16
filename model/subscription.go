@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/pkg/cachex"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -39,8 +39,8 @@ var (
 )
 
 const (
-	subscriptionPlanCacheNamespace     = "new-api:subscription_plan:v1"
-	subscriptionPlanInfoCacheNamespace = "new-api:subscription_plan_info:v1"
+	subscriptionPlanCacheNamespace     = "huichuan:subscription_plan:v1"
+	subscriptionPlanInfoCacheNamespace = "huichuan:subscription_plan_info:v1"
 )
 
 var (

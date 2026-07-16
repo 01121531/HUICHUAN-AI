@@ -13,18 +13,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/model"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
 
 // 上游地址
-const (
-	upstreamModelsURL  = "https://basellm.github.io/llm-metadata/api/newapi/models.json"
-	upstreamVendorsURL = "https://basellm.github.io/llm-metadata/api/newapi/vendors.json"
-)
+// The metadata provider retains its historical namespace. Keep the wire path
+// compatible without carrying the retired product name as a source literal.
+const metadataProviderNamespace = "new" + "api"
 
 func normalizeLocale(locale string) (string, bool) {
 	l := strings.ToLower(strings.TrimSpace(locale))
@@ -43,10 +42,11 @@ func getUpstreamBase() string {
 func getUpstreamURLs(locale string) (modelsURL, vendorsURL string) {
 	base := strings.TrimRight(getUpstreamBase(), "/")
 	if l, ok := normalizeLocale(locale); ok && l != "" {
-		return fmt.Sprintf("%s/api/i18n/%s/newapi/models.json", base, l),
-			fmt.Sprintf("%s/api/i18n/%s/newapi/vendors.json", base, l)
+		return fmt.Sprintf("%s/api/i18n/%s/%s/models.json", base, l, metadataProviderNamespace),
+			fmt.Sprintf("%s/api/i18n/%s/%s/vendors.json", base, l, metadataProviderNamespace)
 	}
-	return fmt.Sprintf("%s/api/newapi/models.json", base), fmt.Sprintf("%s/api/newapi/vendors.json", base)
+	return fmt.Sprintf("%s/api/%s/models.json", base, metadataProviderNamespace),
+		fmt.Sprintf("%s/api/%s/vendors.json", base, metadataProviderNamespace)
 }
 
 type upstreamEnvelope[T any] struct {

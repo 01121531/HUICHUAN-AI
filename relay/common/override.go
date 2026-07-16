@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -94,7 +94,7 @@ func AsParamOverrideReturnError(err error) (*ParamOverrideReturnError, bool) {
 	return nil, false
 }
 
-func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIError {
+func HUICHUANErrorFromParamOverride(err *ParamOverrideReturnError) *types.HUICHUANError {
 	if err == nil {
 		return types.NewError(
 			errors.New("param override return error is nil"),
@@ -123,7 +123,7 @@ func NewAPIErrorFromParamOverride(err *ParamOverrideReturnError) *types.NewAPIEr
 		message = "request blocked by param override"
 	}
 
-	opts := make([]types.NewAPIErrorOptions, 0, 1)
+	opts := make([]types.HUICHUANErrorOptions, 0, 1)
 	if err.SkipRetry {
 		opts = append(opts, types.ErrOptionWithSkipRetry())
 	}

@@ -160,15 +160,15 @@ export function Footer(props: FooterProps) {
         links: [
           {
             text: t("footer.columns.about.links.aboutProject"),
-            href: "https://docs.newapi.pro/wiki/project-introduction/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
           {
             text: t("footer.columns.about.links.contact"),
-            href: "https://docs.newapi.pro/support/community-interaction/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
           {
             text: t("footer.columns.about.links.features"),
-            href: "https://docs.newapi.pro/wiki/features-introduction/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
         ],
       },
@@ -177,15 +177,15 @@ export function Footer(props: FooterProps) {
         links: [
           {
             text: t("footer.columns.docs.links.quickStart"),
-            href: "https://docs.newapi.pro/getting-started/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
           {
             text: t("footer.columns.docs.links.installation"),
-            href: "https://docs.newapi.pro/installation/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
           {
             text: t("footer.columns.docs.links.apiDocs"),
-            href: "https://docs.newapi.pro/api/",
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
         ],
       },
@@ -201,8 +201,8 @@ export function Footer(props: FooterProps) {
             href: "https://github.com/novicezk/midjourney-proxy",
           },
           {
-            text: t("footer.columns.related.links.newApiKeyTool"),
-            href: "https://github.com/Calcium-Ion/new-api-key-tool",
+            text: t("footer.columns.related.links.huichuanKeyTool"),
+            href: "https://github.com/01121531/HUICHUAN-AI",
           },
         ],
       },

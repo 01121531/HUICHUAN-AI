@@ -3,7 +3,7 @@ package authz
 import (
 	"fmt"
 
-	"github.com/QuantumNous/new-api/model"
+	"github.com/01121531/HUICHUAN-AI/model"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )

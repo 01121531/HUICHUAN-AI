@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	relaymedia "github.com/QuantumNous/new-api/service/relayconvert/internal/media"
-	sharedclaude "github.com/QuantumNous/new-api/service/relayconvert/internal/shared/claude"
-	"github.com/QuantumNous/new-api/setting/model_setting"
-	"github.com/QuantumNous/new-api/setting/reasoning"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaymedia "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/media"
+	sharedclaude "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/shared/claude"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/setting/reasoning"
 	"github.com/gin-gonic/gin"
 )
 

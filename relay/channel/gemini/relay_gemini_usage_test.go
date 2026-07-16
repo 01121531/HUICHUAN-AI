@@ -7,11 +7,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	"github.com/QuantumNous/new-api/types"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	"github.com/01121531/HUICHUAN-AI/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -58,8 +58,8 @@ func TestGeminiChatHandlerCompletionTokensExcludeToolUsePromptTokens(t *testing.
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -113,10 +113,10 @@ func TestGeminiStreamHandlerCompletionTokensExcludeToolUsePromptTokens(t *testin
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, huichuanError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -165,8 +165,8 @@ func TestGeminiTextGenerationHandlerPromptTokensIncludeToolUsePromptTokens(t *te
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiTextGenerationHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiTextGenerationHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 18480, usage.PromptTokens)
 	require.Equal(t, 2209, usage.CompletionTokens)
@@ -217,8 +217,8 @@ func TestGeminiChatHandlerUsesEstimatedPromptTokensWhenUsagePromptMissing(t *tes
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)
@@ -272,10 +272,10 @@ func TestGeminiStreamHandlerUsesEstimatedPromptTokensWhenUsagePromptMissing(t *t
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, huichuanError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)
@@ -324,8 +324,8 @@ func TestGeminiTextGenerationHandlerUsesEstimatedPromptTokensWhenUsagePromptMiss
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiTextGenerationHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiTextGenerationHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.Equal(t, 100, usage.CompletionTokens)
@@ -353,8 +353,8 @@ func TestGeminiChatHandlerMissingUsageMetadataBuildsEstimatedBillingUsage(t *tes
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.NotNil(t, usage.BillingUsage)
@@ -413,10 +413,10 @@ func TestGeminiStreamHandlerPromptOnlyUsageMetadataEstimatesCompletionTokens(t *
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, huichuanError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 151, usage.PromptTokens)
 	require.Greater(t, usage.CompletionTokens, 0)
@@ -466,8 +466,8 @@ func TestGeminiChatHandlerPromptOnlyUsageMetadataEstimatesCompletionTokens(t *te
 		Body: io.NopCloser(bytes.NewReader(body)),
 	}
 
-	usage, newAPIError := GeminiChatHandler(c, info, resp)
-	require.Nil(t, newAPIError)
+	usage, huichuanError := GeminiChatHandler(c, info, resp)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 151, usage.PromptTokens)
 	require.Greater(t, usage.CompletionTokens, 0)
@@ -500,10 +500,10 @@ func TestGeminiStreamHandlerEmptyUsageMetadataBuildsEstimatedBillingUsage(t *tes
 		Body: io.NopCloser(bytes.NewReader(streamBody)),
 	}
 
-	usage, newAPIError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
+	usage, huichuanError := geminiStreamHandler(c, info, resp, func(_ string, _ *dto.GeminiChatResponse) bool {
 		return true
 	})
-	require.Nil(t, newAPIError)
+	require.Nil(t, huichuanError)
 	require.NotNil(t, usage)
 	require.Equal(t, 20, usage.PromptTokens)
 	require.NotNil(t, usage.BillingUsage)

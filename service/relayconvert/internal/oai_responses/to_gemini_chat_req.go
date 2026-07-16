@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	relaymedia "github.com/QuantumNous/new-api/service/relayconvert/internal/media"
-	relaymeta "github.com/QuantumNous/new-api/service/relayconvert/internal/meta"
-	sharedgemini "github.com/QuantumNous/new-api/service/relayconvert/internal/shared/gemini"
-	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	relaymedia "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/media"
+	relaymeta "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/meta"
+	sharedgemini "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/shared/gemini"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
 	"github.com/gin-gonic/gin"
 )
 

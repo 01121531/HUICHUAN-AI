@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/QuantumNous/new-api/common"
-	"github.com/QuantumNous/new-api/model"
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/model"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"

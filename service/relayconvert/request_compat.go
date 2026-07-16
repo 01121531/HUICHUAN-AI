@@ -1,14 +1,14 @@
 package relayconvert
 
 import (
-	"github.com/QuantumNous/new-api/dto"
-	relaycommon "github.com/QuantumNous/new-api/relay/common"
-	claudemessages "github.com/QuantumNous/new-api/service/relayconvert/internal/claude_messages"
-	geminichat "github.com/QuantumNous/new-api/service/relayconvert/internal/gemini_chat"
-	oaichat "github.com/QuantumNous/new-api/service/relayconvert/internal/oai_chat"
-	oairesponses "github.com/QuantumNous/new-api/service/relayconvert/internal/oai_responses"
-	sharedgemini "github.com/QuantumNous/new-api/service/relayconvert/internal/shared/gemini"
-	"github.com/QuantumNous/new-api/setting/model_setting"
+	"github.com/01121531/HUICHUAN-AI/dto"
+	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	claudemessages "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/claude_messages"
+	geminichat "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/gemini_chat"
+	oaichat "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/oai_chat"
+	oairesponses "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/oai_responses"
+	sharedgemini "github.com/01121531/HUICHUAN-AI/service/relayconvert/internal/shared/gemini"
+	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
 	"github.com/gin-gonic/gin"
 )
 

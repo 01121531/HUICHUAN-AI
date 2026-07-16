@@ -1,6 +1,6 @@
 package dto
 
-import "github.com/QuantumNous/new-api/constant"
+import "github.com/01121531/HUICHUAN-AI/constant"
 
 // 这里不好动就不动了，本来想独立出来的（
 type OpenAIModels struct {

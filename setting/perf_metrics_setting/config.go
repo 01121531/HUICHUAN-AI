@@ -1,6 +1,6 @@
 package perf_metrics_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import "github.com/01121531/HUICHUAN-AI/setting/config"
 
 type PerfMetricsSetting struct {
 	Enabled       bool   `json:"enabled"`
