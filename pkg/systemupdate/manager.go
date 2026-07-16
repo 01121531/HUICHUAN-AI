@@ -26,6 +26,7 @@ const (
 	maxReleaseResponseBytes = 4 << 20
 	maxChecksumBytes        = 1 << 20
 	maxBinaryBytes          = 512 << 20
+	activeStateStaleAfter   = 30 * time.Minute
 	stateDirectoryName      = ".huichuan-update"
 	stateFileName           = "state.json"
 )
@@ -125,6 +126,10 @@ func GetState() UpdateState {
 	if err != nil {
 		return UpdateState{Phase: PhaseIdle, ErrorCode: "state_unreadable"}
 	}
+	if normalized, changed := normalizeStaleActiveState(state); changed {
+		_ = saveState(statePath(), normalized)
+		return normalized
+	}
 	return state
 }
 
@@ -142,6 +147,10 @@ func BeginUpdate(ctx context.Context, releaseID int64, currentVersion string, he
 	previous, err := loadState(statePath())
 	if err != nil {
 		return UpdateState{}, fmt.Errorf("read update state: %w", err)
+	}
+	if normalized, changed := normalizeStaleActiveState(previous); changed {
+		previous = normalized
+		_ = saveState(statePath(), previous)
 	}
 	if previous.Active() {
 		return previous, errors.New("an update is already in progress")
@@ -633,6 +642,23 @@ func saveState(path string, state UpdateState) error {
 		state.Progress = 100
 	}
 	return writeJSONAtomic(path, state, 0600)
+}
+
+func normalizeStaleActiveState(state UpdateState) (UpdateState, bool) {
+	if !state.Active() || state.UpdatedAt <= 0 {
+		return state, false
+	}
+	if now().Unix()-state.UpdatedAt <= int64(activeStateStaleAfter/time.Second) {
+		return state, false
+	}
+	state.Phase = PhaseFailed
+	state.Progress = 0
+	state.ErrorCode = "stale_update_state"
+	state.MessageCode = "failed"
+	state.RestartRequired = false
+	state.CompletedAt = now().Unix()
+	state.UpdatedAt = state.CompletedAt
+	return state, true
 }
 
 func writeJSONAtomic(path string, value any, mode os.FileMode) error {

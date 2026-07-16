@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -109,4 +110,29 @@ func TestUpdateStateActive(t *testing.T) {
 	require.True(t, UpdateState{Phase: PhaseRestarting}.Active())
 	require.False(t, UpdateState{Phase: PhaseSucceeded}.Active())
 	require.False(t, UpdateState{Phase: PhaseFailed}.Active())
+}
+
+func TestNormalizeStaleActiveState(t *testing.T) {
+	originalNow := now
+	defer func() { now = originalNow }()
+	now = func() time.Time { return time.Unix(1_000_000, 0) }
+
+	fresh, changed := normalizeStaleActiveState(UpdateState{
+		Phase:     PhaseRestarting,
+		Progress:  94,
+		UpdatedAt: now().Add(-time.Minute).Unix(),
+	})
+	require.False(t, changed)
+	require.Equal(t, PhaseRestarting, fresh.Phase)
+
+	stale, changed := normalizeStaleActiveState(UpdateState{
+		Phase:     PhaseRestarting,
+		Progress:  94,
+		UpdatedAt: now().Add(-activeStateStaleAfter - time.Second).Unix(),
+	})
+	require.True(t, changed)
+	require.Equal(t, PhaseFailed, stale.Phase)
+	require.Equal(t, "stale_update_state", stale.ErrorCode)
+	require.Equal(t, 0, stale.Progress)
+	require.False(t, stale.RestartRequired)
 }

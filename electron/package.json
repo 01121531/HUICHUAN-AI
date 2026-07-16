@@ -1,6 +1,6 @@
 {
   "name": "huichuan-electron",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "HUICHUAN - AI Model Gateway Desktop Application",
   "main": "main.js",
   "scripts": {

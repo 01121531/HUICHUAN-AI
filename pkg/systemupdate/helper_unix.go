@@ -54,16 +54,10 @@ func applyUpdatePlan(planPath string) error {
 		healthTimeout = 120 * time.Second
 	}
 
-	if err := waitForProcessExit(plan.ParentPID, 90*time.Second); err != nil {
-		state.Phase = PhaseFailed
-		state.Progress = 0
-		state.ErrorCode = "server_shutdown_timeout"
-		state.MessageCode = "failed"
-		state.CompletedAt = now().Unix()
-		writeState()
-		return err
-	}
-
+	// On Unix-like systems a running executable can be renamed safely. Replace
+	// the target before the old process exits so service managers such as
+	// systemd Restart=always will restart the already-updated binary instead of
+	// racing the helper by immediately launching the previous file again.
 	if err := os.MkdirAll(filepath.Dir(plan.BackupPath), 0700); err != nil {
 		return failPlanState(plan, state, "backup_directory_unavailable", err)
 	}
@@ -80,12 +74,40 @@ func applyUpdatePlan(planPath string) error {
 		return failPlanState(plan, state, "replace_failed", err)
 	}
 
+	if err := waitForProcessExit(plan.ParentPID, 90*time.Second); err != nil {
+		_ = os.Remove(plan.TargetPath)
+		_ = os.Rename(plan.BackupPath, plan.TargetPath)
+		state.Phase = PhaseFailed
+		state.Progress = 0
+		state.ErrorCode = "server_shutdown_timeout"
+		state.MessageCode = "failed"
+		state.CompletedAt = now().Unix()
+		writeState()
+		return err
+	}
+
 	state.Phase = PhaseValidating
 	state.Progress = 97
 	state.MessageCode = "validating"
 	writeState()
-	newProcess, err := startApplication(plan)
-	if err == nil {
+
+	// If a service manager restarted the program after the old process exited,
+	// the health endpoint may already be served by the target version. Prefer
+	// that path; otherwise start the binary ourselves for plain standalone runs.
+	var newProcess *os.Process
+	initialHealthTimeout := 12 * time.Second
+	if serviceManagerWillRestart() {
+		initialHealthTimeout = healthTimeout
+	}
+	err = waitForHealthyVersion(plan.HealthURL, plan.TargetVersion, initialHealthTimeout)
+	if err != nil {
+		if serviceManagerWillRestart() {
+			err = fmt.Errorf("service manager did not restart a healthy target version: %w", err)
+		} else {
+			newProcess, err = startApplication(plan)
+		}
+	}
+	if err == nil && newProcess != nil {
 		err = waitForHealthyVersion(plan.HealthURL, plan.TargetVersion, healthTimeout)
 	}
 	if err == nil {
@@ -165,6 +187,9 @@ func waitForProcessExit(pid int, timeout time.Duration) error {
 	}
 	deadline := now().Add(timeout)
 	for now().Before(deadline) {
+		if processIsZombie(pid) {
+			return nil
+		}
 		err = process.Signal(syscall.Signal(0))
 		if errors.Is(err, os.ErrProcessDone) || errors.Is(err, syscall.ESRCH) {
 			return nil
@@ -172,6 +197,29 @@ func waitForProcessExit(pid int, timeout time.Duration) error {
 		time.Sleep(250 * time.Millisecond)
 	}
 	return errors.New("timed out waiting for the server process to exit")
+}
+
+func processIsZombie(pid int) bool {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return false
+	}
+	// /proc/<pid>/stat format: pid (comm) state ...
+	rightParen := -1
+	for i := len(data) - 1; i >= 0; i-- {
+		if data[i] == ')' {
+			rightParen = i
+			break
+		}
+	}
+	if rightParen < 0 || rightParen+2 >= len(data) {
+		return false
+	}
+	return data[rightParen+2] == 'Z'
+}
+
+func serviceManagerWillRestart() bool {
+	return os.Getenv("INVOCATION_ID") != "" || os.Getenv("JOURNAL_STREAM") != "" || os.Getenv("SYSTEMD_EXEC_PID") != ""
 }
 
 func startApplication(plan updatePlan) (*os.Process, error) {
