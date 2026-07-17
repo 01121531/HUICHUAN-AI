@@ -12,7 +12,7 @@
   <a href="https://github.com/01121531/HUICHUAN-AI/releases"><img alt="Release" src="https://img.shields.io/github/v/release/01121531/HUICHUAN-AI?include_prereleases&sort=semver" /></a>
   <img alt="Go" src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" />
   <img alt="React" src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white" />
   <img alt="License" src="https://img.shields.io/badge/License-AGPL--3.0-7C3AED" />
 </p>
 
@@ -22,7 +22,7 @@ HUICHUAN-AI 提供多模型供应商接入、渠道路由、令牌管理、用�
 
 | 项目 | 值 |
 | --- | --- |
-| 版本 | `v1.0.5` |
+| 版本 | [`v1.0.6`](https://github.com/01121531/HUICHUAN-AI/releases/tag/v1.0.6) |
 | Go module | `github.com/01121531/HUICHUAN-AI` |
 | 默认服务文件 | `HUICHUAN.service` |
 | 默认前端 | `web/default` |
@@ -33,7 +33,7 @@ HUICHUAN-AI 提供多模型供应商接入、渠道路由、令牌管理、用�
 - **渠道路由与重试**：支持优先级、权重、分组、模型映射、失败重试和渠道健康检测。
 - **令牌与权限管理**：支持用户令牌、模型范围、额度、分组、管理员权限和 Root 特权。
 - **用量与计费**：提供请求日志、Token 统计、模型倍率、分组倍率、余额、订阅、充值与账单能力。
-- **数据快照**：按模型范围保存完整成功的模型调用样本，支持筛选、查看、导出和删除。
+- **数据快照**：按模型、用户和令牌范围保存完整成功的模型调用样本，采用响应优先的异步采集链路，支持筛选、查看、导出和删除。
 - **访问审计**：管理员查看、下载、删除数据快照都会记录操作人、时间、动作、目标记录和交付状态。
 - **在线升级**：支持 Windows、Linux、macOS 独立部署包的网页端版本检测与在线升级。
 - **多语言界面**：支持简体中文、繁体中文、英文、法文、日文、俄文和越南文。
@@ -41,7 +41,23 @@ HUICHUAN-AI 提供多模型供应商接入、渠道路由、令牌管理、用�
 
 ## 数据快照功能
 
-数据快照默认关闭，可由 Root 在系统设置中开启，并选择全部模型或指定模型范围。采集逻辑以最终成功的上游请求与响应为准；失败重试、非 2xx、客户端取消、半截流或 Schema 校验失败的请求不会进入主数据集。
+数据快照默认关闭，可由 Root 在系统设置中开启，并分别选择模型、用户和令牌范围。采集逻辑以最终成功的上游请求与响应为准；失败重试、非 2xx、客户端取消、半截流或 Schema 校验失败的请求不会进入主数据集。
+
+### 低延迟异步采集
+
+`v1.0.6` 将数据快照链路调整为“客户端响应优先、后台异步持久化”：
+
+- 流式 chunk 先写入客户端，成功后才复制到有界分段缓冲，不在 API 请求主链路写磁盘或 MySQL。
+- 完整成功并确认交付后，仅向后台队列非阻塞投递一次；队列拥塞、磁盘或索引异常不会反向阻塞用户请求。
+- 协议归一化、Schema 校验、HMAC、JSON 序列化、JSONL 写入和 MySQL 索引均由后台 worker 完成。
+- 同时限制单条快照大小和全局在途内存；超过限制时整条丢弃，禁止产生半行 JSONL。
+- MySQL 索引使用独立队列批量写入，失败时保留 JSONL，并支持后续索引重建。
+- 系统设置提供队列、worker、内存、磁盘、索引批次、导出并发、读取限速和优雅关闭参数。
+- 可配置异常邮件收件人、告警类型、静默窗口、连续丢弃阈值和恢复通知。
+- 运行状态页面展示队列深度、在途字节、最近写入与丢弃量、磁盘空间及 JSONL/索引 P50、P95 延迟。
+
+完整设计与验收方案见
+[`docs/DATA-SNAPSHOT-PERFORMANCE-OPTIMIZATION-PLAN.md`](./docs/DATA-SNAPSHOT-PERFORMANCE-OPTIMIZATION-PLAN.md)。
 
 ### 支持协议
 
@@ -156,6 +172,7 @@ Root 可在用户管理中按管理员单独授权：
 | `DatasetCaptureEnabled` | 是否开启数据快照 |
 | `DatasetCaptureModelMode` | `all` 或 `selected` |
 | `DatasetCaptureModels` | 指定模型列表 JSON |
+| `DatasetCapturePolicyV2` | 版本化的采集范围、性能保护和异常邮件策略 JSON |
 | `DatasetCapturePermissionMigrated` | 旧版权限迁移标记 |
 
 ## 独立 Capture Proxy
@@ -219,7 +236,7 @@ go test ./... -count=1
 go build -o .run/huichuan.exe .
 cd web/default
 bun run i18n:sync
-bun run build
+bun run build:check
 ```
 
 ## 升级说明
@@ -233,6 +250,19 @@ TimeoutStopSec=35
 ```
 
 这样在线升级辅助进程不会在主进程重启时被 `KillMode=control-group` 一起清理。`v1.0.5` 起即使旧服务模板导致辅助进程被 systemd 清理，新版本启动时也会自动识别“目标版本已经运行但状态停在 restarting”的情况，并把状态修复为 `succeeded`。
+
+## v1.0.6 更新摘要
+
+- 数据快照流式响应改为客户端优先写入，移除请求主链路中的同步 spool、JSONL 和 MySQL I/O。
+- 新增有界分段缓冲、单条样本限制、全局在途内存限制和非阻塞完成任务队列。
+- 将协议归一化、Schema 校验、HMAC、JSON 序列化及持久化全部迁移到后台 worker。
+- JSONL 与 MySQL 索引解耦，增加批量 upsert、有限重试、索引重建和磁盘用量周期校准。
+- 增加导出并发与读取限速、超时优雅排空以及跨平台磁盘剩余空间检测。
+- 数据快照策略扩展到模型、用户、令牌、流式请求和多模态 Base64 范围。
+- 新增运行状态、异常邮件、静默聚合、恢复通知及测试邮件接口。
+- 重构系统设置中的数据快照页面，并补齐简体中文、繁体中文、英文、法文、日文、俄文和越南文。
+- 新增可重复的 SSE A/B 压测脚本，输出首字节、chunk 间隔、完整耗时和进程资源差异。
+- 发布 Linux amd64/arm64、macOS amd64/arm64 和 Windows amd64 独立部署包及 SHA-256 校验文件。
 
 ## v1.0.5 更新摘要
 
