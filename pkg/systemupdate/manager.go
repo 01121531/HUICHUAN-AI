@@ -27,6 +27,13 @@ const (
 	maxChecksumBytes        = 1 << 20
 	maxBinaryBytes          = 512 << 20
 	activeStateStaleAfter   = 30 * time.Minute
+	defaultHealthTimeout    = 10 * time.Minute
+	minHealthTimeout        = 30 * time.Second
+	maxHealthTimeout        = 30 * time.Minute
+	defaultShutdownTimeout  = 5 * time.Minute
+	minShutdownTimeout      = 10 * time.Second
+	maxShutdownTimeout      = 30 * time.Minute
+	processExitGracePeriod  = 30 * time.Second
 	stateDirectoryName      = ".huichuan-update"
 	stateFileName           = "state.json"
 )
@@ -38,6 +45,15 @@ var (
 
 func ShutdownRequests() <-chan string {
 	return shutdownRequest
+}
+
+func ShutdownTimeoutSeconds() int {
+	return boundedEnvironmentSeconds(
+		"SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS",
+		int(defaultShutdownTimeout/time.Second),
+		int(minShutdownTimeout/time.Second),
+		int(maxShutdownTimeout/time.Second),
+	)
 }
 
 func CapabilityStatus() Capability {
@@ -291,11 +307,19 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 			return
 		}
 	}
+	previousHash, err := hashFileSHA256(executable)
+	if err != nil {
+		fail("current_binary_hash_failed", err)
+		return
+	}
 
-	// Avoid installer-like filenames (update/setup/install) because Windows
-	// application compatibility heuristics may require elevation for them.
+	// Run the verified target version as the helper. This lets updater fixes in
+	// the target release take effect for the following upgrade instead of
+	// indefinitely reusing helper logic from the installed version.
+	// Avoid installer-like filenames because Windows application compatibility
+	// heuristics may require elevation for them.
 	helperPath := filepath.Join(taskDir, helperBinaryName())
-	if err := copyFile(executable, helperPath, 0700); err != nil {
+	if err := copyFile(stagedPath, helperPath, 0700); err != nil {
 		fail("helper_prepare_failed", err)
 		return
 	}
@@ -308,21 +332,24 @@ func prepareUpdate(release githubRelease, binaryAsset githubAsset, checksumAsset
 		healthPort = "3000"
 	}
 	plan := updatePlan{
-		TaskID:               state.TaskID,
-		ParentPID:            os.Getpid(),
-		TargetPath:           executable,
-		StagedPath:           stagedPath,
-		BackupPath:           filepath.Join(taskDir, backupBinaryName()),
-		StatePath:            statePath(),
-		ReadyPath:            filepath.Join(taskDir, "helper.ready"),
-		WorkingDir:           workingDir,
-		Args:                 append([]string(nil), os.Args[1:]...),
-		HealthURL:            "http://127.0.0.1:" + healthPort + "/api/status",
-		HealthTimeoutSeconds: 120,
-		CurrentVersion:       state.CurrentVersion,
-		TargetVersion:        release.TagName,
-		ReleaseID:            release.ID,
-		StartedAt:            state.StartedAt,
+		TaskID:                 state.TaskID,
+		ParentPID:              os.Getpid(),
+		TargetPath:             executable,
+		StagedPath:             stagedPath,
+		BackupPath:             filepath.Join(taskDir, backupBinaryName()),
+		StatePath:              statePath(),
+		ReadyPath:              filepath.Join(taskDir, "helper.ready"),
+		WorkingDir:             workingDir,
+		Args:                   append([]string(nil), os.Args[1:]...),
+		HealthURL:              "http://127.0.0.1:" + healthPort + "/api/status",
+		HealthTimeoutSeconds:   updateHealthTimeoutSeconds(),
+		ShutdownTimeoutSeconds: ShutdownTimeoutSeconds(),
+		CurrentVersion:         state.CurrentVersion,
+		TargetVersion:          release.TagName,
+		PreviousSHA256:         previousHash,
+		ExpectedSHA256:         actualHash,
+		ReleaseID:              release.ID,
+		StartedAt:              state.StartedAt,
 	}
 	planPath := filepath.Join(taskDir, "plan.json")
 	if err := writeJSONAtomic(planPath, plan, 0600); err != nil {
@@ -591,6 +618,85 @@ func checksumForFile(path string, filename string) (string, error) {
 	return "", fmt.Errorf("checksum for %s not found", filename)
 }
 
+func hashFileSHA256(path string) (string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func verifyFileSHA256(path string, expected string) error {
+	expected = strings.TrimSpace(strings.ToLower(expected))
+	if len(expected) != sha256.Size*2 {
+		return errors.New("expected SHA-256 is invalid")
+	}
+	if _, err := hex.DecodeString(expected); err != nil {
+		return errors.New("expected SHA-256 is invalid")
+	}
+	actual, err := hashFileSHA256(path)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(actual, expected) {
+		return fmt.Errorf("SHA-256 mismatch: expected %s, got %s", expected, actual)
+	}
+	return nil
+}
+
+func updateHealthTimeoutSeconds() int {
+	return boundedEnvironmentSeconds(
+		"SYSTEM_UPDATE_HEALTH_TIMEOUT_SECONDS",
+		int(defaultHealthTimeout/time.Second),
+		int(minHealthTimeout/time.Second),
+		int(maxHealthTimeout/time.Second),
+	)
+}
+
+func boundedEnvironmentSeconds(name string, fallback int, minimum int, maximum int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	seconds, err := strconv.Atoi(value)
+	if err != nil || seconds < minimum || seconds > maximum {
+		return fallback
+	}
+	return seconds
+}
+
+func normalizedHealthTimeout(seconds int) time.Duration {
+	timeout := time.Duration(seconds) * time.Second
+	if timeout < minHealthTimeout || timeout > maxHealthTimeout {
+		return defaultHealthTimeout
+	}
+	return timeout
+}
+
+func processExitTimeout(shutdownTimeoutSeconds int) time.Duration {
+	timeout := time.Duration(shutdownTimeoutSeconds) * time.Second
+	if timeout < minShutdownTimeout || timeout > maxShutdownTimeout {
+		timeout = defaultShutdownTimeout
+	}
+	return timeout + processExitGracePeriod
+}
+
+func deferServiceManagedValidation(state UpdateState) UpdateState {
+	state.Phase = PhaseValidating
+	state.Progress = 97
+	state.MessageCode = "waiting_for_service_manager"
+	state.ErrorCode = ""
+	state.RestartRequired = true
+	state.UpdatedAt = now().Unix()
+	state.CompletedAt = 0
+	return state
+}
+
 func restrictedHTTPClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
@@ -669,7 +775,11 @@ func normalizeStaleActiveState(state UpdateState) (UpdateState, bool) {
 
 func recoverInterruptedUpdateAt(path string, currentVersion string) (UpdateState, bool) {
 	state, err := loadState(path)
-	if err != nil || !state.Active() {
+	if err != nil {
+		return state, false
+	}
+	recoverableStaleValidation := state.Phase == PhaseFailed && state.ErrorCode == "stale_update_state"
+	if !state.Active() && !recoverableStaleValidation {
 		return state, false
 	}
 	if updateVersionMatches(state.TargetVersion, currentVersion) {

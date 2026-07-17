@@ -50,12 +50,15 @@ func applyUpdatePlan(planPath string) error {
 	if err := os.WriteFile(plan.ReadyPath, []byte("ready\n"), 0600); err != nil {
 		return failPlanState(plan, state, "helper_ready_failed", err)
 	}
-	healthTimeout := time.Duration(plan.HealthTimeoutSeconds) * time.Second
-	if healthTimeout < time.Second || healthTimeout > 5*time.Minute {
-		healthTimeout = 120 * time.Second
+	healthTimeout := normalizedHealthTimeout(plan.HealthTimeoutSeconds)
+	if err := verifyFileSHA256(plan.TargetPath, plan.PreviousSHA256); err != nil {
+		return failPlanState(plan, state, "current_binary_changed", err)
+	}
+	if err := verifyFileSHA256(plan.StagedPath, plan.ExpectedSHA256); err != nil {
+		return failPlanState(plan, state, "staged_binary_changed", err)
 	}
 
-	if err := waitForProcessExit(plan.ParentPID, 90*time.Second); err != nil {
+	if err := waitForProcessExit(plan.ParentPID, processExitTimeout(plan.ShutdownTimeoutSeconds)); err != nil {
 		state.Phase = PhaseFailed
 		state.Progress = 0
 		state.ErrorCode = "server_shutdown_timeout"
@@ -76,6 +79,11 @@ func applyUpdatePlan(planPath string) error {
 		_ = os.Rename(plan.BackupPath, plan.TargetPath)
 		return failPlanState(plan, state, "replace_failed", err)
 	}
+	if err := verifyFileSHA256(plan.TargetPath, plan.ExpectedSHA256); err != nil {
+		_ = os.Remove(plan.TargetPath)
+		_ = os.Rename(plan.BackupPath, plan.TargetPath)
+		return failPlanState(plan, state, "installed_binary_verification_failed", err)
+	}
 
 	state.Phase = PhaseValidating
 	state.Progress = 97
@@ -84,6 +92,9 @@ func applyUpdatePlan(planPath string) error {
 	newProcess, err := startApplication(plan)
 	if err == nil {
 		err = waitForHealthyVersion(plan.HealthURL, plan.TargetVersion, healthTimeout)
+	}
+	if err == nil {
+		err = verifyFileSHA256(plan.TargetPath, plan.ExpectedSHA256)
 	}
 	if err == nil {
 		state.Phase = PhaseSucceeded
@@ -113,6 +124,15 @@ func applyUpdatePlan(planPath string) error {
 		state.CompletedAt = now().Unix()
 		writeState()
 		return fmt.Errorf("new version unhealthy (%v) and rollback restore failed: %w", err, restoreErr)
+	}
+	if restoreErr := verifyFileSHA256(plan.TargetPath, plan.PreviousSHA256); restoreErr != nil {
+		state.Phase = PhaseFailed
+		state.Progress = 0
+		state.ErrorCode = "rollback_verification_failed"
+		state.MessageCode = "manual_recovery_required"
+		state.CompletedAt = now().Unix()
+		writeState()
+		return fmt.Errorf("new version unhealthy (%v) and rollback verification failed: %w", err, restoreErr)
 	}
 	oldProcess, startErr := startApplication(plan)
 	if startErr == nil {
@@ -149,7 +169,7 @@ func readUpdatePlan(path string) (updatePlan, error) {
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return updatePlan{}, err
 	}
-	if plan.TaskID == "" || plan.ParentPID <= 0 || plan.TargetPath == "" || plan.StagedPath == "" || plan.BackupPath == "" || plan.StatePath == "" || plan.ReadyPath == "" || plan.HealthURL == "" || plan.TargetVersion == "" {
+	if plan.TaskID == "" || plan.ParentPID <= 0 || plan.TargetPath == "" || plan.StagedPath == "" || plan.BackupPath == "" || plan.StatePath == "" || plan.ReadyPath == "" || plan.HealthURL == "" || plan.TargetVersion == "" || plan.PreviousSHA256 == "" || plan.ExpectedSHA256 == "" {
 		return updatePlan{}, errors.New("update plan is incomplete")
 	}
 	return plan, nil

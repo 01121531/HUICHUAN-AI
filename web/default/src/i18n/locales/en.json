@@ -4712,7 +4712,7 @@
     "The model that was requested": "The model that was requested",
     "The model you're looking for doesn't exist.": "The model you're looking for doesn't exist.",
     "The name displayed across the application": "The name displayed across the application",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.",
     "The previous version has been restored.": "The previous version has been restored.",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations",
     "The release asset size is invalid.": "The release asset size is invalid.",

@@ -4712,7 +4712,7 @@
     "The model that was requested": "Запрошенная модель",
     "The model you're looking for doesn't exist.": "Модель, которую вы ищете, не существует.",
     "The name displayed across the application": "Имя, отображаемое в приложении",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "Пакет будет проверен перед установкой. Сервис ненадолго перезапустится и автоматически восстановит предыдущую версию, если проверка завершится неудачно.",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "Перед установкой пакет будет проверен. Сервис дождётся завершения активных запросов и проверит новую версию. Автоматический откат выполняется только тогда, когда его можно безопасно провести без конфликта с менеджером служб.",
     "The previous version has been restored.": "Предыдущая версия восстановлена.",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "Публичный URL вашего сервера, используемый для OAuth-перенаправлений, вебхуков и других внешних интеграций",
     "The release asset size is invalid.": "Размер ресурса релиза недопустим.",

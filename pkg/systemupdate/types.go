@@ -92,21 +92,24 @@ type githubAsset struct {
 }
 
 type updatePlan struct {
-	TaskID               string   `json:"task_id"`
-	ParentPID            int      `json:"parent_pid"`
-	TargetPath           string   `json:"target_path"`
-	StagedPath           string   `json:"staged_path"`
-	BackupPath           string   `json:"backup_path"`
-	StatePath            string   `json:"state_path"`
-	ReadyPath            string   `json:"ready_path"`
-	WorkingDir           string   `json:"working_dir"`
-	Args                 []string `json:"args"`
-	HealthURL            string   `json:"health_url"`
-	HealthTimeoutSeconds int      `json:"health_timeout_seconds"`
-	CurrentVersion       string   `json:"current_version"`
-	TargetVersion        string   `json:"target_version"`
-	ReleaseID            int64    `json:"release_id"`
-	StartedAt            int64    `json:"started_at"`
+	TaskID                 string   `json:"task_id"`
+	ParentPID              int      `json:"parent_pid"`
+	TargetPath             string   `json:"target_path"`
+	StagedPath             string   `json:"staged_path"`
+	BackupPath             string   `json:"backup_path"`
+	StatePath              string   `json:"state_path"`
+	ReadyPath              string   `json:"ready_path"`
+	WorkingDir             string   `json:"working_dir"`
+	Args                   []string `json:"args"`
+	HealthURL              string   `json:"health_url"`
+	HealthTimeoutSeconds   int      `json:"health_timeout_seconds"`
+	ShutdownTimeoutSeconds int      `json:"shutdown_timeout_seconds"`
+	CurrentVersion         string   `json:"current_version"`
+	TargetVersion          string   `json:"target_version"`
+	PreviousSHA256         string   `json:"previous_sha256"`
+	ExpectedSHA256         string   `json:"expected_sha256"`
+	ReleaseID              int64    `json:"release_id"`
+	StartedAt              int64    `json:"started_at"`
 }
 
 var now = func() time.Time { return time.Now() }

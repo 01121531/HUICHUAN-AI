@@ -57,7 +57,12 @@ func main() {
 	if systemupdate.RunHelperIfRequested() {
 		return
 	}
-	defer middleware.CloseDatasetCapture()
+	closeSharedResourcesOnExit := true
+	defer func() {
+		if closeSharedResourcesOnExit {
+			middleware.CloseDatasetCapture()
+		}
+	}()
 	startTime := time.Now()
 
 	err := InitResources()
@@ -76,6 +81,9 @@ func main() {
 	}
 
 	defer func() {
+		if !closeSharedResourcesOnExit {
+			return
+		}
 		err := model.CloseDB()
 		if err != nil {
 			common.FatalLog("failed to close database: " + err.Error())
@@ -242,7 +250,7 @@ func main() {
 	case sig := <-quit:
 		common.SysLog(fmt.Sprintf("received signal: %v, shutting down...", sig))
 	case reason := <-systemupdate.ShutdownRequests():
-		shutdownTimeoutSeconds = common.GetEnvOrDefault("SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS", 30)
+		shutdownTimeoutSeconds = systemupdate.ShutdownTimeoutSeconds()
 		common.SysLog("received internal shutdown request for " + reason)
 	}
 	signal.Stop(quit)
@@ -253,6 +261,14 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
 		common.SysError(fmt.Sprintf("server forced to shutdown: %v", err))
+		// Shutdown returning on deadline does not wait for active handlers. Close
+		// their connections, but keep shared database and snapshot resources open
+		// until process exit so remaining goroutines cannot observe
+		// "sql: database is closed" during forced upgrade termination.
+		closeSharedResourcesOnExit = false
+		if closeErr := srv.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+			common.SysError(fmt.Sprintf("failed to close active server connections: %v", closeErr))
+		}
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
 	if common.DataExportEnabled {

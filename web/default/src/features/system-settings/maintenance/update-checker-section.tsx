@@ -459,7 +459,7 @@ export function UpdateCheckerSection({
             <AlertDialogTitle>{t('Install this update now?')}</AlertDialogTitle>
             <AlertDialogDescription>
               {t(
-                'The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.'
+                'The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.'
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>

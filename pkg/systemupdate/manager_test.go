@@ -2,6 +2,8 @@ package systemupdate
 
 import (
 	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,6 +88,88 @@ func TestChecksumForFile(t *testing.T) {
 	require.Equal(t, hash, actual)
 	_, err = checksumForFile(path, "other.exe")
 	require.Error(t, err)
+}
+
+func TestHashFileSHA256AndVerification(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "binary")
+	require.NoError(t, os.WriteFile(path, []byte("target-version"), 0600))
+	expected := sha256.Sum256([]byte("target-version"))
+	expectedHex := fmt.Sprintf("%x", expected[:])
+
+	actual, err := hashFileSHA256(path)
+	require.NoError(t, err)
+	require.Equal(t, expectedHex, actual)
+	require.NoError(t, verifyFileSHA256(path, expectedHex))
+	require.Error(t, verifyFileSHA256(path, strings.Repeat("0", sha256.Size*2)))
+	require.Error(t, verifyFileSHA256(path, "invalid"))
+}
+
+func TestSystemUpdateTimeoutConfiguration(t *testing.T) {
+	t.Setenv("SYSTEM_UPDATE_HEALTH_TIMEOUT_SECONDS", "")
+	t.Setenv("SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS", "")
+	require.Equal(t, 600, updateHealthTimeoutSeconds())
+	require.Equal(t, 300, ShutdownTimeoutSeconds())
+	require.Equal(t, 10*time.Minute, normalizedHealthTimeout(600))
+	require.Equal(t, 5*time.Minute+processExitGracePeriod, processExitTimeout(300))
+
+	t.Setenv("SYSTEM_UPDATE_HEALTH_TIMEOUT_SECONDS", "900")
+	t.Setenv("SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS", "420")
+	require.Equal(t, 900, updateHealthTimeoutSeconds())
+	require.Equal(t, 420, ShutdownTimeoutSeconds())
+
+	t.Setenv("SYSTEM_UPDATE_HEALTH_TIMEOUT_SECONDS", "10")
+	t.Setenv("SYSTEM_UPDATE_SHUTDOWN_TIMEOUT_SECONDS", "99999")
+	require.Equal(t, 600, updateHealthTimeoutSeconds())
+	require.Equal(t, 300, ShutdownTimeoutSeconds())
+}
+
+func TestServiceManagedValidationFailureStaysActive(t *testing.T) {
+	originalNow := now
+	defer func() { now = originalNow }()
+	now = func() time.Time { return time.Unix(3_000_000, 0) }
+
+	state := deferServiceManagedValidation(UpdateState{
+		TaskID:          "update_test",
+		Phase:           PhaseRollingBack,
+		Progress:        98,
+		ErrorCode:       "new_version_unhealthy",
+		MessageCode:     "rolling_back",
+		RestartRequired: true,
+		CompletedAt:     now().Add(-time.Minute).Unix(),
+	})
+	require.Equal(t, PhaseValidating, state.Phase)
+	require.Equal(t, 97, state.Progress)
+	require.Equal(t, "waiting_for_service_manager", state.MessageCode)
+	require.Empty(t, state.ErrorCode)
+	require.True(t, state.RestartRequired)
+	require.Zero(t, state.CompletedAt)
+	require.Equal(t, now().Unix(), state.UpdatedAt)
+	require.True(t, state.Active())
+}
+
+func TestReadUpdatePlanRequiresBinaryHashes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "plan.json")
+	plan := updatePlan{
+		TaskID: "update_test", ParentPID: 123,
+		TargetPath: "target", StagedPath: "staged", BackupPath: "backup",
+		StatePath: "state", ReadyPath: "ready", HealthURL: "http://127.0.0.1/status",
+		TargetVersion: "v1.0.8",
+	}
+	data, err := json.Marshal(plan)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0600))
+	_, err = readUpdatePlan(path)
+	require.Error(t, err)
+
+	plan.PreviousSHA256 = strings.Repeat("a", sha256.Size*2)
+	plan.ExpectedSHA256 = strings.Repeat("b", sha256.Size*2)
+	data, err = json.Marshal(plan)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, data, 0600))
+	actual, err := readUpdatePlan(path)
+	require.NoError(t, err)
+	require.Equal(t, plan.PreviousSHA256, actual.PreviousSHA256)
+	require.Equal(t, plan.ExpectedSHA256, actual.ExpectedSHA256)
 }
 
 func TestSaveStateReplacesExistingFile(t *testing.T) {
@@ -191,4 +275,48 @@ func TestRecoverInterruptedUpdateDoesNotSucceedMismatchedVersion(t *testing.T) {
 	require.Equal(t, PhaseRestarting, state.Phase)
 	require.Equal(t, 94, state.Progress)
 	require.True(t, state.RestartRequired)
+}
+
+func TestRecoverInterruptedUpdateRepairsLateServiceManagerStartup(t *testing.T) {
+	originalNow := now
+	defer func() { now = originalNow }()
+	now = func() time.Time { return time.Unix(4_000_000, 0) }
+
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, saveState(path, UpdateState{
+		TaskID:         "update_late_start",
+		Phase:          PhaseFailed,
+		Progress:       0,
+		CurrentVersion: "v1.0.7",
+		TargetVersion:  "v1.0.8",
+		ErrorCode:      "stale_update_state",
+		MessageCode:    "failed",
+		StartedAt:      now().Add(-45 * time.Minute).Unix(),
+		UpdatedAt:      now().Add(-15 * time.Minute).Unix(),
+		CompletedAt:    now().Add(-15 * time.Minute).Unix(),
+	}))
+
+	state, changed := recoverInterruptedUpdateAt(path, "v1.0.8")
+	require.True(t, changed)
+	require.Equal(t, PhaseSucceeded, state.Phase)
+	require.Equal(t, 100, state.Progress)
+	require.Empty(t, state.ErrorCode)
+	require.False(t, state.RestartRequired)
+}
+
+func TestRecoverInterruptedUpdateDoesNotHideRollbackSplitFailure(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	require.NoError(t, saveState(path, UpdateState{
+		TaskID:         "update_split",
+		Phase:          PhaseFailed,
+		CurrentVersion: "v1.0.6",
+		TargetVersion:  "v1.0.7",
+		ErrorCode:      "rollback_start_failed",
+		MessageCode:    "manual_recovery_required",
+	}))
+
+	state, changed := recoverInterruptedUpdateAt(path, "v1.0.7")
+	require.False(t, changed)
+	require.Equal(t, PhaseFailed, state.Phase)
+	require.Equal(t, "rollback_start_failed", state.ErrorCode)
 }

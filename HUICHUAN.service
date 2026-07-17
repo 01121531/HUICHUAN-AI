@@ -14,7 +14,7 @@ ExecStart=/path/to/huichuan/huichuan --port 3000 --log-dir /path/to/huichuan/log
 Restart=always
 RestartSec=5
 KillMode=process
-TimeoutStopSec=35
+TimeoutStopSec=330
 
 [Install]
 WantedBy=multi-user.target

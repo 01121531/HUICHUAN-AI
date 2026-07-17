@@ -4712,7 +4712,7 @@
     "The model that was requested": "リクエストされたモデル",
     "The model you're looking for doesn't exist.": "お探しのモデルは存在しません。",
     "The name displayed across the application": "アプリケーション全体に表示される名前",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "インストール前にパッケージを検証します。サービスは一時的に再起動し、正常性確認に失敗した場合は以前のバージョンを自動復元します。",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "インストール前にパッケージを検証します。サービスは実行中のリクエストの完了を待ってから新しいバージョンを検証します。自動ロールバックは、サービスマネージャーと競合せず安全に実行できる場合にのみ使用されます。",
     "The previous version has been restored.": "以前のバージョンを復元しました。",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "OAuthコールバック、Webhook、その他の外部統合に使用されるサーバーの公開URL",
     "The release asset size is invalid.": "リリース資産のサイズが無効です。",

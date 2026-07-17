@@ -4712,7 +4712,7 @@
     "The model that was requested": "被请求的模型",
     "The model you're looking for doesn't exist.": "您查找的模型不存在。",
     "The name displayed across the application": "在整个应用程序中显示的名称",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "安装前会校验更新包。服务将短暂重启；如果健康检查失败，将自动恢复上一版本。",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "安装前会验证升级包。服务将等待活动请求完成并验证新版本。只有在不会与服务管理器发生竞争、能够安全执行时才会自动回滚。",
     "The previous version has been restored.": "已恢复上一版本。",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "服务器的公开URL，用于OAuth回调、Webhook和其他外部集成",
     "The release asset size is invalid.": "发布资产大小无效。",

@@ -49,15 +49,19 @@ func applyUpdatePlan(planPath string) error {
 	if err := os.WriteFile(plan.ReadyPath, []byte("ready\n"), 0600); err != nil {
 		return failPlanState(plan, state, "helper_ready_failed", err)
 	}
-	healthTimeout := time.Duration(plan.HealthTimeoutSeconds) * time.Second
-	if healthTimeout < time.Second || healthTimeout > 5*time.Minute {
-		healthTimeout = 120 * time.Second
-	}
+	healthTimeout := normalizedHealthTimeout(plan.HealthTimeoutSeconds)
+	serviceManaged := serviceManagerWillRestart()
 
 	// On Unix-like systems a running executable can be renamed safely. Replace
 	// the target before the old process exits so service managers such as
 	// systemd Restart=always will restart the already-updated binary instead of
 	// racing the helper by immediately launching the previous file again.
+	if err := verifyFileSHA256(plan.TargetPath, plan.PreviousSHA256); err != nil {
+		return failPlanState(plan, state, "current_binary_changed", err)
+	}
+	if err := verifyFileSHA256(plan.StagedPath, plan.ExpectedSHA256); err != nil {
+		return failPlanState(plan, state, "staged_binary_changed", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(plan.BackupPath), 0700); err != nil {
 		return failPlanState(plan, state, "backup_directory_unavailable", err)
 	}
@@ -73,8 +77,13 @@ func applyUpdatePlan(planPath string) error {
 		_ = os.Rename(plan.BackupPath, plan.TargetPath)
 		return failPlanState(plan, state, "replace_failed", err)
 	}
+	if err := verifyFileSHA256(plan.TargetPath, plan.ExpectedSHA256); err != nil {
+		_ = os.Remove(plan.TargetPath)
+		_ = os.Rename(plan.BackupPath, plan.TargetPath)
+		return failPlanState(plan, state, "installed_binary_verification_failed", err)
+	}
 
-	if err := waitForProcessExit(plan.ParentPID, 90*time.Second); err != nil {
+	if err := waitForProcessExit(plan.ParentPID, processExitTimeout(plan.ShutdownTimeoutSeconds)); err != nil {
 		_ = os.Remove(plan.TargetPath)
 		_ = os.Rename(plan.BackupPath, plan.TargetPath)
 		state.Phase = PhaseFailed
@@ -96,12 +105,12 @@ func applyUpdatePlan(planPath string) error {
 	// that path; otherwise start the binary ourselves for plain standalone runs.
 	var newProcess *os.Process
 	initialHealthTimeout := 12 * time.Second
-	if serviceManagerWillRestart() {
+	if serviceManaged {
 		initialHealthTimeout = healthTimeout
 	}
 	err = waitForHealthyVersion(plan.HealthURL, plan.TargetVersion, initialHealthTimeout)
 	if err != nil {
-		if serviceManagerWillRestart() {
+		if serviceManaged {
 			err = fmt.Errorf("service manager did not restart a healthy target version: %w", err)
 		} else {
 			newProcess, err = startApplication(plan)
@@ -111,6 +120,9 @@ func applyUpdatePlan(planPath string) error {
 		err = waitForHealthyVersion(plan.HealthURL, plan.TargetVersion, healthTimeout)
 	}
 	if err == nil {
+		err = verifyFileSHA256(plan.TargetPath, plan.ExpectedSHA256)
+	}
+	if err == nil {
 		state.Phase = PhaseSucceeded
 		state.Progress = 100
 		state.MessageCode = "succeeded"
@@ -118,6 +130,19 @@ func applyUpdatePlan(planPath string) error {
 		state.CompletedAt = now().Unix()
 		writeState()
 		return nil
+	}
+
+	// systemd owns the service lifecycle. Replacing the on-disk binary while a
+	// target process is still starting can create a split state where memory
+	// runs the new version but the next restart loads the old version. Keep the
+	// verified target on disk and leave validation active; a late successful
+	// startup reconciles the state through RecoverInterruptedUpdate. A truly
+	// broken service eventually becomes stale and requires an explicit operator
+	// rollback instead of an unsafe automatic race with Restart=always.
+	if serviceManaged {
+		state = deferServiceManagedValidation(state)
+		writeState()
+		return fmt.Errorf("target version is still not healthy; automatic rollback was deferred to preserve disk/runtime consistency: %w", err)
 	}
 
 	state.Phase = PhaseRollingBack
@@ -138,6 +163,15 @@ func applyUpdatePlan(planPath string) error {
 		state.CompletedAt = now().Unix()
 		writeState()
 		return fmt.Errorf("new version unhealthy (%v) and rollback restore failed: %w", err, restoreErr)
+	}
+	if restoreErr := verifyFileSHA256(plan.TargetPath, plan.PreviousSHA256); restoreErr != nil {
+		state.Phase = PhaseFailed
+		state.Progress = 0
+		state.ErrorCode = "rollback_verification_failed"
+		state.MessageCode = "manual_recovery_required"
+		state.CompletedAt = now().Unix()
+		writeState()
+		return fmt.Errorf("new version unhealthy (%v) and rollback verification failed: %w", err, restoreErr)
 	}
 	oldProcess, startErr := startApplication(plan)
 	if startErr == nil {
@@ -174,7 +208,7 @@ func readUpdatePlan(path string) (updatePlan, error) {
 	if err := json.Unmarshal(data, &plan); err != nil {
 		return updatePlan{}, err
 	}
-	if plan.TaskID == "" || plan.ParentPID <= 0 || plan.TargetPath == "" || plan.StagedPath == "" || plan.BackupPath == "" || plan.StatePath == "" || plan.ReadyPath == "" || plan.HealthURL == "" || plan.TargetVersion == "" {
+	if plan.TaskID == "" || plan.ParentPID <= 0 || plan.TargetPath == "" || plan.StagedPath == "" || plan.BackupPath == "" || plan.StatePath == "" || plan.ReadyPath == "" || plan.HealthURL == "" || plan.TargetVersion == "" || plan.PreviousSHA256 == "" || plan.ExpectedSHA256 == "" {
 		return updatePlan{}, errors.New("update plan is incomplete")
 	}
 	return plan, nil

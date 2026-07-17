@@ -4712,7 +4712,7 @@
     "The model that was requested": "Le modèle qui a été demandé",
     "The model you're looking for doesn't exist.": "Le modèle que vous recherchez n'existe pas.",
     "The name displayed across the application": "Le nom affiché dans l'application",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "Le paquet sera vérifié avant l’installation. Le service redémarrera brièvement et restaurera automatiquement la version précédente si la validation échoue.",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "Le paquet sera vérifié avant l’installation. Le service attendra la fin des requêtes actives et validera la nouvelle version. Le retour automatique n’est utilisé que lorsqu’il peut être effectué en toute sécurité sans entrer en concurrence avec le gestionnaire de services.",
     "The previous version has been restored.": "La version précédente a été restaurée.",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "L'URL publique de votre serveur, utilisée pour les rappels OAuth, les webhooks et autres intégrations externes",
     "The release asset size is invalid.": "La taille de la ressource de publication est invalide.",

@@ -4712,7 +4712,7 @@
     "The model that was requested": "Mô hình đã được yêu cầu",
     "The model you're looking for doesn't exist.": "Mô hình bạn đang tìm kiếm không tồn tại.",
     "The name displayed across the application": "Tên hiển thị trên ứng dụng",
-    "The package will be verified before installation. The service will restart briefly and automatically restore the previous version if health validation fails.": "Gói sẽ được xác minh trước khi cài đặt. Dịch vụ sẽ khởi động lại trong giây lát và tự động khôi phục phiên bản trước nếu kiểm tra sức khỏe thất bại.",
+    "The package will be verified before installation. The service will wait for active requests and validate the new version. Automatic rollback is used only when it can be performed safely without competing with the service manager.": "Gói sẽ được xác minh trước khi cài đặt. Dịch vụ sẽ chờ các yêu cầu đang hoạt động hoàn tất rồi xác thực phiên bản mới. Chỉ tự động hoàn tác khi có thể thực hiện an toàn mà không xung đột với trình quản lý dịch vụ.",
     "The previous version has been restored.": "Đã khôi phục phiên bản trước.",
     "The public URL of your server, used for OAuth callbacks, webhooks, and other external integrations": "URL công khai của máy chủ, dùng cho callback OAuth, webhook và các tích hợp bên ngoài khác",
     "The release asset size is invalid.": "Kích thước tài nguyên phát hành không hợp lệ.",
