@@ -255,6 +255,9 @@ func SetApiRouter(router *gin.Engine) {
 			datasetCapturePolicyRoute.GET("", controller.GetDatasetCapturePolicy)
 			datasetCapturePolicyRoute.PUT("", controller.UpdateDatasetCapturePolicy)
 			datasetCapturePolicyRoute.GET("/models", controller.ListDatasetCapturePolicyModels)
+			datasetCapturePolicyRoute.GET("/subjects", controller.ListDatasetCapturePolicySubjects)
+			datasetCapturePolicyRoute.GET("/status", controller.GetDatasetCaptureRuntimeStatus)
+			datasetCapturePolicyRoute.POST("/test-alert", controller.SendDatasetCaptureTestAlert)
 			datasetCapturePolicyRoute.GET("/access-audits", controller.ListDatasetCaptureAccessAudits)
 		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")

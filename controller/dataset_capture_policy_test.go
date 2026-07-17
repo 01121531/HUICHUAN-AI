@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -43,8 +44,15 @@ func TestGetDatasetCapturePolicyReturnsEmptyModelsArray(t *testing.T) {
 	GetDatasetCapturePolicy(context)
 
 	assert.Equal(t, http.StatusOK, response.Code)
-	assert.JSONEq(t, `{
-		"success": true,
-		"data": {"enabled": false, "model_mode": "all", "models": []}
-	}`, response.Body.String())
+	var payload struct {
+		Success bool                           `json:"success"`
+		Data    dataset_capture_setting.Policy `json:"data"`
+	}
+	assert.NoError(t, json.Unmarshal(response.Body.Bytes(), &payload))
+	assert.True(t, payload.Success)
+	assert.Equal(t, dataset_capture_setting.CurrentVersion, payload.Data.Version)
+	assert.NotNil(t, payload.Data.Models)
+	assert.NotNil(t, payload.Data.UserIDs)
+	assert.NotNil(t, payload.Data.TokenIDs)
+	assert.Equal(t, 1024, payload.Data.Performance.QueueSize)
 }

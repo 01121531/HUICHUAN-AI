@@ -5,13 +5,45 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 )
 
-var ErrDatasetCaptureExportEmpty = errors.New("no dataset capture records match the selection")
+var (
+	ErrDatasetCaptureExportEmpty = errors.New("no dataset capture records match the selection")
+	ErrDatasetCaptureExportBusy  = errors.New("dataset capture export concurrency limit reached")
+	datasetCaptureExportsActive  atomic.Int64
+)
+
+type datasetCaptureExportLimiter struct {
+	bytesPerSecond int64
+	startedAt      time.Time
+	written        int64
+	now            func() time.Time
+	sleep          func(time.Duration)
+}
+
+func newDatasetCaptureExportLimiter(megabytesPerSecond int) *datasetCaptureExportLimiter {
+	return &datasetCaptureExportLimiter{
+		bytesPerSecond: int64(megabytesPerSecond) << 20,
+		startedAt:      time.Now(), now: time.Now, sleep: time.Sleep,
+	}
+}
+
+func (limiter *datasetCaptureExportLimiter) wait(written int) {
+	if limiter == nil || limiter.bytesPerSecond <= 0 || written <= 0 {
+		return
+	}
+	limiter.written += int64(written)
+	expected := time.Duration(float64(limiter.written) / float64(limiter.bytesPerSecond) * float64(time.Second))
+	if delay := limiter.startedAt.Add(expected).Sub(limiter.now()); delay > 0 {
+		limiter.sleep(delay)
+	}
+}
 
 type DatasetCaptureExport struct {
 	File        *os.File
@@ -26,6 +58,10 @@ func BuildDatasetCaptureExport(pathTemplate, node string, indices []model.Datase
 	if len(indices) == 0 {
 		return nil, ErrDatasetCaptureExportEmpty
 	}
+	if !tryAcquireDatasetCaptureExport(dataset_capture_setting.Get().Performance.ExportConcurrency) {
+		return nil, ErrDatasetCaptureExportBusy
+	}
+	defer datasetCaptureExportsActive.Add(-1)
 	file, err := os.CreateTemp("", "huichuan-dataset-export-*.jsonl")
 	if err != nil {
 		return nil, err
@@ -42,6 +78,8 @@ func BuildDatasetCaptureExport(pathTemplate, node string, indices []model.Datase
 		return nil, err
 	}
 
+	policy := dataset_capture_setting.Get()
+	limiter := newDatasetCaptureExportLimiter(policy.Performance.ExportReadMBps)
 	browser := datasetcapture.NewBrowser(pathTemplate, node)
 	for start := 0; start < len(indices); {
 		end := start + 1
@@ -63,12 +101,15 @@ func BuildDatasetCaptureExport(pathTemplate, node string, indices []model.Datase
 			if err := datasetcapture.ValidateJSONLine(line); err != nil {
 				return nil, fmt.Errorf("capture %s: %w", index.CaptureID, err)
 			}
-			if _, err := file.Write(line); err != nil {
+			written, err := file.Write(line)
+			if err != nil {
 				return nil, err
 			}
-			if _, err := file.Write([]byte{'\n'}); err != nil {
+			newlineWritten, err := file.Write([]byte{'\n'})
+			if err != nil {
 				return nil, err
 			}
+			limiter.wait(written + newlineWritten)
 		}
 		start = end
 	}
@@ -93,6 +134,21 @@ func BuildDatasetCaptureExport(pathTemplate, node string, indices []model.Datase
 		Filename:    fmt.Sprintf("dataset-capture-%s-%d-records.jsonl", time.Now().UTC().Format("20060102-150405"), len(indices)),
 		RecordCount: len(indices), UserCount: len(users), Bytes: info.Size(),
 	}, nil
+}
+
+func tryAcquireDatasetCaptureExport(limit int) bool {
+	if limit < 1 {
+		limit = 1
+	}
+	for {
+		current := datasetCaptureExportsActive.Load()
+		if current >= int64(limit) {
+			return false
+		}
+		if datasetCaptureExportsActive.CompareAndSwap(current, current+1) {
+			return true
+		}
+	}
 }
 
 func (export *DatasetCaptureExport) Close() error {

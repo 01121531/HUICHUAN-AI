@@ -92,23 +92,25 @@ type StorageScope struct {
 }
 
 type Capture struct {
-	RequestBody    []byte
-	ResponseBody   []byte
-	Path           string
-	ContentType    string
-	Model          string
-	Route          string
-	RequestID      string
-	UserID         string
-	TokenID        string
-	UserGroup      string
-	RequestedModel string
-	ChannelID      int
-	SessionSource  string
-	UserAgent      string
-	CWD            string
-	HMACKey        string
-	CreatedAt      time.Time
+	RequestBody           []byte
+	ResponseBody          []byte
+	Path                  string
+	ContentType           string
+	Model                 string
+	Route                 string
+	RequestID             string
+	UserID                string
+	TokenID               string
+	UserGroup             string
+	RequestedModel        string
+	ChannelID             int
+	StripMultimodalBase64 bool
+	SpoolThresholdBytes   int64
+	SessionSource         string
+	UserAgent             string
+	CWD                   string
+	HMACKey               string
+	CreatedAt             time.Time
 }
 
 type normalizedRequest struct {

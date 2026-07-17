@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import type {
   ConfirmPaymentComplianceResponse,
   DatasetCaptureModelsResponse,
+  DatasetCaptureRuntimeStatusResponse,
+  DatasetCaptureSubjectsResponse,
   DatasetCaptureAccessAuditAction,
   DatasetCaptureAccessAuditResponse,
   DatasetCapturePolicy,
@@ -64,6 +66,27 @@ export async function updateDatasetCapturePolicy(policy: DatasetCapturePolicy) {
 export async function getDatasetCaptureModels() {
   const res = await api.get<DatasetCaptureModelsResponse>(
     '/api/dataset-capture-policy/models'
+  )
+  return res.data
+}
+
+export async function getDatasetCaptureSubjects() {
+  const res = await api.get<DatasetCaptureSubjectsResponse>(
+    '/api/dataset-capture-policy/subjects'
+  )
+  return res.data
+}
+
+export async function getDatasetCaptureRuntimeStatus() {
+  const res = await api.get<DatasetCaptureRuntimeStatusResponse>(
+    '/api/dataset-capture-policy/status'
+  )
+  return res.data
+}
+
+export async function sendDatasetCaptureTestAlert() {
+  const res = await api.post<{ success: boolean; message: string }>(
+    '/api/dataset-capture-policy/test-alert'
   )
   return res.data
 }

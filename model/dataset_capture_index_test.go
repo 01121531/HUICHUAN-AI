@@ -48,3 +48,25 @@ func TestDatasetCaptureIndexFromWriteResult(t *testing.T) {
 	assert.Equal(t, 56, stored.ChannelID)
 	assert.Equal(t, int64(512), stored.RecordSize)
 }
+
+func TestUpsertDatasetCaptureIndicesBatch(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&DatasetCaptureIndex{}))
+	require.NoError(t, DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&DatasetCaptureIndex{}).Error)
+	t.Cleanup(func() {
+		_ = DB.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&DatasetCaptureIndex{}).Error
+	})
+	indices := []DatasetCaptureIndex{
+		{CaptureID: "aaaaaaaaaaaaaaaaaaaaaaaa", Node: "node", FileID: "111111111111111111111111", Row: 1, EffectiveModel: "m1", SessionID: "1111111111111111"},
+		{CaptureID: "bbbbbbbbbbbbbbbbbbbbbbbb", Node: "node", FileID: "111111111111111111111111", Row: 2, EffectiveModel: "m2", SessionID: "2222222222222222"},
+	}
+	require.NoError(t, UpsertDatasetCaptureIndices(indices))
+	var count int64
+	require.NoError(t, DB.Model(&DatasetCaptureIndex{}).Where("capture_id IN ?", []string{indices[0].CaptureID, indices[1].CaptureID}).Count(&count).Error)
+	assert.Equal(t, int64(2), count)
+
+	indices[1].EffectiveModel = "updated"
+	require.NoError(t, UpsertDatasetCaptureIndices(indices[1:]))
+	var updated DatasetCaptureIndex
+	require.NoError(t, DB.Where("capture_id = ?", indices[1].CaptureID).Take(&updated).Error)
+	assert.Equal(t, "updated", updated.EffectiveModel)
+}

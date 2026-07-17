@@ -353,6 +353,9 @@ func InitResources() error {
 	); err != nil {
 		common.SysError("failed to reconcile dataset capture index: " + err.Error())
 	}
+	// Initialize capture workers during startup so the first matching API
+	// request never pays directory calibration or disk-probe costs.
+	middleware.ReloadDatasetCapture()
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

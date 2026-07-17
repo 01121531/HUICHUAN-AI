@@ -8,6 +8,25 @@ import (
 	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 )
 
+func TestDatasetCapturePolicyFromEnvironmentIncludesPerformanceAndAlertSettings(t *testing.T) {
+	t.Setenv("DATASET_CAPTURE_ENABLED", "true")
+	t.Setenv("DATASET_CAPTURE_EXPORT_CONCURRENCY", "3")
+	t.Setenv("DATASET_CAPTURE_EXPORT_READ_MBPS", "48")
+	t.Setenv("DATASET_CAPTURE_ALERT_SILENCE_MINUTES", "17")
+	t.Setenv("DATASET_CAPTURE_ALERT_AFTER_DROPS", "4")
+
+	policy := datasetCapturePolicyFromEnvironment()
+	if !policy.Enabled {
+		t.Fatal("DATASET_CAPTURE_ENABLED was not applied")
+	}
+	if policy.Performance.ExportConcurrency != 3 || policy.Performance.ExportReadMBps != 48 {
+		t.Fatalf("export performance environment settings = %#v", policy.Performance)
+	}
+	if policy.Alerts.SilenceMinutes != 17 || policy.Alerts.AlertAfterDrops != 4 {
+		t.Fatalf("alert environment settings = %#v", policy.Alerts)
+	}
+}
+
 func TestUpdateOptionMapUpdatesDatasetCaptureRuntimeState(t *testing.T) {
 	common.OptionMapRWMutex.Lock()
 	originalMap := common.OptionMap
@@ -32,7 +51,7 @@ func TestUpdateDatasetCapturePolicyPersistsAndAppliesTogether(t *testing.T) {
 	if err := DB.AutoMigrate(&Option{}); err != nil {
 		t.Fatal(err)
 	}
-	keys := []string{"DatasetCaptureEnabled", "DatasetCaptureModelMode", "DatasetCaptureModels"}
+	keys := []string{"DatasetCaptureEnabled", "DatasetCaptureModelMode", "DatasetCaptureModels", "DatasetCapturePolicyV2"}
 	if err := DB.Where("key IN ?", keys).Delete(&Option{}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -42,6 +61,7 @@ func TestUpdateDatasetCapturePolicyPersistsAndAppliesTogether(t *testing.T) {
 		"DatasetCaptureEnabled":   "false",
 		"DatasetCaptureModelMode": dataset_capture_setting.ModelModeAll,
 		"DatasetCaptureModels":    "[]",
+		"DatasetCapturePolicyV2":  "",
 	}
 	common.OptionMapRWMutex.Unlock()
 	originalPolicy := dataset_capture_setting.Get()
@@ -82,5 +102,12 @@ func TestUpdateDatasetCapturePolicyPersistsAndAppliesTogether(t *testing.T) {
 	}
 	if values["DatasetCaptureEnabled"] != "true" || values["DatasetCaptureModelMode"] != "selected" || len(persistedModels) != 2 {
 		t.Fatalf("persisted policy = %#v", values)
+	}
+	persistedPolicy, err := dataset_capture_setting.ParseJSON(values["DatasetCapturePolicyV2"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if persistedPolicy.Version != dataset_capture_setting.CurrentVersion || persistedPolicy.Performance.QueueSize != 1024 {
+		t.Fatalf("persisted v2 policy = %#v", persistedPolicy)
 	}
 }

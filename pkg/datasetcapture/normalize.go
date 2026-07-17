@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/tidwall/gjson"
 )
 
 var (
@@ -19,15 +21,27 @@ var (
 )
 
 func Normalize(capture Capture) (Record, error) {
-	protocol := detectProtocol(capture.Path, capture.RequestBody)
-	if protocol == "" {
+	return normalizeProtocols(capture, capture.Path, capture.Path)
+}
+
+// normalizeProtocols allows the final successful upstream request and the
+// client-facing response to use different wire protocols. This lets the relay
+// preserve effective model/system/tool semantics without buffering the raw
+// upstream response before it is delivered to the client.
+func normalizeProtocols(capture Capture, requestPath, responsePath string) (Record, error) {
+	requestProtocol := detectProtocol(requestPath, capture.RequestBody)
+	if requestProtocol == "" {
 		return Record{}, ErrUnsupportedProtocol
 	}
-	request, err := normalizeRequest(protocol, capture.RequestBody)
+	request, err := normalizeRequest(requestProtocol, capture.RequestBody)
 	if err != nil {
 		return Record{}, fmt.Errorf("%w: request: %v", ErrInvalidCapture, err)
 	}
-	response, err := normalizeResponse(protocol, capture.ResponseBody)
+	responseProtocol := detectProtocol(responsePath, nil)
+	if responseProtocol == "" {
+		responseProtocol = requestProtocol
+	}
+	response, err := normalizeResponse(responseProtocol, capture.ResponseBody)
 	if err != nil {
 		return Record{}, fmt.Errorf("%w: response: %v", ErrInvalidCapture, err)
 	}
@@ -39,8 +53,8 @@ func Normalize(capture Capture) (Record, error) {
 	}
 
 	model := firstNonEmpty(request.Model, capture.Model)
-	if model == "" && protocol == "gemini" {
-		model = modelFromPath(capture.Path)
+	if model == "" && requestProtocol == "gemini" {
+		model = modelFromPath(requestPath)
 	}
 	if model == "" || len(request.Messages) == 0 {
 		return Record{}, ErrInvalidCapture
@@ -80,7 +94,7 @@ func Normalize(capture Capture) (Record, error) {
 		CWD:       cwd,
 		Meta: Meta{
 			Version:               SchemaVersion,
-			SourceRoute:           firstNonEmpty(capture.Route, protocol),
+			SourceRoute:           firstNonEmpty(capture.Route, requestProtocol),
 			SourceFile:            "",
 			SourceRow:             0,
 			SnapshotsInSession:    len(request.Messages),
@@ -97,7 +111,45 @@ func Normalize(capture Capture) (Record, error) {
 			ChannelID:      capture.ChannelID,
 		},
 	}
+	if capture.StripMultimodalBase64 {
+		stripMultimodalBase64(&record)
+	}
 	return record, Validate(record)
+}
+
+func stripMultimodalBase64(record *Record) {
+	if record == nil {
+		return
+	}
+	for messageIndex := range record.Messages {
+		for blockIndex := range record.Messages[messageIndex].Content {
+			block := record.Messages[messageIndex].Content[blockIndex]
+			if source, ok := block["source"].(map[string]any); ok {
+				stripBase64Source(source)
+			}
+		}
+	}
+}
+
+func stripBase64Source(value map[string]any) {
+	if value == nil {
+		return
+	}
+	if asString(value["type"]) == "base64" {
+		delete(value, "data")
+		value["omitted"] = true
+	}
+	for key, item := range value {
+		switch nested := item.(type) {
+		case map[string]any:
+			stripBase64Source(nested)
+		case string:
+			if (key == "url" || key == "data") && strings.HasPrefix(strings.ToLower(strings.TrimSpace(nested)), "data:") {
+				delete(value, key)
+				value["omitted"] = true
+			}
+		}
+	}
 }
 
 func Validate(record Record) error {
@@ -127,20 +179,19 @@ func detectProtocol(path string, body []byte) string {
 	case strings.Contains(lowerPath, "/chat/completions"):
 		return "openai-chat"
 	}
-	var object map[string]any
-	if json.Unmarshal(body, &object) != nil {
+	if !gjson.ValidBytes(body) {
 		return ""
 	}
-	if _, ok := object["contents"]; ok {
+	if gjson.GetBytes(body, "contents").Exists() {
 		return "gemini"
 	}
-	if _, ok := object["messages"]; ok {
-		if _, anthropicSystem := object["system"]; anthropicSystem {
+	if gjson.GetBytes(body, "messages").Exists() {
+		if gjson.GetBytes(body, "system").Exists() {
 			return "anthropic"
 		}
 		return "openai-chat"
 	}
-	if _, ok := object["input"]; ok {
+	if gjson.GetBytes(body, "input").Exists() {
 		return "openai-responses"
 	}
 	return ""
@@ -154,24 +205,41 @@ func IsSupportedPath(value string) bool {
 		strings.Contains(lower, "generatecontent")
 }
 
-func RequestedModel(path string, body []byte) (string, error) {
+type RequestMetadata struct {
+	Model  string
+	Stream bool
+}
+
+// InspectRequest performs the only request-body scan needed by the capture hot
+// path. It extracts shallow policy/session fields without materializing the
+// messages, tools, or multimodal payload into a generic object graph.
+func InspectRequest(path string, body []byte) (RequestMetadata, error) {
 	protocol := detectProtocol(path, body)
 	if protocol == "" {
-		return "", ErrUnsupportedProtocol
+		return RequestMetadata{}, ErrUnsupportedProtocol
 	}
-	request, err := normalizeRequest(protocol, body)
-	if err != nil {
-		return "", fmt.Errorf("%w: request model: %v", ErrInvalidCapture, err)
+	// GetBytes uses gjson's zero-copy []byte path. Two shallow lookups avoid the
+	// full-body allocation caused by ParseBytes on large inline Base64 payloads.
+	metadata := RequestMetadata{
+		Model:  strings.TrimSpace(gjson.GetBytes(body, "model").String()),
+		Stream: gjson.GetBytes(body, "stream").Bool() || strings.Contains(strings.ToLower(path), "streamgeneratecontent"),
 	}
-	model := request.Model
-	if model == "" && protocol == "gemini" {
-		model = modelFromPath(path)
+	if metadata.Model == "" && protocol == "gemini" {
+		metadata.Model = modelFromPath(path)
 	}
-	model = strings.TrimSpace(model)
-	if model == "" {
-		return "", fmt.Errorf("%w: request model is empty", ErrInvalidCapture)
+	if metadata.Model == "" {
+		return RequestMetadata{}, fmt.Errorf("%w: request model is empty", ErrInvalidCapture)
 	}
-	return model, nil
+	return metadata, nil
+}
+
+func RequestedModel(path string, body []byte) (string, error) {
+	metadata, err := InspectRequest(path, body)
+	return metadata.Model, err
+}
+
+func RequestIsStream(path string, body []byte) bool {
+	return gjson.GetBytes(body, "stream").Bool() || strings.Contains(strings.ToLower(path), "streamgeneratecontent")
 }
 
 func normalizeRequest(protocol string, body []byte) (normalizedRequest, error) {
@@ -481,11 +549,13 @@ func sessionSource(object map[string]any) string {
 }
 
 func sessionSourceFromBody(body []byte) string {
-	var object map[string]any
-	if json.Unmarshal(body, &object) != nil {
-		return ""
-	}
-	return sessionSource(object)
+	values := gjson.GetManyBytes(body,
+		"session_id",
+		"conversation_id",
+		"metadata.session_id",
+		"metadata.conversation_id",
+	)
+	return firstNonEmpty(values[0].String(), values[1].String(), values[2].String(), values[3].String())
 }
 
 func storageScopeKey(value string) string {

@@ -5,6 +5,9 @@
     "default",
     "classic"
   ],
+  "devDependencies": {
+    "typescript": "6.0.3"
+  },
   "catalog": {
     "@lobehub/icons": "^5.10.1",
     "@rsbuild/core": "^2.1.4",

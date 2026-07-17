@@ -1,11 +1,11 @@
 package datasetcapture
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -25,17 +25,21 @@ type Attempt struct {
 type Session struct {
 	mu sync.Mutex
 
-	capture Capture
-	attempt Attempt
-	success bool
+	capture              Capture
+	attempt              Attempt
+	requestBuffer        *SegmentedBuffer
+	requestComplete      bool
+	clientResponse       *SegmentedBuffer
+	clientComplete       bool
+	newRequestBuffer     func() *SegmentedBuffer
+	reservationPool      *BufferPool
+	reservedRequestBytes int64
+	success              bool
 }
 
 func NewSession(capture Capture) *Session {
 	if capture.CreatedAt.IsZero() {
 		capture.CreatedAt = time.Now()
-	}
-	if capture.SessionSource == "" {
-		capture.SessionSource = sessionSourceFromBody(capture.RequestBody)
 	}
 	return &Session{capture: capture}
 }
@@ -57,8 +61,21 @@ func (s *Session) BeginAttempt(model, route string) {
 		return
 	}
 	s.mu.Lock()
+	previous := s.requestBuffer
 	s.attempt = Attempt{Model: model, Route: route}
+	s.requestBuffer = nil
+	s.requestComplete = false
 	s.success = false
+	s.mu.Unlock()
+	previous.Release()
+}
+
+func (s *Session) SetRequestBufferFactory(factory func() *SegmentedBuffer) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.newRequestBuffer = factory
 	s.mu.Unlock()
 }
 
@@ -104,9 +121,13 @@ func (s *Session) FailAttempt() {
 		return
 	}
 	s.mu.Lock()
+	buffer := s.requestBuffer
+	s.requestBuffer = nil
+	s.requestComplete = false
 	s.attempt = Attempt{}
 	s.success = false
 	s.mu.Unlock()
+	buffer.Release()
 }
 
 func (s *Session) SucceedAttempt() {
@@ -122,34 +143,30 @@ func (s *Session) CaptureUpstreamRequest(req *http.Request) error {
 	if s == nil || req == nil || req.Body == nil {
 		return nil
 	}
-	body, err := io.ReadAll(req.Body)
-	if err != nil {
-		return err
-	}
-	_ = req.Body.Close()
-	req.Body = io.NopCloser(bytes.NewReader(body))
-
 	s.mu.Lock()
-	s.attempt.RequestBody = append([]byte(nil), body...)
 	s.attempt.Path = req.URL.Path
 	s.attempt.ContentType = req.Header.Get("Content-Type")
-	s.mu.Unlock()
-	return nil
-}
-
-func (s *Session) WrapUpstreamResponse(resp *http.Response) {
-	if s == nil || resp == nil || resp.Body == nil {
-		return
+	buffer := s.requestBuffer
+	if buffer == nil && s.newRequestBuffer != nil {
+		buffer = s.newRequestBuffer()
+		s.requestBuffer = buffer
 	}
-	resp.Body = &captureReadCloser{
-		ReadCloser: resp.Body,
-		onDone: func(body []byte, complete bool) {
+	s.requestComplete = false
+	s.mu.Unlock()
+	if buffer == nil {
+		return nil
+	}
+	req.Body = &captureRequestReadCloser{
+		ReadCloser: req.Body,
+		buffer:     buffer,
+		expected:   req.ContentLength,
+		onDone: func(complete bool) {
 			s.mu.Lock()
-			s.attempt.ResponseBody = body
-			s.attempt.Complete = complete
+			s.requestComplete = complete
 			s.mu.Unlock()
 		},
 	}
+	return nil
 }
 
 func (s *Session) SetClientResponse(body []byte, complete bool) {
@@ -157,13 +174,85 @@ func (s *Session) SetClientResponse(body []byte, complete bool) {
 		return
 	}
 	s.mu.Lock()
-	if len(s.attempt.ResponseBody) == 0 || !s.attempt.Complete {
-		s.attempt.ResponseBody = append([]byte(nil), body...)
-		s.attempt.Complete = complete
-		s.attempt.RequestBody = append([]byte(nil), s.capture.RequestBody...)
-		s.attempt.Path = s.capture.Path
-		s.attempt.ContentType = s.capture.ContentType
+	s.attempt.ResponseBody = append([]byte(nil), body...)
+	s.attempt.Complete = complete
+	s.mu.Unlock()
+}
+
+func (s *Session) SetClientResponseBuffer(buffer *SegmentedBuffer, complete bool) {
+	if s == nil {
+		buffer.Release()
+		return
 	}
+	s.mu.Lock()
+	previous := s.clientResponse
+	s.clientResponse = buffer
+	s.clientComplete = complete
+	s.mu.Unlock()
+	previous.Release()
+}
+
+func (s *Session) Release() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	requestBuffer := s.requestBuffer
+	clientBuffer := s.clientResponse
+	s.clientResponse = nil
+	s.requestBuffer = nil
+	reservationPool := s.reservationPool
+	reservedBytes := s.reservedRequestBytes
+	s.reservationPool = nil
+	s.reservedRequestBytes = 0
+	s.mu.Unlock()
+	requestBuffer.Release()
+	clientBuffer.Release()
+	reservationPool.releaseReserved(reservedBytes)
+}
+
+func (s *Session) reserveRetainedMemory(pool *BufferPool, maxSampleBytes int64) error {
+	if s == nil || pool == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.reservationPool != nil {
+		return nil
+	}
+	if s.requestBuffer != nil && s.requestBuffer.Err() != nil {
+		return s.requestBuffer.Err()
+	}
+	if s.clientResponse != nil && s.clientResponse.Err() != nil {
+		return s.clientResponse.Err()
+	}
+	requestBytes := int64(len(s.capture.RequestBody) + len(s.attempt.RequestBody))
+	totalBytes := requestBytes
+	if s.requestBuffer != nil {
+		totalBytes += s.requestBuffer.Len()
+	}
+	if s.clientResponse != nil {
+		totalBytes += s.clientResponse.Len()
+	}
+	if maxSampleBytes > 0 && totalBytes > maxSampleBytes {
+		pool.droppedSampleTooLarge.Add(1)
+		return ErrSampleTooLarge
+	}
+	if !pool.tryReserve(requestBytes) {
+		pool.droppedInFlightLimit.Add(1)
+		return ErrInFlightLimitReached
+	}
+	s.reservationPool = pool
+	s.reservedRequestBytes = requestBytes
+	return nil
+}
+
+func (s *Session) SetSpoolThreshold(bytes int64) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.capture.SpoolThresholdBytes = bytes
 	s.mu.Unlock()
 }
 
@@ -171,8 +260,39 @@ func (s *Session) BuildRecord() (Record, error) {
 	s.mu.Lock()
 	capture := s.capture
 	attempt := s.attempt
+	requestBuffer := s.requestBuffer
+	requestComplete := s.requestComplete
+	clientResponse := s.clientResponse
+	clientComplete := s.clientComplete
+	s.clientResponse = nil
+	s.requestBuffer = nil
 	success := s.success
 	s.mu.Unlock()
+	defer requestBuffer.Release()
+	defer clientResponse.Release()
+	if capture.SessionSource == "" {
+		// Session identity extraction is intentionally deferred to the worker so
+		// the request goroutine only performs the policy metadata scan.
+		capture.SessionSource = sessionSourceFromBody(capture.RequestBody)
+	}
+	if clientResponse != nil {
+		body, err := materializeClientResponse(clientResponse, capture.SpoolThresholdBytes)
+		if err != nil {
+			return Record{}, err
+		}
+		attempt.ResponseBody = body
+		attempt.Complete = clientComplete
+	}
+	if requestBuffer != nil {
+		if !requestComplete {
+			return Record{}, ErrIncompleteCapture
+		}
+		body, err := materializeClientResponse(requestBuffer, capture.SpoolThresholdBytes)
+		if err != nil {
+			return Record{}, err
+		}
+		attempt.RequestBody = body
+	}
 	if !success || !attempt.Complete {
 		return Record{}, ErrIncompleteCapture
 	}
@@ -190,27 +310,37 @@ func (s *Session) BuildRecord() (Record, error) {
 	}
 	capture.RequestBody = attempt.RequestBody
 	capture.ResponseBody = attempt.ResponseBody
-	capture.Path = attempt.Path
+	responsePath := capture.Path
+	requestPath := attempt.Path
+	if requestPath == "" {
+		requestPath = capture.Path
+	}
+	capture.Path = requestPath
 	capture.ContentType = attempt.ContentType
 	capture.Model = attempt.Model
 	capture.Route = attempt.Route
-	return Normalize(capture)
+	return normalizeProtocols(capture, requestPath, responsePath)
 }
 
-type captureReadCloser struct {
+type captureRequestReadCloser struct {
 	io.ReadCloser
-	mu       sync.Mutex
-	buffer   bytes.Buffer
-	complete bool
-	done     bool
-	onDone   func([]byte, bool)
+	buffer   *SegmentedBuffer
+	expected int64
+	onDone   func(bool)
+
+	mu   sync.Mutex
+	read int64
+	done bool
 }
 
-func (r *captureReadCloser) Read(p []byte) (int, error) {
+func (r *captureRequestReadCloser) Read(p []byte) (int, error) {
 	n, err := r.ReadCloser.Read(p)
 	if n > 0 {
+		// Capture failure is retained in the buffer but never replaces the real
+		// request-body read result seen by net/http.
+		_ = r.buffer.TryAppend(p[:n])
 		r.mu.Lock()
-		_, _ = r.buffer.Write(p[:n])
+		r.read += int64(n)
 		r.mu.Unlock()
 	}
 	if err == io.EOF {
@@ -219,40 +349,52 @@ func (r *captureReadCloser) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *captureReadCloser) Close() error {
+func (r *captureRequestReadCloser) Close() error {
 	r.mu.Lock()
-	complete := r.complete || payloadLooksComplete(r.buffer.Bytes())
+	complete := r.expected >= 0 && r.read >= r.expected
 	r.mu.Unlock()
 	r.finish(complete)
 	return r.ReadCloser.Close()
 }
 
-func (r *captureReadCloser) finish(complete bool) {
+func (r *captureRequestReadCloser) finish(complete bool) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.done {
+		r.mu.Unlock()
 		return
 	}
 	r.done = true
-	r.complete = complete
-	body := append([]byte(nil), r.buffer.Bytes()...)
+	r.mu.Unlock()
 	if r.onDone != nil {
-		r.onDone(body, complete)
+		r.onDone(complete)
 	}
 }
 
-func payloadLooksComplete(body []byte) bool {
-	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) == 0 {
-		return false
+func materializeClientResponse(buffer *SegmentedBuffer, spoolThreshold int64) ([]byte, error) {
+	if buffer == nil || spoolThreshold <= 0 || buffer.Len() < spoolThreshold {
+		return buffer.Bytes()
 	}
-	if bytes.HasPrefix(trimmed, []byte("{")) || bytes.HasPrefix(trimmed, []byte("[")) {
-		return json.Valid(trimmed)
+	file, err := os.CreateTemp("", "huichuan-dataset-response-*.spool")
+	if err != nil {
+		return nil, fmt.Errorf("%w: create: %v", ErrSpoolWriteFailed, err)
 	}
-	compact := bytes.ReplaceAll(trimmed, []byte(" "), nil)
-	return bytes.Contains(compact, []byte("data:[DONE]")) ||
-		bytes.Contains(compact, []byte(`"type":"message_stop"`)) ||
-		bytes.Contains(compact, []byte(`"type":"response.completed"`)) ||
-		bytes.Contains(compact, []byte(`"type":"response.done"`)) ||
-		bytes.Contains(compact, []byte(`"finishReason":`))
+	path := file.Name()
+	defer os.Remove(path)
+	if err := file.Chmod(0o600); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("%w: chmod: %v", ErrSpoolWriteFailed, err)
+	}
+	if _, err := buffer.WriteTo(file); err != nil {
+		_ = file.Close()
+		return nil, fmt.Errorf("%w: write: %v", ErrSpoolWriteFailed, err)
+	}
+	if err := file.Close(); err != nil {
+		return nil, fmt.Errorf("%w: close: %v", ErrSpoolWriteFailed, err)
+	}
+	buffer.Release()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("%w: read: %v", ErrSpoolWriteFailed, err)
+	}
+	return data, nil
 }

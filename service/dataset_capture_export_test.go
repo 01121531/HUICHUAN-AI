@@ -83,6 +83,43 @@ func TestBuildDatasetCaptureExportRejectsEmptySelection(t *testing.T) {
 	assert.ErrorIs(t, err, ErrDatasetCaptureExportEmpty)
 }
 
+func TestDatasetCaptureExportConcurrencyLimit(t *testing.T) {
+	datasetCaptureExportsActive.Store(0)
+	if !tryAcquireDatasetCaptureExport(1) {
+		t.Fatal("first export was not admitted")
+	}
+	if tryAcquireDatasetCaptureExport(1) {
+		t.Fatal("second export exceeded concurrency limit")
+	}
+	datasetCaptureExportsActive.Add(-1)
+	if !tryAcquireDatasetCaptureExport(1) {
+		t.Fatal("export slot was not released")
+	}
+	datasetCaptureExportsActive.Add(-1)
+}
+
+func TestDatasetCaptureExportLimiterPacesCumulativeBytes(t *testing.T) {
+	start := time.Unix(1_700_000_000, 0)
+	now := start
+	var slept time.Duration
+	limiter := newDatasetCaptureExportLimiter(2)
+	limiter.startedAt = start
+	limiter.now = func() time.Time { return now }
+	limiter.sleep = func(duration time.Duration) {
+		slept += duration
+		now = now.Add(duration)
+	}
+
+	limiter.wait(1 << 20)
+	assert.Equal(t, 500*time.Millisecond, slept)
+	limiter.wait(1 << 20)
+	assert.Equal(t, time.Second, slept)
+
+	unlimited := newDatasetCaptureExportLimiter(0)
+	unlimited.sleep = func(time.Duration) { t.Fatal("unlimited export must not sleep") }
+	unlimited.wait(100 << 20)
+}
+
 func TestDeleteDatasetCaptureConversationsRemovesWholeSelectedFilesAndIndices(t *testing.T) {
 	require.NoError(t, model.DB.AutoMigrate(&model.DatasetCaptureIndex{}))
 	node := "delete-service-node"

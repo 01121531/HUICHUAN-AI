@@ -40,11 +40,46 @@ export type UpdateOptionResponse = {
 }
 
 export type DatasetCaptureModelMode = 'all' | 'selected'
+export type DatasetCaptureScopeMode = 'all' | 'selected'
+
+export type DatasetCapturePerformancePolicy = {
+  queue_size: number
+  workers: number
+  buffer_segment_kb: number
+  max_sample_mb: number
+  max_inflight_mb: number
+  spool_threshold_mb: number
+  index_queue_size: number
+  index_batch_size: number
+  index_flush_interval_ms: number
+  min_free_disk_gb: number
+  max_disk_gb: number
+  export_concurrency: number
+  export_read_mbps: number
+}
+
+export type DatasetCaptureAlertPolicy = {
+  enabled: boolean
+  recipients: string[]
+  types: string[]
+  silence_minutes: number
+  alert_after_drops: number
+  send_recovery: boolean
+}
 
 export type DatasetCapturePolicy = {
+  version: number
   enabled: boolean
   model_mode: DatasetCaptureModelMode
   models: string[]
+  user_mode: DatasetCaptureScopeMode
+  user_ids: number[]
+  token_mode: DatasetCaptureScopeMode
+  token_ids: number[]
+  capture_stream: boolean
+  preserve_multimodal_base64: boolean
+  performance: DatasetCapturePerformancePolicy
+  alerts: DatasetCaptureAlertPolicy
 }
 
 export type DatasetCapturePolicyResponse = {
@@ -66,9 +101,95 @@ export type DatasetCaptureModelsResponse = {
   }
 }
 
+export type DatasetCapturePolicyUserOption = {
+  id: number
+  username: string
+}
+
+export type DatasetCapturePolicyTokenOption = {
+  id: number
+  user_id: number
+  name: string
+  username: string
+}
+
+export type DatasetCaptureSubjectsResponse = {
+  success: boolean
+  message?: string
+  data: {
+    users: DatasetCapturePolicyUserOption[]
+    tokens: DatasetCapturePolicyTokenOption[]
+  }
+}
+
+export type DatasetCaptureWriterStatus = {
+  queue_depth: number
+  queue_capacity: number
+  normalized_depth: number
+  index_queue_depth: number
+  index_queue_capacity: number
+  inflight_bytes: number
+  disk_bytes: number
+  free_disk_bytes: number
+  submitted: number
+  written: number
+  dropped_queue_full: number
+  dropped_sample_too_large: number
+  dropped_inflight_limit: number
+  build_failed: number
+  jsonl_write_failed: number
+  index_write_failed: number
+  disk_limit_dropped: number
+  disk_low_dropped: number
+  last_minute: DatasetCaptureActivityWindow
+  last_five_minutes: DatasetCaptureActivityWindow
+  jsonl_write_p50_ms: number
+  jsonl_write_p95_ms: number
+  index_write_p50_ms: number
+  index_write_p95_ms: number
+  last_error_type: string
+  last_error_at: number
+}
+
+export type DatasetCaptureActivityWindow = {
+  submitted: number
+  written: number
+  dropped_queue_full: number
+  dropped_sample_too_large: number
+  dropped_inflight_limit: number
+  build_failed: number
+  jsonl_write_failed: number
+  disk_limit_dropped: number
+  disk_low_dropped: number
+}
+
+export type DatasetCaptureAlertStatus = {
+  event_queue_depth: number
+  mail_queue_depth: number
+  events_dropped: number
+  mail_dropped: number
+  send_failed: number
+  last_alert_at: number
+  last_recovery_at: number
+}
+
+export type DatasetCaptureRuntimeStatusResponse = {
+  success: boolean
+  message?: string
+  data: {
+    enabled: boolean
+    writer_initialized: boolean
+    node: string
+    writer: DatasetCaptureWriterStatus
+    alerts: DatasetCaptureAlertStatus
+  }
+}
+
 export type DatasetCaptureAccessAuditAction = 'view' | 'download'
 export type DatasetCaptureAccessAuditOutcome =
-  'prepared' | 'delivered' | 'failed'
+  | 'prepared'
+  | 'delivered'
+  | 'failed'
 
 export type DatasetCaptureAccessAuditEntry = {
   event_id: string

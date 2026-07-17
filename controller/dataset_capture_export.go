@@ -62,6 +62,10 @@ func ExportDatasetCaptures(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	if errors.Is(err, service.ErrDatasetCaptureExportBusy) {
+		c.JSON(http.StatusTooManyRequests, gin.H{"success": false, "message": err.Error()})
+		return
+	}
 	if err != nil {
 		common.SysError("dataset capture export failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to export dataset captures"})

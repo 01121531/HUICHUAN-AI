@@ -47,6 +47,13 @@ func NewDatasetCaptureIndex(result datasetcapture.WriteResult) DatasetCaptureInd
 }
 
 func UpsertDatasetCaptureIndex(index DatasetCaptureIndex) error {
+	return UpsertDatasetCaptureIndices([]DatasetCaptureIndex{index})
+}
+
+func UpsertDatasetCaptureIndices(indices []DatasetCaptureIndex) error {
+	if len(indices) == 0 {
+		return nil
+	}
 	return DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "capture_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
@@ -54,17 +61,24 @@ func UpsertDatasetCaptureIndex(index DatasetCaptureIndex) error {
 			"user_group", "requested_model", "effective_model", "channel_id",
 			"session_id", "captured_at", "record_size",
 		}),
-	}).Create(&index).Error
+	}).Create(&indices).Error
 }
 
 func BackfillDatasetCaptureIndex(index DatasetCaptureIndex) error {
+	return BackfillDatasetCaptureIndices([]DatasetCaptureIndex{index})
+}
+
+func BackfillDatasetCaptureIndices(indices []DatasetCaptureIndex) error {
+	if len(indices) == 0 {
+		return nil
+	}
 	return DB.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "capture_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{
 			"node", "file_id", "row", "user_id", "token_id", "token_scope",
 			"effective_model", "session_id", "captured_at", "record_size",
 		}),
-	}).Create(&index).Error
+	}).Create(&indices).Error
 }
 
 func DeleteStaleDatasetCaptureIndices(node string, activeFileIDs []string) error {

@@ -5,6 +5,7 @@ import (
 	"sort"
 
 	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/middleware"
 	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	"github.com/gin-gonic/gin"
@@ -35,13 +36,25 @@ func UpdateDatasetCapturePolicy(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	middleware.ReloadDatasetCapture()
 	recordManageAudit(c, "dataset_capture.policy_update", map[string]interface{}{
-		"enabled_before": previous.Enabled,
-		"enabled_after":  policy.Enabled,
-		"mode_before":    previous.ModelMode,
-		"mode_after":     policy.ModelMode,
-		"models_before":  len(previous.Models),
-		"models_after":   len(policy.Models),
+		"enabled_before":      previous.Enabled,
+		"enabled_after":       policy.Enabled,
+		"mode_before":         previous.ModelMode,
+		"mode_after":          policy.ModelMode,
+		"models_before":       len(previous.Models),
+		"models_after":        len(policy.Models),
+		"user_mode_before":    previous.UserMode,
+		"user_mode_after":     policy.UserMode,
+		"users_before":        len(previous.UserIDs),
+		"users_after":         len(policy.UserIDs),
+		"token_mode_before":   previous.TokenMode,
+		"token_mode_after":    policy.TokenMode,
+		"tokens_before":       len(previous.TokenIDs),
+		"tokens_after":        len(policy.TokenIDs),
+		"alerts_before":       previous.Alerts.Enabled,
+		"alerts_after":        policy.Alerts.Enabled,
+		"performance_changed": previous.Performance != policy.Performance,
 	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": policy})
 }
@@ -65,4 +78,14 @@ func ListDatasetCapturePolicyModels(c *gin.Context) {
 		options = append(options, datasetCaptureModelOption{ID: modelID, Available: false})
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"models": options}})
+}
+
+func ListDatasetCapturePolicySubjects(c *gin.Context) {
+	policy := dataset_capture_setting.Get()
+	users, tokens, err := model.ListDatasetCapturePolicySubjects(policy.UserIDs, policy.TokenIDs, 500)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"users": users, "tokens": tokens}})
 }

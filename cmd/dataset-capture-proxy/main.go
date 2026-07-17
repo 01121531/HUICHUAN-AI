@@ -29,9 +29,10 @@ type proxyHandler struct {
 
 type proxyResponseWriter struct {
 	http.ResponseWriter
-	status   int
-	body     bytes.Buffer
-	writeErr error
+	status     int
+	buffer     *datasetcapture.SegmentedBuffer
+	writeErr   error
+	captureErr error
 }
 
 func (w *proxyResponseWriter) WriteHeader(status int) {
@@ -43,10 +44,14 @@ func (w *proxyResponseWriter) Write(data []byte) (int, error) {
 	if w.status == 0 {
 		w.status = http.StatusOK
 	}
-	_, _ = w.body.Write(data)
 	n, err := w.ResponseWriter.Write(data)
+	if n > 0 && w.captureErr == nil {
+		w.captureErr = w.buffer.TryAppend(data[:n])
+	}
 	if err != nil {
 		w.writeErr = err
+	} else if n != len(data) {
+		w.writeErr = io.ErrShortWrite
 	}
 	return n, err
 }
@@ -66,12 +71,6 @@ func newProxyHandler(target *url.URL, writer *datasetcapture.Writer, hmacKey str
 			req.URL.Path = joinURLPath(target.Path, req.URL.Path)
 			req.Host = target.Host
 			req.Header.Del("Accept-Encoding")
-		},
-		ModifyResponse: func(resp *http.Response) error {
-			if session := datasetcapture.FromContext(resp.Request.Context()); session != nil {
-				session.WrapUpstreamResponse(resp)
-			}
-			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, _ *http.Request, err error) {
 			log.Printf("proxy request failed: %v", err)
@@ -109,25 +108,24 @@ func (h *proxyHandler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		CreatedAt:   createdAt,
 		Route:       h.target.Host,
 	})
+	h.writer.PrepareSession(session)
 	session.BeginAttempt("", h.target.Host)
 	req = req.WithContext(datasetcapture.WithSession(req.Context(), session))
 
-	captureWriter := &proxyResponseWriter{ResponseWriter: w}
+	responseBuffer := h.writer.NewResponseBuffer()
+	defer func() {
+		responseBuffer.Release()
+	}()
+	captureWriter := &proxyResponseWriter{ResponseWriter: w, buffer: responseBuffer}
 	h.proxy.ServeHTTP(captureWriter, req)
-	if captureWriter.writeErr != nil || captureWriter.status < 200 || captureWriter.status >= 300 {
+	if captureWriter.writeErr != nil || captureWriter.captureErr != nil || captureWriter.status < 200 || captureWriter.status >= 300 {
 		session.FailAttempt()
 		return
 	}
-	session.SetClientResponse(captureWriter.body.Bytes(), true)
+	session.SetClientResponseBuffer(responseBuffer, true)
+	responseBuffer = nil
 	session.SucceedAttempt()
-	record, err := session.BuildRecord()
-	if err != nil {
-		if !errors.Is(err, datasetcapture.ErrIncompleteCapture) && !errors.Is(err, datasetcapture.ErrUnsupportedProtocol) {
-			log.Printf("capture skipped invalid sample: %v", err)
-		}
-		return
-	}
-	if err := h.writer.Submit(record); err != nil {
+	if err := h.writer.SubmitSession(session); err != nil {
 		log.Printf("capture submit failed: %v", err)
 	}
 }
@@ -145,17 +143,29 @@ func main() {
 	output := firstValue(os.Getenv("DATASET_CAPTURE_PATH"), "./logs/datasets/sample-{date}-{node}.jsonl")
 	node := firstValue(os.Getenv("NODE_NAME"), os.Getenv("HOSTNAME"), "capture-proxy")
 	queueSize := envInt("DATASET_CAPTURE_QUEUE_SIZE", 128)
+	workers := envInt("DATASET_CAPTURE_WORKERS", 2)
+	segmentSizeKB := envInt("DATASET_CAPTURE_BUFFER_SEGMENT_KB", 64)
+	maxSampleMB := envInt("DATASET_CAPTURE_MAX_SAMPLE_MB", 100)
+	maxInFlightMB := envInt("DATASET_CAPTURE_MAX_INFLIGHT_MB", 512)
+	spoolThresholdMB := envInt("DATASET_CAPTURE_SPOOL_THRESHOLD_MB", 2)
 	maxDiskGB := envInt("DATASET_CAPTURE_MAX_DISK_GB", 10)
+	minFreeDiskGB := envInt("DATASET_CAPTURE_MIN_FREE_DISK_GB", 2)
 	hmacKey := os.Getenv("DATASET_CAPTURE_HMAC_KEY")
 	if hmacKey == "" {
 		log.Fatal("DATASET_CAPTURE_HMAC_KEY is required for the standalone proxy")
 	}
 	writer, err := datasetcapture.NewWriter(datasetcapture.WriterConfig{
-		PathTemplate: output,
-		Node:         node,
-		QueueSize:    queueSize,
-		MaxDiskBytes: int64(maxDiskGB) << 30,
-		Partitioned:  true,
+		PathTemplate:        output,
+		Node:                node,
+		QueueSize:           queueSize,
+		Workers:             workers,
+		SegmentSize:         segmentSizeKB << 10,
+		MaxSampleBytes:      int64(maxSampleMB) << 20,
+		MaxInFlightBytes:    int64(maxInFlightMB) << 20,
+		SpoolThresholdBytes: int64(spoolThresholdMB) << 20,
+		MaxDiskBytes:        int64(maxDiskGB) << 30,
+		MinFreeDiskBytes:    int64(minFreeDiskGB) << 30,
+		Partitioned:         true,
 		OnError: func(err error) {
 			log.Printf("dataset writer: %v", err)
 		},

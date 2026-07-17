@@ -3,10 +3,14 @@ package datasetcapture
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -110,13 +114,14 @@ func TestWriterReportsCommittedRecordMetadata(t *testing.T) {
 	}
 }
 
-func TestWriterIndexCallbackAndConversationDeleteShareFileLock(t *testing.T) {
+func TestWriterIndexCallbackDoesNotHoldConversationFileLock(t *testing.T) {
 	directory := t.TempDir()
 	template := filepath.Join(directory, "sample-{date}-{node}.jsonl")
 	callbackStarted := make(chan WriteResult, 1)
 	releaseCallback := make(chan struct{})
 	writer, err := NewWriter(WriterConfig{
 		PathTemplate: template, Node: "lock-node", Partitioned: true,
+		IndexBatchSize: 1,
 		OnWritten: func(result WriteResult) error {
 			callbackStarted <- result
 			<-releaseCallback
@@ -146,13 +151,13 @@ func TestWriterIndexCallbackAndConversationDeleteShareFileLock(t *testing.T) {
 	}()
 	select {
 	case err := <-deleteDone:
-		t.Fatalf("delete passed the file lock before the index callback completed: %v", err)
-	case <-time.After(50 * time.Millisecond):
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("delete remained blocked by the index callback")
 	}
 	close(releaseCallback)
-	if err := <-deleteDone; err != nil {
-		t.Fatal(err)
-	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -321,5 +326,347 @@ func TestWriterRestartsRowsAfterConversationFileDeletion(t *testing.T) {
 	}
 	if recreated.Meta.SourceRow != 1 {
 		t.Fatalf("source row=%d want=1", recreated.Meta.SourceRow)
+	}
+}
+
+func TestWriterBuildsAndValidatesSessionAsynchronously(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	errorsReported := make(chan error, 1)
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: output,
+		QueueSize:    1,
+		OnError: func(err error) {
+			errorsReported <- err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := NewSession(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		nil,
+	))
+	session.BeginAttempt("gpt-test", "route")
+	session.SucceedAttempt()
+
+	if err := writer.SubmitSession(session); err != nil {
+		t.Fatalf("SubmitSession performed synchronous validation: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case reported := <-errorsReported:
+		if !errors.Is(reported, ErrIncompleteCapture) {
+			t.Fatalf("reported error = %v", reported)
+		}
+	default:
+		t.Fatal("worker did not report the incomplete session")
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("invalid session created output: %v", err)
+	}
+}
+
+func TestWriterTracksDiskBytesWithoutPerRecordDirectoryScan(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	writer, err := NewWriter(WriterConfig{PathTemplate: output, Workers: 2, QueueSize: 8})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 4 {
+		if err := writer.Submit(record); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if writer.DiskBytes() != info.Size() {
+		t.Fatalf("tracked disk bytes=%d file size=%d", writer.DiskBytes(), info.Size())
+	}
+}
+
+func TestWriterDiskLimitDropsWholeLaterRecord(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	errorsReported := make(chan error, 2)
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: output,
+		MaxDiskBytes: 1,
+		OnError: func(err error) {
+			errorsReported <- err
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := bytes.Count(data, []byte{'\n'}); lines != 1 {
+		t.Fatalf("JSONL rows=%d, want 1", lines)
+	}
+	select {
+	case reported := <-errorsReported:
+		if !strings.Contains(reported.Error(), "disk limit reached") {
+			t.Fatalf("reported error=%v", reported)
+		}
+	default:
+		t.Fatal("disk limit was not reported")
+	}
+}
+
+func TestWriterStatusCountsSubmittedWrittenAndDropped(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	writer, err := NewWriter(WriterConfig{PathTemplate: output, QueueSize: 16})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	buffer := writer.NewResponseBuffer()
+	writer.config.MaxSampleBytes = 1
+	buffer.maxBytes = 1
+	dropErr := buffer.TryAppendString("too large")
+	writer.ReportCaptureDrop(dropErr)
+	buffer.Release()
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	status := writer.Status()
+	if status.Submitted != 1 || status.Written != 1 || status.DroppedSampleTooLarge != 1 {
+		t.Fatalf("unexpected status: %#v", status)
+	}
+	if status.LastErrorType != EventSampleTooLarge {
+		t.Fatalf("last error type=%q", status.LastErrorType)
+	}
+}
+
+func TestWriterMinimumFreeDiskDropsWholeRecord(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	events := make(chan Event, 1)
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: output, MinFreeDiskBytes: int64(^uint64(0) >> 1),
+		OnEvent: func(event Event) {
+			if !event.Resolved {
+				events <- event
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("low disk record created output: %v", err)
+	}
+	select {
+	case event := <-events:
+		if event.Type != EventDiskLow {
+			t.Fatalf("event type=%q", event.Type)
+		}
+	default:
+		t.Fatal("low disk event was not emitted")
+	}
+}
+
+func TestWriterJSONLFailureDropsWholeRecordAndEmitsEvent(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	events := make(chan Event, 1)
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: output,
+		OnEvent: func(event Event) {
+			if !event.Resolved && event.Type == EventJSONLWriteFailed {
+				events <- event
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(output, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if status := writer.Status(); status.JSONLWriteFailed != 1 || status.Written != 0 {
+		t.Fatalf("unexpected status after JSONL failure: %#v", status)
+	}
+	select {
+	case event := <-events:
+		if event.Err == nil {
+			t.Fatal("JSONL failure event did not include a sanitized error source")
+		}
+	default:
+		t.Fatal("JSONL failure event was not emitted")
+	}
+	entries, err := os.ReadDir(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("JSONL failure left partial files: %v", entries)
+	}
+}
+
+func TestSafelyBuildRecordRecoversWorkerPanic(t *testing.T) {
+	_, err := safelyBuildRecord(func() (Record, error) {
+		panic("broken normalizer")
+	})
+	if !errors.Is(err, ErrWorkerPanic) {
+		t.Fatalf("error=%v, want ErrWorkerPanic", err)
+	}
+}
+
+func TestWriterRetriesIndexAndKeepsJSONL(t *testing.T) {
+	output := filepath.Join(t.TempDir(), "sample.jsonl")
+	var attempts atomic.Int64
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: output, IndexBatchSize: 1,
+		OnWrittenBatch: func(_ []WriteResult) error {
+			if attempts.Add(1) < 3 {
+				return errors.New("temporary database failure")
+			}
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if attempts.Load() != 3 {
+		t.Fatalf("index attempts=%d, want 3", attempts.Load())
+	}
+	if writer.Status().IndexWriteFailed != 0 {
+		t.Fatalf("recovered index write counted as failure: %#v", writer.Status())
+	}
+	if _, err := os.Stat(output); err != nil {
+		t.Fatalf("JSONL was not retained: %v", err)
+	}
+}
+
+func TestWriterCloseContextTimesOutAndCanFinish(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "sample.jsonl")
+	indexStarted := make(chan struct{})
+	releaseIndex := make(chan struct{})
+	writer, err := NewWriter(WriterConfig{
+		PathTemplate: path,
+		QueueSize:    4,
+		OnWrittenBatch: func([]WriteResult) error {
+			close(indexStarted)
+			<-releaseIndex
+			return nil
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`),
+		[]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Submit(record); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-indexStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("index callback did not start")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if err := writer.CloseContext(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("CloseContext error=%v", err)
+	}
+	close(releaseIndex)
+	finishCtx, finishCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer finishCancel()
+	if err := writer.CloseContext(finishCtx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("JSONL was not retained after delayed shutdown: %v", err)
 	}
 }

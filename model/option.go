@@ -28,15 +28,37 @@ func AllOption() ([]*Option, error) {
 	return options, err
 }
 
+func datasetCapturePolicyFromEnvironment() dataset_capture_setting.Policy {
+	policy := dataset_capture_setting.DefaultPolicy()
+	policy.Enabled = common.GetEnvOrDefaultBool("DATASET_CAPTURE_ENABLED", false)
+	policy.Performance.QueueSize = common.GetEnvOrDefault("DATASET_CAPTURE_QUEUE_SIZE", policy.Performance.QueueSize)
+	policy.Performance.Workers = common.GetEnvOrDefault("DATASET_CAPTURE_WORKERS", policy.Performance.Workers)
+	policy.Performance.BufferSegmentKB = common.GetEnvOrDefault("DATASET_CAPTURE_BUFFER_SEGMENT_KB", policy.Performance.BufferSegmentKB)
+	policy.Performance.MaxSampleMB = common.GetEnvOrDefault("DATASET_CAPTURE_MAX_SAMPLE_MB", policy.Performance.MaxSampleMB)
+	policy.Performance.MaxInFlightMB = common.GetEnvOrDefault("DATASET_CAPTURE_MAX_INFLIGHT_MB", policy.Performance.MaxInFlightMB)
+	policy.Performance.SpoolThresholdMB = common.GetEnvOrDefault("DATASET_CAPTURE_SPOOL_THRESHOLD_MB", policy.Performance.SpoolThresholdMB)
+	policy.Performance.IndexQueueSize = common.GetEnvOrDefault("DATASET_CAPTURE_INDEX_QUEUE_SIZE", policy.Performance.IndexQueueSize)
+	policy.Performance.IndexBatchSize = common.GetEnvOrDefault("DATASET_CAPTURE_INDEX_BATCH_SIZE", policy.Performance.IndexBatchSize)
+	policy.Performance.IndexFlushIntervalMS = common.GetEnvOrDefault("DATASET_CAPTURE_INDEX_FLUSH_INTERVAL_MS", policy.Performance.IndexFlushIntervalMS)
+	policy.Performance.MinFreeDiskGB = common.GetEnvOrDefault("DATASET_CAPTURE_MIN_FREE_DISK_GB", policy.Performance.MinFreeDiskGB)
+	policy.Performance.MaxDiskGB = common.GetEnvOrDefault("DATASET_CAPTURE_MAX_DISK_GB", policy.Performance.MaxDiskGB)
+	policy.Performance.ExportConcurrency = common.GetEnvOrDefault("DATASET_CAPTURE_EXPORT_CONCURRENCY", policy.Performance.ExportConcurrency)
+	policy.Performance.ExportReadMBps = common.GetEnvOrDefault("DATASET_CAPTURE_EXPORT_READ_MBPS", policy.Performance.ExportReadMBps)
+	policy.Alerts.SilenceMinutes = common.GetEnvOrDefault("DATASET_CAPTURE_ALERT_SILENCE_MINUTES", policy.Alerts.SilenceMinutes)
+	policy.Alerts.AlertAfterDrops = common.GetEnvOrDefault("DATASET_CAPTURE_ALERT_AFTER_DROPS", policy.Alerts.AlertAfterDrops)
+	if normalized, err := dataset_capture_setting.Normalize(policy); err == nil {
+		return normalized
+	}
+	return dataset_capture_setting.DefaultPolicy()
+}
+
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
 	common.OptionMap = make(map[string]string)
-	datasetCaptureEnabled := common.GetEnvOrDefaultBool("DATASET_CAPTURE_ENABLED", false)
-	_ = dataset_capture_setting.Apply(dataset_capture_setting.Policy{
-		Enabled:   datasetCaptureEnabled,
-		ModelMode: dataset_capture_setting.ModelModeAll,
-		Models:    []string{},
-	})
+	datasetCapturePolicy := datasetCapturePolicyFromEnvironment()
+	datasetCaptureEnabled := datasetCapturePolicy.Enabled
+	_ = dataset_capture_setting.Apply(datasetCapturePolicy)
+	datasetCapturePolicyJSON, _ := common.Marshal(datasetCapturePolicy)
 
 	// 添加原有的系统配置
 	common.OptionMap["FileUploadPermission"] = strconv.Itoa(common.FileUploadPermission)
@@ -58,6 +80,7 @@ func InitOptionMap() {
 	common.OptionMap["DatasetCaptureEnabled"] = strconv.FormatBool(datasetCaptureEnabled)
 	common.OptionMap["DatasetCaptureModelMode"] = dataset_capture_setting.ModelModeAll
 	common.OptionMap["DatasetCaptureModels"] = "[]"
+	common.OptionMap["DatasetCapturePolicyV2"] = string(datasetCapturePolicyJSON)
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
@@ -285,10 +308,15 @@ func UpdateDatasetCapturePolicy(policy dataset_capture_setting.Policy) error {
 	if err != nil {
 		return err
 	}
+	policyJSON, err := common.Marshal(normalized)
+	if err != nil {
+		return err
+	}
 	values := map[string]string{
 		"DatasetCaptureEnabled":   strconv.FormatBool(normalized.Enabled),
 		"DatasetCaptureModelMode": normalized.ModelMode,
 		"DatasetCaptureModels":    string(modelsJSON),
+		"DatasetCapturePolicyV2":  string(policyJSON),
 	}
 	err = DB.Transaction(func(tx *gorm.DB) error {
 		for key, value := range values {
@@ -315,7 +343,7 @@ func UpdateDatasetCapturePolicy(policy dataset_capture_setting.Policy) error {
 }
 
 func isDatasetCapturePolicyOption(key string) bool {
-	return key == "DatasetCaptureEnabled" || key == "DatasetCaptureModelMode" || key == "DatasetCaptureModels"
+	return key == "DatasetCaptureEnabled" || key == "DatasetCaptureModelMode" || key == "DatasetCaptureModels" || key == "DatasetCapturePolicyV2"
 }
 
 func applyDatasetCapturePolicyFromOptionMap() error {
@@ -323,7 +351,15 @@ func applyDatasetCapturePolicyFromOptionMap() error {
 	enabled := common.OptionMap["DatasetCaptureEnabled"]
 	mode := common.OptionMap["DatasetCaptureModelMode"]
 	models := common.OptionMap["DatasetCaptureModels"]
+	policyJSON := common.OptionMap["DatasetCapturePolicyV2"]
 	common.OptionMapRWMutex.RUnlock()
+	if strings.TrimSpace(policyJSON) != "" {
+		policy, err := dataset_capture_setting.ParseJSON(policyJSON)
+		if err == nil {
+			return dataset_capture_setting.Apply(policy)
+		}
+		common.SysLog("failed to parse DatasetCapturePolicyV2, falling back to legacy options: " + err.Error())
+	}
 	policy, err := dataset_capture_setting.Parse(enabled, mode, models)
 	if err != nil {
 		return err

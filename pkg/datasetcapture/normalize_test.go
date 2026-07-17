@@ -1,6 +1,7 @@
 package datasetcapture
 
 import (
+	"bytes"
 	"encoding/json"
 	"reflect"
 	"testing"
@@ -70,6 +71,26 @@ func TestRequestedModelAcrossProtocols(t *testing.T) {
 	}
 }
 
+func TestInspectRequestExtractsPolicyMetadata(t *testing.T) {
+	metadata, err := InspectRequest("/v1/chat/completions", []byte(`{"model":"gpt-test","stream":true,"metadata":{"conversation_id":"conversation-7"},"messages":[{"role":"user","content":"hello"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Model != "gpt-test" || !metadata.Stream {
+		t.Fatalf("unexpected metadata: %#v", metadata)
+	}
+}
+
+func TestInspectRequestGetsGeminiModelFromPath(t *testing.T) {
+	metadata, err := InspectRequest("/v1beta/models/gemini-2.5-pro:streamGenerateContent", []byte(`{"contents":[{"role":"user","parts":[{"text":"hello"}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Model != "gemini-2.5-pro" || !metadata.Stream {
+		t.Fatalf("unexpected Gemini metadata: %#v", metadata)
+	}
+}
+
 func TestNormalizeAnthropicStream(t *testing.T) {
 	request := []byte(`{"model":"claude-test","system":"be useful","messages":[{"role":"user","content":[{"type":"text","text":"run"}]}],"tools":[{"name":"shell","description":"run command","input_schema":{"type":"object"}}]}`)
 	response := []byte("event: message_start\n" +
@@ -117,6 +138,29 @@ func TestNormalizeGeminiAndResponses(t *testing.T) {
 	}
 	if responses.SystemPrompt != "rules" || *responses.Response.Content != "answer" || *responses.Response.StopReason != "end_turn" {
 		t.Fatalf("unexpected Responses record: %#v", responses)
+	}
+}
+
+func TestNormalizeCanOmitMultimodalBase64Payload(t *testing.T) {
+	capture := testCapture(
+		"/v1beta/models/gemini-test:generateContent",
+		[]byte(`{"model":"gemini-test","contents":[{"role":"user","parts":[{"text":"inspect"},{"inlineData":{"mimeType":"image/png","data":"sensitive-base64"}}]}]}`),
+		[]byte(`{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`),
+	)
+	capture.StripMultimodalBase64 = true
+	record, err := Normalize(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encoded, []byte("sensitive-base64")) {
+		t.Fatalf("base64 payload was retained: %s", encoded)
+	}
+	if !bytes.Contains(encoded, []byte(`"omitted":true`)) {
+		t.Fatalf("omission marker missing: %s", encoded)
 	}
 }
 
