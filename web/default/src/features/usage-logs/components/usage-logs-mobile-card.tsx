@@ -242,8 +242,7 @@ function MobileTokensField({ log }: { log: UsageLog }) {
 
 /** Mobile-only User block: own layout so avatar/name always line up on the same baseline. */
 function MobileUserField({ log }: { log: UsageLog }) {
-  const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
-    useUsageLogsContext()
+  const { setSelectedUserId, setUserInfoDialogOpen } = useUsageLogsContext()
 
   if (!log.username) return null
 
@@ -259,19 +258,14 @@ function MobileUserField({ log }: { log: UsageLog }) {
     >
       <Avatar className='ring-border/60 size-6 shrink-0 ring-1'>
         <AvatarFallback
-          className={cn(
-            'text-[11px] font-semibold',
-            !sensitiveVisible && 'bg-muted text-muted-foreground'
-          )}
-          style={
-            sensitiveVisible ? getUserAvatarStyle(log.username) : undefined
-          }
+          className='text-[11px] font-semibold'
+          style={getUserAvatarStyle(log.username)}
         >
-          {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+          {getUserAvatarFallback(log.username)}
         </AvatarFallback>
       </Avatar>
       <span className='text-foreground min-w-0 truncate text-sm'>
-        {sensitiveVisible ? log.username : '••••'}
+        {log.username}
       </span>
     </button>
   )
@@ -322,7 +316,10 @@ function CommonLogsCard<TData>({
   return (
     <div className='space-y-2.5'>
       <div className='flex min-w-0 items-center justify-between gap-3'>
-        <CompactCell cell={modelCell} className='flex-1' />
+        <div className='flex min-w-0 flex-1 items-center gap-2'>
+          <CompactCell cell={cells.get('select')} className='shrink-0' />
+          <CompactCell cell={modelCell} className='min-w-0 flex-1' />
+        </div>
         <CompactCell
           cell={quotaCell}
           className='shrink-0 text-right [&_.flex-col]:items-end'
@@ -359,6 +356,11 @@ function CommonLogsCard<TData>({
         ) : (
           <SummaryField cell={cells.get('prompt_tokens')} />
         )}
+        <SummaryField label={t('Request IP')} cell={cells.get('ip')} />
+        <SummaryField
+          label={t('Billing Method')}
+          cell={cells.get('billing_method')}
+        />
         <SummaryField
           label={t('Details')}
           cell={cells.get('content')}

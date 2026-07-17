@@ -322,6 +322,10 @@ func cloneAlertConfig(config *AlertConfig) {
 }
 
 func buildAlertNotification(config AlertConfig, eventType string, state alertState, recovered bool) AlertNotification {
+	category := "数据快照"
+	if strings.HasPrefix(eventType, "usage_log_") {
+		category = "使用日志"
+	}
 	status := "异常"
 	subjectState := "告警"
 	if recovered {
@@ -330,13 +334,13 @@ func buildAlertNotification(config AlertConfig, eventType string, state alertSta
 	}
 	duration := state.lastAt.Sub(state.firstAt).Round(time.Second)
 	content := fmt.Sprintf(
-		"<h2>数据快照%s</h2><table><tr><td>节点</td><td>%s</td></tr><tr><td>版本</td><td>%s</td></tr><tr><td>状态</td><td>%s</td></tr><tr><td>类型</td><td>%s</td></tr><tr><td>首次时间</td><td>%s</td></tr><tr><td>最近时间</td><td>%s</td></tr><tr><td>持续时间</td><td>%s</td></tr><tr><td>事件次数</td><td>%d</td></tr><tr><td>丢弃快照</td><td>%d</td></tr><tr><td>影响字节</td><td>%d</td></tr></table>",
-		subjectState, html.EscapeString(config.Node), html.EscapeString(config.Version), status,
+		"<h2>%s%s</h2><table><tr><td>节点</td><td>%s</td></tr><tr><td>版本</td><td>%s</td></tr><tr><td>状态</td><td>%s</td></tr><tr><td>类型</td><td>%s</td></tr><tr><td>首次时间</td><td>%s</td></tr><tr><td>最近时间</td><td>%s</td></tr><tr><td>持续时间</td><td>%s</td></tr><tr><td>事件次数</td><td>%d</td></tr><tr><td>丢弃记录</td><td>%d</td></tr><tr><td>影响字节</td><td>%d</td></tr></table>",
+		category, subjectState, html.EscapeString(config.Node), html.EscapeString(config.Version), status,
 		html.EscapeString(eventType), state.firstAt.Format(time.RFC3339), state.lastAt.Format(time.RFC3339),
 		duration, state.count, state.dropped, state.bytes,
 	)
 	return AlertNotification{
-		Subject:    fmt.Sprintf("[HUICHUAN] 数据快照%s：%s", subjectState, eventType),
+		Subject:    fmt.Sprintf("[HUICHUAN] %s%s：%s", category, subjectState, eventType),
 		Recipients: append([]string(nil), config.Recipients...), HTML: content,
 	}
 }

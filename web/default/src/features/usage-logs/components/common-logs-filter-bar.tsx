@@ -19,11 +19,9 @@ For commercial licensing, please contact support@quantumnous.com
 import { useQueryClient, useIsFetching } from '@tanstack/react-query'
 import { useNavigate, getRouteApi } from '@tanstack/react-router'
 import type { Table } from '@tanstack/react-table'
-import { Eye, EyeOff } from 'lucide-react'
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/ui/button'
 import {
   Select,
   SelectContent,
@@ -32,13 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 import { LOG_TYPE_ALL_VALUE, LOG_TYPE_FILTERS } from '../constants'
+import type { UsageLog } from '../data/schema'
 import { buildSearchParams } from '../lib/filter'
 import { getDefaultTimeRange } from '../lib/utils'
 import type { CommonLogFilters } from '../types'
@@ -49,7 +43,8 @@ import {
   LogsFilterInput,
   LogsFilterToolbar,
 } from './logs-filter-toolbar'
-import { useLogsViewScope, useUsageLogsContext } from './usage-logs-provider'
+import { UsageLogExportActions } from './usage-log-export-actions'
+import { useLogsViewScope } from './usage-logs-provider'
 
 const route = getRouteApi('/_authenticated/usage-logs/$section')
 
@@ -105,19 +100,18 @@ function buildSearchSourceKey(values: {
     .join('\u001f')
 }
 
-interface CommonLogsFilterBarProps<TData> {
-  table: Table<TData>
+interface CommonLogsFilterBarProps {
+  table: Table<UsageLog>
+  selectedLogs: UsageLog[]
+  total: number
 }
 
-export function CommonLogsFilterBar<TData>(
-  props: CommonLogsFilterBarProps<TData>
-) {
+export function CommonLogsFilterBar(props: CommonLogsFilterBarProps) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const searchParams = route.useSearch()
   const { isAdminView: isAdmin } = useLogsViewScope()
-  const { sensitiveVisible, setSensitiveVisible } = useUsageLogsContext()
   const fetchingLogs = useIsFetching({ queryKey: ['logs'] })
 
   const searchState = useMemo<CommonLogDraft>(() => {
@@ -251,7 +245,6 @@ export function CommonLogsFilterBar<TData>(
     filters.requestId,
     filters.upstreamRequestId,
   ].filter(Boolean).length
-  const sensitiveType = sensitiveVisible ? 'text' : 'password'
   const logTypeItems = useMemo(
     () =>
       LOG_TYPE_FILTERS.map((type) => ({
@@ -268,25 +261,16 @@ export function CommonLogsFilterBar<TData>(
       <CommonLogsStats />
     </div>
   )
-  const sensitiveToggle = (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant='ghost'
-            size='icon'
-            onClick={() => setSensitiveVisible(!sensitiveVisible)}
-            aria-label={sensitiveVisible ? t('Hide') : t('Show')}
-            className='text-muted-foreground hover:text-foreground size-7'
-          />
-        }
-      >
-        {sensitiveVisible ? <Eye /> : <EyeOff />}
-      </TooltipTrigger>
-      <TooltipContent>
-        {sensitiveVisible ? t('Hide') : t('Show')}
-      </TooltipContent>
-    </Tooltip>
+  const actionStart = (
+    <div className='flex items-center gap-1'>
+      <UsageLogExportActions
+        table={props.table}
+        selectedLogs={props.selectedLogs}
+        total={props.total}
+        isAdmin={isAdmin}
+        searchParams={searchParams as Record<string, unknown>}
+      />
+    </div>
   )
 
   const dateRangeFilter = (
@@ -315,7 +299,6 @@ export function CommonLogsFilterBar<TData>(
     <LogsFilterField>
       <LogsFilterInput
         placeholder={t('Group')}
-        type={sensitiveType}
         value={filters.group || ''}
         onChange={(e) => handleChange('group', e.target.value)}
         onKeyDown={handleKeyDown}
@@ -363,7 +346,6 @@ export function CommonLogsFilterBar<TData>(
       <LogsFilterField>
         <LogsFilterInput
           placeholder={t('Token Name')}
-          type={sensitiveType}
           value={filters.token || ''}
           onChange={(e) => handleChange('token', e.target.value)}
           onKeyDown={handleKeyDown}
@@ -373,7 +355,6 @@ export function CommonLogsFilterBar<TData>(
         <LogsFilterField>
           <LogsFilterInput
             placeholder={t('Username')}
-            type={sensitiveType}
             value={filters.username || ''}
             onChange={(e) => handleChange('username', e.target.value)}
             onKeyDown={handleKeyDown}
@@ -413,7 +394,7 @@ export function CommonLogsFilterBar<TData>(
     <LogsFilterToolbar
       table={props.table}
       stats={statsBar}
-      actionStart={sensitiveToggle}
+      actionStart={actionStart}
       primaryFilters={
         <>
           {dateRangeFilter}

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -95,6 +77,8 @@ const ALERT_TYPES = [
   'index_write_failed',
   'spool_write_failed',
   'worker_panic',
+  'usage_log_queue_full',
+  'usage_log_write_failed',
 ] as const
 
 const DEFAULT_POLICY: DatasetCapturePolicy = {
@@ -1270,9 +1254,9 @@ export function DatasetCaptureSettingsSection() {
               <NumberField
                 form={form}
                 name='alerts.alert_after_drops'
-                label={t('Alert after dropped snapshots')}
+                label={t('Alert after matching events')}
                 help={t(
-                  'Sets how many matching drop events activate an operational alert. The first email is queued when this threshold is reached.'
+                  'Sets how many matching events activate an operational alert. The first email is queued when this threshold is reached.'
                 )}
                 range='1–1,000,000'
                 defaultValue={1}
@@ -1436,3 +1420,21 @@ export function DatasetCaptureSettingsSection() {
     </SettingsSection>
   )
 }
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/

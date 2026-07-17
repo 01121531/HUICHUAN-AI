@@ -21,6 +21,7 @@ const (
 	SystemTaskTypeModelUpdate    = "model_update"
 	SystemTaskTypeMidjourneyPoll = "midjourney_poll"
 	SystemTaskTypeAsyncTaskPoll  = "async_task_poll"
+	SystemTaskTypeUsageLogExport = "usage_log_export"
 )
 
 var ErrSystemTaskLockLost = errors.New("system task lock lost")
@@ -90,6 +91,16 @@ func GenerateSystemTaskID() (string, error) {
 }
 
 func CreateSystemTask(taskType string, payload any, state any) (*SystemTask, error) {
+	return createSystemTask(taskType, payload, state, true)
+}
+
+// CreateQueuedSystemTask allows multiple pending rows of the same type. The
+// per-type lease still guarantees that only one task is executed at a time.
+func CreateQueuedSystemTask(taskType string, payload any, state any) (*SystemTask, error) {
+	return createSystemTask(taskType, payload, state, false)
+}
+
+func createSystemTask(taskType string, payload any, state any, exclusive bool) (*SystemTask, error) {
 	taskID, err := GenerateSystemTaskID()
 	if err != nil {
 		return nil, err
@@ -104,18 +115,51 @@ func CreateSystemTask(taskType string, payload any, state any) (*SystemTask, err
 	}
 
 	task := &SystemTask{
-		TaskID:    taskID,
-		Type:      taskType,
-		Status:    SystemTaskStatusPending,
-		ActiveKey: &taskType,
-		Payload:   payloadText,
-		State:     stateText,
+		TaskID:  taskID,
+		Type:    taskType,
+		Status:  SystemTaskStatusPending,
+		Payload: payloadText,
+		State:   stateText,
+	}
+	if exclusive {
+		task.ActiveKey = &taskType
 	}
 
 	if err := DB.Create(task).Error; err != nil {
 		return nil, err
 	}
 	return task, nil
+}
+
+func ListCompletedSystemTasksByTypeBefore(taskType string, updatedBefore int64, limit int) ([]*SystemTask, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 1000 {
+		limit = 1000
+	}
+	var tasks []*SystemTask
+	err := DB.Where("type = ? AND status = ? AND updated_at <= ?", taskType, SystemTaskStatusSucceeded, updatedBefore).
+		Order("id asc").
+		Limit(limit).
+		Find(&tasks).Error
+	return tasks, err
+}
+
+func UpdateCompletedSystemTaskState(taskID string, state any) error {
+	stateText, err := marshalSystemTaskJSON(state)
+	if err != nil {
+		return err
+	}
+	return DB.Model(&SystemTask{}).
+		Where("task_id = ? AND status IN ?", taskID, []string{
+			string(SystemTaskStatusSucceeded),
+			string(SystemTaskStatusFailed),
+		}).
+		Updates(map[string]any{
+			"state":      stateText,
+			"updated_at": common.GetTimestamp(),
+		}).Error
 }
 
 func GetSystemTaskByTaskID(taskID string) (*SystemTask, error) {

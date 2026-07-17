@@ -27,6 +27,7 @@ func GetAllLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	auditUsageLogIPAccess(c, logs, "all")
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
@@ -49,6 +50,7 @@ func GetUserLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	auditUsageLogIPAccess(c, logs, "self")
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)
@@ -93,6 +95,21 @@ func GetLogByKey(c *gin.Context) {
 		"message": "",
 		"data":    logs,
 	})
+}
+
+func auditUsageLogIPAccess(c *gin.Context, logs []*model.Log, scope string) {
+	if c.Query("audit_reveal") != "true" {
+		return
+	}
+	params := map[string]interface{}{
+		"scope":        scope,
+		"record_count": len(logs),
+	}
+	if c.GetInt("role") >= common.RoleAdminUser {
+		recordManageAudit(c, "usage_log.ip_reveal", params)
+	} else {
+		recordUserSecurityAudit(c, c.GetInt("id"), "usage_log.ip_reveal", params)
+	}
 }
 
 func GetLogsStat(c *gin.Context) {

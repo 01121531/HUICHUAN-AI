@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { getRouteApi } from '@tanstack/react-router'
-import { type ColumnDef } from '@tanstack/react-table'
+import {
+  type ColumnDef,
+  type RowSelectionState,
+  type Table,
+  type Updater,
+} from '@tanstack/react-table'
+import { Fragment, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -27,6 +33,7 @@ import {
   DataTableRow,
   useDataTable,
 } from '@/components/data-table'
+import { TableCell, TableRow } from '@/components/ui/table'
 import { useMediaQuery } from '@/hooks'
 import { useTableUrlState } from '@/hooks/use-table-url-state'
 import { cn } from '@/lib/utils'
@@ -36,10 +43,12 @@ import {
   LOG_TYPE_ALL_VALUE,
   LOG_TYPE_ENUM,
 } from '../constants'
+import type { UsageLog } from '../data/schema'
 import { useColumnsByCategory } from '../lib/columns'
 import { parseLogOther } from '../lib/format'
 import { fetchLogsByCategory } from '../lib/utils'
 import type { LogCategory } from '../types'
+import { BillingSnapshotPanel } from './billing-snapshot-panel'
 import { CommonLogsFilterBar } from './common-logs-filter-bar'
 import { TaskLogsFilterBar } from './task-logs-filter-bar'
 import { UsageLogsMobileList } from './usage-logs-mobile-card'
@@ -75,6 +84,12 @@ interface UsageLogsTableProps {
 export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   const { t } = useTranslation()
   const { isAdminView: isAdmin } = useLogsViewScope()
+  const auditedIPAccess = useRef(false)
+  const [expandedLogKey, setExpandedLogKey] = useState<string | null>(null)
+  const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
+  const [selectedLogs, setSelectedLogs] = useState<Map<string, UsageLog>>(
+    () => new Map()
+  )
   const isMobile = useMediaQuery('(max-width: 640px)')
   const searchParams = route.useSearch()
 
@@ -128,6 +143,7 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       t,
     ],
     queryFn: async () => {
+      const auditReveal = logCategory === 'common' && !auditedIPAccess.current
       const result = await fetchLogsByCategory({
         logCategory,
         isAdmin,
@@ -135,7 +151,12 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
         pageSize: pagination.pageSize,
         searchParams,
         columnFilters,
+        auditReveal,
       })
+
+      if (auditReveal && result?.success) {
+        auditedIPAccess.current = true
+      }
 
       if (!result?.success) {
         toast.error(result?.message || t('Failed to load logs'))
@@ -153,8 +174,36 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
   })
 
   const logs = data?.items || []
+  const commonLogs = (logCategory === 'common' ? logs : []) as UsageLog[]
   const columns = useColumnsByCategory(logCategory, isAdmin)
   const isLoadingData = isLoading || (isFetching && !data)
+
+  const isCommon = logCategory === 'common'
+  const getUsageLogRowId = (log: Record<string, unknown>) =>
+    String(log.request_id || log.id)
+  const handleRowSelectionChange = (updater: Updater<RowSelectionState>) => {
+    setRowSelection((current) => {
+      const next = typeof updater === 'function' ? updater(current) : updater
+      setSelectedLogs((selected) => {
+        if (Object.keys(next).length === 0) {
+          return new Map()
+        }
+        const updated = new Map(selected)
+        for (const log of commonLogs) {
+          const rowId = getUsageLogRowId(
+            log as unknown as Record<string, unknown>
+          )
+          if (next[rowId]) {
+            updated.set(rowId, log)
+          } else {
+            updated.delete(rowId)
+          }
+        }
+        return updated
+      })
+      return next
+    })
+  }
 
   const { table } = useDataTable({
     data: logs as Record<string, unknown>[],
@@ -165,7 +214,10 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       isAdmin
     ),
     pagination,
-    enableRowSelection: false,
+    enableRowSelection: isCommon,
+    getRowId: getUsageLogRowId,
+    rowSelection,
+    onRowSelectionChange: handleRowSelectionChange,
     onPaginationChange,
     onColumnFiltersChange,
     manualPagination: true,
@@ -173,8 +225,6 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
     totalCount: data?.total || 0,
     ensurePageInRange,
   })
-
-  const isCommon = logCategory === 'common'
 
   return (
     <DataTablePage
@@ -200,7 +250,11 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
       }
       toolbar={
         isCommon ? (
-          <CommonLogsFilterBar table={table} />
+          <CommonLogsFilterBar
+            table={table as unknown as Table<UsageLog>}
+            selectedLogs={Array.from(selectedLogs.values())}
+            total={data?.total || 0}
+          />
         ) : (
           <TaskLogsFilterBar table={table} logCategory={logCategory} />
         )
@@ -220,13 +274,44 @@ export function UsageLogsTable({ logCategory }: UsageLogsTableProps) {
           }
         }
 
+        const original = row.original as Record<string, unknown>
+        const rowKey = String(original.request_id || original.id || row.id)
+        const canExpandBilling =
+          isCommon && Number(original.type) === LOG_TYPE_ENUM.CONSUME
+        const isExpanded = canExpandBilling && expandedLogKey === rowKey
+        const billingOther = canExpandBilling
+          ? parseLogOther(String(original.other || ''))
+          : null
+
         return (
-          <DataTableRow
-            key={row.id}
-            row={row}
-            className={cn('transition-colors', tintClass)}
-            getColumnClassName={() => (isCommon ? 'py-2' : 'py-3.5')}
-          />
+          <Fragment key={row.id}>
+            <DataTableRow
+              row={row}
+              className={cn(
+                'transition-colors',
+                canExpandBilling && 'cursor-pointer',
+                isExpanded && 'bg-muted/35',
+                tintClass
+              )}
+              getColumnClassName={() => (isCommon ? 'py-2' : 'py-3.5')}
+              onClick={() => {
+                if (canExpandBilling) {
+                  setExpandedLogKey(isExpanded ? null : rowKey)
+                }
+              }}
+              aria-expanded={canExpandBilling ? isExpanded : undefined}
+            />
+            {isExpanded && (
+              <TableRow className='bg-muted/15 hover:bg-muted/15'>
+                <TableCell
+                  colSpan={row.getVisibleCells().length}
+                  className='px-4 py-3'
+                >
+                  <BillingSnapshotPanel other={billingOther} />
+                </TableCell>
+              </TableRow>
+            )}
+          </Fragment>
         )
       }}
     />

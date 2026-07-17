@@ -89,6 +89,31 @@ func TestSystemTaskActiveKeyPreventsDuplicateActiveRun(t *testing.T) {
 	assert.Equal(t, task.TaskID, activeTask.TaskID)
 }
 
+func TestQueuedSystemTasksAllowMultiplePendingRows(t *testing.T) {
+	truncateTables(t)
+
+	first, err := CreateQueuedSystemTask(SystemTaskTypeUsageLogExport, map[string]int{"user": 1}, nil)
+	require.NoError(t, err)
+	second, err := CreateQueuedSystemTask(SystemTaskTypeUsageLogExport, map[string]int{"user": 2}, nil)
+	require.NoError(t, err)
+
+	assert.Nil(t, first.ActiveKey)
+	assert.Nil(t, second.ActiveKey)
+	pending, err := FindPendingSystemTasks(SystemTaskTypeUsageLogExport, 10)
+	require.NoError(t, err)
+	require.Len(t, pending, 2)
+	assert.Equal(t, first.TaskID, pending[0].TaskID)
+	assert.Equal(t, second.TaskID, pending[1].TaskID)
+
+	claimed, ok, err := ClaimSystemTask(first.ID, SystemTaskTypeUsageLogExport, "runner-a", common.GetTimestamp()+60)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.NotNil(t, claimed)
+	_, ok, err = ClaimSystemTask(second.ID, SystemTaskTypeUsageLogExport, "runner-b", common.GetTimestamp()+60)
+	require.NoError(t, err)
+	assert.False(t, ok)
+}
+
 func TestSystemTaskLockPreventsConcurrentClaim(t *testing.T) {
 	truncateTables(t)
 

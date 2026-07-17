@@ -219,6 +219,17 @@ func EnqueueSystemTask(taskType string, payload any) (*model.SystemTask, bool, e
 	return task, true, nil
 }
 
+// EnqueueQueuedSystemTask adds a task without an ActiveKey so multiple users
+// can queue work of the same type. The per-type lease serializes execution.
+func EnqueueQueuedSystemTask(taskType string, payload any, state any) (*model.SystemTask, error) {
+	task, err := model.CreateQueuedSystemTask(taskType, payload, state)
+	if err != nil {
+		return nil, err
+	}
+	notifySystemTaskRunner()
+	return task, nil
+}
+
 // runSystemTaskClaimPass tries to claim one pending task per registered type
 // and dispatches each claimed task in its own goroutine so a long-running
 // handler (e.g. channel test) never blocks another type (e.g. log cleanup).
@@ -252,6 +263,7 @@ func runSystemTaskClaimPass(runnerID string) {
 			runWithLeaseHeartbeat(dispatchTask, runnerID, func(ctx context.Context) {
 				dispatchHandler.Run(ctx, dispatchTask, runnerID)
 			})
+			notifySystemTaskRunner()
 		})
 	}
 }

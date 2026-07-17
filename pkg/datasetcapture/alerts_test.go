@@ -70,6 +70,26 @@ func TestAlertManagerCountsMailFailureWithoutStopping(t *testing.T) {
 	}
 }
 
+func TestUsageLogAlertUsesUsageLogCategory(t *testing.T) {
+	sent := make(chan AlertNotification, 1)
+	manager := NewAlertManager(func(notification AlertNotification) error {
+		sent <- notification
+		return nil
+	})
+	defer manager.Close()
+	manager.Update(AlertConfig{
+		Enabled: true, Recipients: []string{"admin@example.com"},
+		Types: []string{"usage_log_queue_full"}, Silence: time.Hour,
+		AlertAfterDrops: 1, Node: "node-a", Version: "v1",
+	})
+	manager.Notify(Event{Type: "usage_log_queue_full", Dropped: 1})
+	notification := waitAlert(t, sent)
+	if !strings.Contains(notification.Subject, "使用日志") ||
+		!strings.Contains(notification.HTML, "丢弃记录") {
+		t.Fatalf("unexpected usage log alert: %#v", notification)
+	}
+}
+
 func TestAccessAlertManagerSupportsAllOperatorsAndOwners(t *testing.T) {
 	sent := make(chan AlertNotification, 1)
 	manager := NewAlertManager(func(notification AlertNotification) error {

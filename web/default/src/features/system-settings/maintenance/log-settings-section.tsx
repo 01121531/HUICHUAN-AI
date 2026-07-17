@@ -42,6 +42,7 @@ import {
   FormControl,
   FormDescription,
   FormField,
+  FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
@@ -80,12 +81,24 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  UsageLogIPCaptureEnabled: z.boolean(),
+  TrustedProxyCIDRs: z.string(),
+  UsageLogExportDirectLimit: z.number().int().min(1).max(50000),
+  UsageLogExportMaxRows: z.number().int().min(0),
+  UsageLogExportBatchSize: z.number().int().min(100).max(5000),
+  UsageLogExportRetentionHours: z.number().int().min(1).max(720),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultIPCaptureEnabled: boolean
+  defaultTrustedProxyCIDRs: string
+  defaultExportDirectLimit: number
+  defaultExportMaxRows: number
+  defaultExportBatchSize: number
+  defaultExportRetentionHours: number
 }
 
 type ServerLogInfo = {
@@ -141,6 +154,12 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultIPCaptureEnabled,
+  defaultTrustedProxyCIDRs,
+  defaultExportDirectLimit,
+  defaultExportMaxRows,
+  defaultExportBatchSize,
+  defaultExportRetentionHours,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -148,6 +167,12 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      UsageLogIPCaptureEnabled: defaultIPCaptureEnabled,
+      TrustedProxyCIDRs: defaultTrustedProxyCIDRs,
+      UsageLogExportDirectLimit: defaultExportDirectLimit,
+      UsageLogExportMaxRows: defaultExportMaxRows,
+      UsageLogExportBatchSize: defaultExportBatchSize,
+      UsageLogExportRetentionHours: defaultExportRetentionHours,
     },
   })
 
@@ -174,8 +199,25 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      UsageLogIPCaptureEnabled: defaultIPCaptureEnabled,
+      TrustedProxyCIDRs: defaultTrustedProxyCIDRs,
+      UsageLogExportDirectLimit: defaultExportDirectLimit,
+      UsageLogExportMaxRows: defaultExportMaxRows,
+      UsageLogExportBatchSize: defaultExportBatchSize,
+      UsageLogExportRetentionHours: defaultExportRetentionHours,
+    })
+  }, [
+    defaultEnabled,
+    defaultIPCaptureEnabled,
+    defaultTrustedProxyCIDRs,
+    defaultExportDirectLimit,
+    defaultExportMaxRows,
+    defaultExportBatchSize,
+    defaultExportRetentionHours,
+    form,
+  ])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -257,11 +299,55 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    const changes: Array<{
+      key: string
+      value: string | number | boolean
+    }> = []
+    if (values.LogConsumeEnabled !== defaultEnabled) {
+      changes.push({
+        key: 'LogConsumeEnabled',
+        value: values.LogConsumeEnabled,
+      })
+    }
+    if (values.UsageLogIPCaptureEnabled !== defaultIPCaptureEnabled) {
+      changes.push({
+        key: 'UsageLogIPCaptureEnabled',
+        value: values.UsageLogIPCaptureEnabled,
+      })
+    }
+    if (values.TrustedProxyCIDRs !== defaultTrustedProxyCIDRs) {
+      changes.push({
+        key: 'TrustedProxyCIDRs',
+        value: values.TrustedProxyCIDRs,
+      })
+    }
+    if (values.UsageLogExportDirectLimit !== defaultExportDirectLimit) {
+      changes.push({
+        key: 'UsageLogExportDirectLimit',
+        value: values.UsageLogExportDirectLimit,
+      })
+    }
+    if (values.UsageLogExportMaxRows !== defaultExportMaxRows) {
+      changes.push({
+        key: 'UsageLogExportMaxRows',
+        value: values.UsageLogExportMaxRows,
+      })
+    }
+    if (values.UsageLogExportBatchSize !== defaultExportBatchSize) {
+      changes.push({
+        key: 'UsageLogExportBatchSize',
+        value: values.UsageLogExportBatchSize,
+      })
+    }
+    if (values.UsageLogExportRetentionHours !== defaultExportRetentionHours) {
+      changes.push({
+        key: 'UsageLogExportRetentionHours',
+        value: values.UsageLogExportRetentionHours,
+      })
+    }
+    for (const change of changes) {
+      await updateOption.mutateAsync(change)
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -366,6 +452,175 @@ export function LogSettingsSection({
               </SettingsSwitchItem>
             )}
           />
+
+          <FormField
+            control={form.control}
+            name='UsageLogIPCaptureEnabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Record API request IP')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, new usage and error logs record the normalized client IP. Historical logs are not backfilled.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='TrustedProxyCIDRs'
+            render={({ field }) => (
+              <SettingsControlGroup className='space-y-2'>
+                <FormItem>
+                  <FormLabel>{t('Trusted proxy CIDRs')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Only requests received from these proxy networks may use forwarded IP headers. Separate entries with commas or new lines.'
+                    )}
+                  </FormDescription>
+                  <FormControl>
+                    <Input
+                      {...field}
+                      placeholder='127.0.0.1/32, 10.0.0.0/8'
+                      autoComplete='off'
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              </SettingsControlGroup>
+            )}
+          />
+
+          <SettingsControlGroup className='space-y-3'>
+            <div>
+              <h4 className='text-sm font-medium'>
+                {t('Usage log export limits')}
+              </h4>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'Large exports are serialized in the background to protect API response latency and shared database or disk resources.'
+                )}
+              </p>
+            </div>
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <FormField
+                control={form.control}
+                name='UsageLogExportDirectLimit'
+                render={({ field }) => (
+                  <FormItem className='space-y-2'>
+                    <FormLabel>{t('Synchronous export limit')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={50000}
+                        step={1}
+                        {...field}
+                        onChange={(event) =>
+                          field.onChange(event.currentTarget.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Exports above this row count are moved to a background task.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='UsageLogExportMaxRows'
+                render={({ field }) => (
+                  <FormItem className='space-y-2'>
+                    <FormLabel>{t('Maximum rows per export')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={0}
+                        step={1}
+                        {...field}
+                        onChange={(event) =>
+                          field.onChange(event.currentTarget.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t('Set to 0 for no limit.')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='UsageLogExportBatchSize'
+                render={({ field }) => (
+                  <FormItem className='space-y-2'>
+                    <FormLabel>{t('Export query batch size')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={100}
+                        max={5000}
+                        step={1}
+                        {...field}
+                        onChange={(event) =>
+                          field.onChange(event.currentTarget.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Smaller batches reduce database and memory pressure but take longer.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='UsageLogExportRetentionHours'
+                render={({ field }) => (
+                  <FormItem className='space-y-2'>
+                    <FormLabel>{t('Export retention hours')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='number'
+                        min={1}
+                        max={720}
+                        step={1}
+                        {...field}
+                        onChange={(event) =>
+                          field.onChange(event.currentTarget.valueAsNumber)
+                        }
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Completed background export files are deleted after this period.'
+                      )}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+          </SettingsControlGroup>
 
           <SettingsControlGroup className='space-y-3'>
             <div>
@@ -478,7 +733,9 @@ export function LogSettingsSection({
 
               <div className='flex flex-wrap items-end gap-3'>
                 <div className='grid gap-1.5'>
-                  <Label className='text-xs'>{t('Cleanup Mode')}</Label>
+                  <Label htmlFor='server-log-cleanup-mode' className='text-xs'>
+                    {t('Cleanup Mode')}
+                  </Label>
                   <Select
                     items={[
                       { value: 'by_count', label: t('Retain last N files') },
@@ -489,7 +746,10 @@ export function LogSettingsSection({
                       value !== null && setServerLogCleanupMode(value)
                     }
                   >
-                    <SelectTrigger className='w-[160px]'>
+                    <SelectTrigger
+                      id='server-log-cleanup-mode'
+                      className='w-[160px]'
+                    >
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent alignItemWithTrigger={false}>
@@ -505,12 +765,13 @@ export function LogSettingsSection({
                   </Select>
                 </div>
                 <div className='grid gap-1.5'>
-                  <Label className='text-xs'>
+                  <Label htmlFor='server-log-cleanup-value' className='text-xs'>
                     {serverLogCleanupMode === 'by_count'
                       ? t('Files to Retain')
                       : t('Days to Retain')}
                   </Label>
                   <Input
+                    id='server-log-cleanup-value'
                     type='number'
                     min={1}
                     max={serverLogCleanupMode === 'by_count' ? 1000 : 3650}
@@ -614,3 +875,21 @@ export function LogSettingsSection({
     </SettingsSection>
   )
 }
+/*
+Copyright (C) 2023-2026 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/

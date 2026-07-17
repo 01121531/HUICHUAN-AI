@@ -125,6 +125,7 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "audit_info")
 			// delete(otherMap, "reject_reason")
 			delete(otherMap, "stream_status")
+			delete(otherMap, "expr_b64")
 		}
 		logs[i].Other = common.MapToJsonStr(otherMap)
 	}
@@ -281,18 +282,11 @@ func RecordTopupLog(userId int, content string, callerIp string, paymentMethod s
 
 func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string, tokenName string, content string, tokenId int, useTimeSeconds int,
 	isStream bool, group string, other map[string]interface{}) {
-	logger.LogInfo(c, fmt.Sprintf("record error log: userId=%d, channelId=%d, modelName=%s, tokenName=%s, content=%s", userId, channelId, modelName, tokenName, common.LocalLogPreview(content)))
+	logger.LogInfo(c, fmt.Sprintf("queue error log: userId=%d, channelId=%d, modelName=%s", userId, channelId, modelName))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
-	otherStr := common.MapToJsonStr(other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := common.UsageLogIPCaptureEnabled.Load()
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -311,18 +305,14 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		Group:            group,
 		Ip: func() string {
 			if needRecordIp {
-				return c.ClientIP()
+				return c.GetString(common.UsageLogClientIPKey)
 			}
 			return ""
 		}(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
-		Other:             otherStr,
 	}
-	err := createLog(log)
-	if err != nil {
-		logger.LogError(c, "failed to record log: "+err.Error())
-	}
+	deferUsageLog(c, usageLogJob{Log: log, Other: other})
 }
 
 type RecordConsumeLogParams struct {
@@ -344,19 +334,12 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	if !common.LogConsumeEnabled {
 		return
 	}
-	logger.LogInfo(c, fmt.Sprintf("record consume log: userId=%d, params=%s", userId, common.GetJsonString(params)))
+	logger.LogInfo(c, fmt.Sprintf("queue consume log: userId=%d, model=%s, quota=%d", userId, params.ModelName, params.Quota))
 	username := c.GetString("username")
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
-	otherStr := common.MapToJsonStr(params.Other)
-	// 判断是否需要记录 IP
-	needRecordIp := false
-	if settingMap, err := GetUserSetting(userId, false); err == nil {
-		if settingMap.RecordIpLog {
-			needRecordIp = true
-		}
-	}
+	needRecordIp := common.UsageLogIPCaptureEnabled.Load()
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -375,20 +358,16 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		Group:            params.Group,
 		Ip: func() string {
 			if needRecordIp {
-				return c.ClientIP()
+				return c.GetString(common.UsageLogClientIPKey)
 			}
 			return ""
 		}(),
 		RequestId:         requestId,
 		UpstreamRequestId: upstreamRequestId,
-		Other:             otherStr,
 	}
-	err := createLog(log)
-	if err != nil {
-		logger.LogError(c, "failed to record log: "+err.Error())
-	}
+	var quotaData *QuotaDataLogParams
 	if common.DataExportEnabled {
-		LogQuotaData(QuotaDataLogParams{
+		quotaData = &QuotaDataLogParams{
 			UserID:    userId,
 			Username:  username,
 			ModelName: params.ModelName,
@@ -399,8 +378,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  common.NodeName,
-		})
+		}
 	}
+	deferUsageLog(c, usageLogJob{Log: log, Other: params.Other, QuotaData: quotaData})
 }
 
 type RecordTaskBillingLogParams struct {
@@ -440,18 +420,21 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,
 		Group:     params.Group,
-		Other:     common.MapToJsonStr(params.Other),
 	}
-	err := createLog(log)
-	if err != nil {
-		common.SysLog("failed to record task billing log: " + err.Error())
+	if params.LogType != LogTypeConsume {
+		log.Other = common.MapToJsonStr(params.Other)
+		if err := createLog(log); err != nil {
+			common.SysLog("failed to record task billing log: " + err.Error())
+		}
+		return
 	}
+	var quotaData *QuotaDataLogParams
 	if params.LogType == LogTypeConsume && common.DataExportEnabled {
 		nodeName := params.NodeName
 		if nodeName == "" {
 			nodeName = common.NodeName
 		}
-		LogQuotaData(QuotaDataLogParams{
+		quotaData = &QuotaDataLogParams{
 			UserID:    params.UserId,
 			Username:  username,
 			ModelName: params.ModelName,
@@ -461,7 +444,24 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 			TokenID:   params.TokenId,
 			ChannelID: params.ChannelId,
 			NodeName:  nodeName,
-		})
+		}
+	}
+	other := cloneUsageLogMap(params.Other)
+	snapshot, snapshotErr := BuildBillingSnapshotV1(log, other, common.QuotaPerUnit)
+	if snapshotErr != nil {
+		common.SysLog("failed to build task billing snapshot: " + snapshotErr.Error())
+	}
+	if other == nil {
+		other = make(map[string]interface{}, 1)
+	}
+	other["billing_snapshot_v1"] = snapshot
+	log.Other = common.MapToJsonStr(other)
+	if err := createLog(log); err != nil {
+		common.SysLog("failed to record task billing log: " + err.Error())
+		return
+	}
+	if quotaData != nil && common.DataExportEnabled {
+		LogQuotaData(*quotaData)
 	}
 }
 

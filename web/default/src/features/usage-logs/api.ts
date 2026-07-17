@@ -27,6 +27,9 @@ import type {
   GetMidjourneyLogsParams,
   GetTaskLogsParams,
   UserInfo,
+  UsageLogExportRequest,
+  UsageLogExportResult,
+  UsageLogExportTask,
 } from './types'
 
 // ============================================================================
@@ -83,6 +86,83 @@ export const getLogStats = (params: GetLogStatsParams = {}) =>
 export const getUserLogStats = (
   params: Omit<GetLogStatsParams, 'username' | 'channel'> = {}
 ) => fetchLogStats('/api/log', params, false)
+
+export async function exportUsageLogs(
+  request: UsageLogExportRequest,
+  isAdmin: boolean
+): Promise<UsageLogExportResult> {
+  const path = isAdmin ? '/api/log/export' : '/api/log/self/export'
+  const response = await api.post(path, request, {
+    responseType: 'blob',
+    validateStatus: (status) => status >= 200 && status < 300,
+  })
+  const contentType = String(response.headers['content-type'] || '')
+  if (contentType.includes('application/json')) {
+    const text = await response.data.text()
+    const payload = JSON.parse(text) as {
+      requires_background?: boolean
+      total?: number
+      message?: string
+      data?: UsageLogExportTask
+    }
+    return {
+      downloaded: false,
+      requiresBackground: payload.requires_background === true,
+      total: payload.total,
+      message: payload.message,
+      task: payload.data,
+    }
+  }
+
+  const disposition = String(response.headers['content-disposition'] || '')
+  const filename =
+    disposition.match(/filename="?([^";]+)"?/i)?.[1] ||
+    `usage-logs.${request.format}`
+  const url = URL.createObjectURL(response.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+  return { downloaded: true, requiresBackground: false }
+}
+
+export async function getUsageLogExportTask(
+  taskId: string,
+  isAdmin: boolean
+): Promise<UsageLogExportTask> {
+  const prefix = isAdmin ? '/api/log/export' : '/api/log/self/export'
+  const response = await api.get(`${prefix}/${encodeURIComponent(taskId)}`)
+  if (!response.data?.success || !response.data?.data) {
+    throw new Error(response.data?.message || 'Failed to load export task')
+  }
+  return response.data.data as UsageLogExportTask
+}
+
+export async function downloadUsageLogExportTask(
+  taskId: string,
+  isAdmin: boolean,
+  format: 'csv' | 'xlsx'
+) {
+  const prefix = isAdmin ? '/api/log/export' : '/api/log/self/export'
+  const response = await api.get(
+    `${prefix}/${encodeURIComponent(taskId)}/download`,
+    { responseType: 'blob' }
+  )
+  const disposition = String(response.headers['content-disposition'] || '')
+  const filename =
+    disposition.match(/filename="?([^";]+)"?/i)?.[1] || `usage-logs.${format}`
+  const url = URL.createObjectURL(response.data)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
 
 export async function getUserInfo(
   userId: number

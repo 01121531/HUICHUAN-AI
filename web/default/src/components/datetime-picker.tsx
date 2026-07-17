@@ -143,6 +143,7 @@ export function DateTimePicker({
       </Popover>
       <Input
         type='time'
+        aria-label={t('Time')}
         value={time}
         onChange={handleTimeChange}
         className='w-32 appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none'

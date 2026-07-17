@@ -1,7 +1,9 @@
 package service
 
 import (
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -159,6 +161,20 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	if relayInfo.BillingSource != "" {
 		other["billing_source"] = relayInfo.BillingSource
 	}
+	other["billing_use_price"] = relayInfo.PriceData.UsePrice
+	other["billing_free_model"] = relayInfo.PriceData.FreeModel
+	if ratios := relayInfo.PriceData.OtherRatios(); len(ratios) > 0 {
+		frozenRatios := make(map[string]interface{}, len(ratios))
+		for key, ratio := range ratios {
+			frozenRatios[key] = ratio
+		}
+		other["billing_other_ratios"] = frozenRatios
+	}
+	preConsumedQuota := relayInfo.FinalPreConsumedQuota
+	if relayInfo.Billing != nil {
+		preConsumedQuota = relayInfo.Billing.GetPreConsumedQuota()
+	}
+	other["billing_pre_consumed_quota"] = preConsumedQuota
 	if relayInfo.UserSetting.BillingPreference != "" {
 		other["billing_preference"] = relayInfo.UserSetting.BillingPreference
 	}
@@ -313,7 +329,16 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 	}
 	other["billing_mode"] = "tiered_expr"
 	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
+	other["tier_version"] = fmt.Sprintf("v%d", snap.ExprVersion)
+	sum := sha256.Sum256([]byte(snap.ExprString))
+	other["tier_hash"] = hex.EncodeToString(sum[:])
 	if result != nil {
 		other["matched_tier"] = result.MatchedTier
+		other["tier_inputs"] = map[string]interface{}{
+			"actual_quota_before_group": result.ActualQuotaBeforeGroup,
+			"actual_quota_after_group":  result.ActualQuotaAfterGroup,
+			"crossed_tier":              result.CrossedTier,
+			"group_ratio":               snap.GroupRatio,
+		}
 	}
 }

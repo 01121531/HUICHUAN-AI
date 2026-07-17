@@ -26,7 +26,6 @@ import { StatusBadge } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
 import { formatTimestampToDate } from '@/lib/format'
-import { cn } from '@/lib/utils'
 
 import { TASK_ACTIONS, TASK_STATUS } from '../../constants'
 import { taskActionMapper, taskStatusMapper } from '../../lib/mappers'
@@ -125,7 +124,7 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
       header: t('User'),
       accessorFn: (row) => row.username || row.user_id,
       cell: function UserCell({ row }) {
-        const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+        const { setSelectedUserId, setUserInfoDialogOpen } =
           useUsageLogsContext()
         const log = row.original
         const displayName = log.username || String(log.user_id || '?')
@@ -142,19 +141,14 @@ export function useTaskLogsColumns(isAdmin: boolean): ColumnDef<TaskLog>[] {
           >
             <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
               <AvatarFallback
-                className={cn(
-                  'text-[11px] font-semibold',
-                  !sensitiveVisible && 'bg-muted text-muted-foreground'
-                )}
-                style={
-                  sensitiveVisible ? getUserAvatarStyle(displayName) : undefined
-                }
+                className='text-[11px] font-semibold'
+                style={getUserAvatarStyle(displayName)}
               >
-                {sensitiveVisible ? getUserAvatarFallback(displayName) : '•'}
+                {getUserAvatarFallback(displayName)}
               </AvatarFallback>
             </Avatar>
             <span className='text-muted-foreground truncate text-sm hover:underline'>
-              {sensitiveVisible ? displayName : '••••'}
+              {displayName}
             </span>
           </button>
         )

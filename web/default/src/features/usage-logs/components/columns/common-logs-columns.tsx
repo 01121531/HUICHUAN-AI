@@ -17,13 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import type { ColumnDef } from '@tanstack/react-table'
-import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { Calculator, GitBranch, Globe, Sparkles, KeyRound } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { GroupBadge } from '@/components/group-badge'
 import { StatusBadge, type StatusBadgeProps } from '@/components/status-badge'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Popover,
   PopoverContent,
@@ -97,6 +98,16 @@ function splitQuotaDisplay(value: string): { prefix: string; amount: string } {
   const match = value.match(/^([^0-9+\-.,\s]+)(.+)$/)
   if (!match) return { prefix: '', amount: value }
   return { prefix: match[1], amount: match[2] }
+}
+
+const billingModeLabels: Record<string, string> = {
+  per_token: 'Per-token',
+  per_call: 'Per-call',
+  tiered_expr: 'Dynamic Pricing',
+  subscription: 'Subscription',
+  free: 'Free',
+  violation_fee: 'Violation Fee',
+  unknown: 'Unknown',
 }
 
 function buildDetailSegments(
@@ -292,6 +303,29 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
   const { t } = useTranslation()
   const columns: ColumnDef<UsageLog>[] = [
     {
+      id: 'select',
+      header: ({ table }) => (
+        <Checkbox
+          checked={table.getIsAllPageRowsSelected()}
+          indeterminate={table.getIsSomePageRowsSelected()}
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label={t('Select current page')}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label={t('Select row')}
+          onClick={(event) => event.stopPropagation()}
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+      size: 40,
+    },
+    {
       accessorKey: 'created_at',
       header: t('Time'),
       cell: ({ row }) => {
@@ -331,7 +365,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         header: t('Channel'),
         accessorFn: (row) => row.channel,
         cell: function ChannelCell({ row }) {
-          const { sensitiveVisible, setAffinityTarget, setAffinityDialogOpen } =
+          const { setAffinityTarget, setAffinityDialogOpen } =
             useUsageLogsContext()
           const log = row.original
 
@@ -351,7 +385,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             ? `${log.channel_name} #${log.channel}`
             : `#${log.channel}`
           const channelIdDisplay = `#${log.channel}`
-          const channelName = sensitiveVisible ? log.channel_name : '••••'
+          const channelName = log.channel_name
           const multiKeyIndex = other?.admin_info?.multi_key_index
           const showMultiKeyIndex =
             other?.admin_info?.is_multi_key === true &&
@@ -447,9 +481,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 </TooltipTrigger>
                 <TooltipContent>
                   <div className='space-y-1'>
-                    <p>
-                      {sensitiveVisible ? channelDisplay : channelIdDisplay}
-                    </p>
+                    <p>{channelDisplay}</p>
                     {channelChain && (
                       <p className='text-muted-foreground text-xs'>
                         {t('Chain')}: {channelChain}
@@ -468,11 +500,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                         </p>
                         <p>
                           {t('Group')}:{' '}
-                          {sensitiveVisible
-                            ? affinity.using_group ||
-                              affinity.selected_group ||
-                              '-'
-                            : '••••'}
+                          {affinity.using_group ||
+                            affinity.selected_group ||
+                            '-'}
                         </p>
                       </div>
                     )}
@@ -488,7 +518,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         header: t('User'),
         accessorFn: (row) => row.username,
         cell: function UserCell({ row }) {
-          const { sensitiveVisible, setSelectedUserId, setUserInfoDialogOpen } =
+          const { setSelectedUserId, setUserInfoDialogOpen } =
             useUsageLogsContext()
           const log = row.original
 
@@ -506,17 +536,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             >
               <Avatar className='ring-border/60 size-6 ring-1 max-sm:hidden'>
                 <AvatarFallback
-                  className={cn(
-                    'text-[11px] font-semibold',
-                    !sensitiveVisible && 'bg-muted text-muted-foreground'
-                  )}
-                  style={
-                    sensitiveVisible
-                      ? getUserAvatarStyle(log.username)
-                      : undefined
-                  }
+                  className='text-[11px] font-semibold'
+                  style={getUserAvatarStyle(log.username)}
                 >
-                  {sensitiveVisible ? getUserAvatarFallback(log.username) : '•'}
+                  {getUserAvatarFallback(log.username)}
                 </AvatarFallback>
               </Avatar>
               <TooltipProvider delay={300}>
@@ -526,9 +549,9 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                       <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
                     }
                   >
-                    {sensitiveVisible ? log.username : '••••'}
+                    {log.username}
                   </TooltipTrigger>
-                  {sensitiveVisible && log.username.length > 12 && (
+                  {log.username.length > 12 && (
                     <TooltipContent side='top'>{log.username}</TooltipContent>
                   )}
                 </Tooltip>
@@ -544,7 +567,6 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
     accessorKey: 'token_name',
     header: t('Token'),
     cell: function TokenNameCell({ row }) {
-      const { sensitiveVisible } = useUsageLogsContext()
       const log = row.original
       if (!isDisplayableLogType(log.type)) return null
 
@@ -552,7 +574,6 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       if (!tokenName) return null
 
       const other = parseLogOther(log.other)
-      const displayName = sensitiveVisible ? tokenName : '••••'
       let group = log.group
       if (!group) group = other?.group || ''
       const groupRatio = getGroupRatio(other)
@@ -563,15 +584,15 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             <Tooltip>
               <TooltipTrigger render={<div className='max-w-full' />}>
                 <StatusBadge
-                  label={displayName}
+                  label={tokenName}
                   icon={KeyRound}
-                  copyText={sensitiveVisible ? tokenName : undefined}
+                  copyText={tokenName}
                   size='sm'
                   showDot={false}
                   className='border-border/60 bg-muted/30 text-foreground h-6 max-w-full gap-1.5 overflow-hidden rounded-md border px-2 py-0.5 [font-family:var(--font-body)]'
                 />
               </TooltipTrigger>
-              {sensitiveVisible && tokenName.length > 16 && (
+              {tokenName.length > 16 && (
                 <TooltipContent side='top' className='max-w-xs break-all'>
                   {tokenName}
                 </TooltipContent>
@@ -583,7 +604,6 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               {group ? (
                 <GroupBadge
                   group={group}
-                  label={sensitiveVisible ? undefined : '••••'}
                   type='text'
                   size='sm'
                   className='inline align-baseline text-xs leading-none [&>span]:leading-none'
@@ -622,6 +642,70 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         )
       },
       meta: { mobileTitle: true },
+    },
+    {
+      accessorKey: 'ip',
+      header: t('Request IP'),
+      cell: function RequestIPCell({ row }) {
+        const log = row.original
+        if ((log.type !== 2 && log.type !== 5) || !log.ip) {
+          return <span className='text-muted-foreground/40'>-</span>
+        }
+        return (
+          <span className='inline-flex max-w-[180px] items-center gap-1 font-mono text-xs'>
+            <Globe className='text-muted-foreground size-3 shrink-0' />
+            <span className='truncate' title={log.ip}>
+              {log.ip}
+            </span>
+          </span>
+        )
+      },
+      size: 150,
+    },
+    {
+      id: 'billing_method',
+      header: t('Billing Method'),
+      accessorFn: (row) => parseLogOther(row.other)?.billing_snapshot_v1?.mode,
+      cell: ({ row }) => {
+        const log = row.original
+        if (log.type !== 2) return null
+        const other = parseLogOther(log.other)
+        const snapshot = other?.billing_snapshot_v1
+        const mode =
+          snapshot?.mode ||
+          other?.billing_mode ||
+          (other?.billing_source === 'subscription'
+            ? 'subscription'
+            : isPerCallBilling(other?.model_price)
+              ? 'per_call'
+              : other?.model_ratio != null
+                ? 'per_token'
+                : 'unknown')
+        const label =
+          snapshot?.status === 'failed'
+            ? t('Snapshot Failed')
+            : snapshot
+              ? t(billingModeLabels[mode] ?? 'Unknown')
+              : t('Legacy')
+
+        return (
+          <StatusBadge
+            label={label}
+            icon={Calculator}
+            variant={
+              snapshot?.status === 'failed'
+                ? 'danger'
+                : snapshot
+                  ? 'info'
+                  : 'neutral'
+            }
+            size='sm'
+            copyable={false}
+            className='cursor-pointer'
+          />
+        )
+      },
+      size: 130,
     },
     {
       accessorKey: 'is_stream',
@@ -814,7 +898,10 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
             <button
               type='button'
               className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
-              onClick={() => setDialogOpen(true)}
+              onClick={(event) => {
+                event.stopPropagation()
+                setDialogOpen(true)
+              }}
               title={t('Click to view full details')}
             >
               {detailPreview}

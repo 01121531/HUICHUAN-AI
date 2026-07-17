@@ -479,6 +479,11 @@ func datasetCaptureAlertManager() *datasetcapture.AlertManager {
 
 func configureDatasetCaptureAlerts() {
 	policy := dataset_capture_setting.Get()
+	common.SetUsageLogAlertNotifier(func(event common.UsageLogAlertEvent) {
+		datasetCaptureAlertManager().Notify(datasetcapture.Event{
+			Type: event.Type, Dropped: event.Dropped, Resolved: event.Resolved, At: time.Now(),
+		})
+	})
 	datasetCaptureAlertManager().Update(datasetcapture.AlertConfig{
 		Enabled: policy.Alerts.Enabled, Recipients: policy.Alerts.Recipients, Types: policy.Alerts.Types,
 		Silence:         time.Duration(policy.Alerts.SilenceMinutes) * time.Minute,

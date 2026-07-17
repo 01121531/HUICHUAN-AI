@@ -77,6 +77,12 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
+	common.OptionMap["UsageLogIPCaptureEnabled"] = strconv.FormatBool(common.UsageLogIPCaptureEnabled.Load())
+	common.OptionMap["TrustedProxyCIDRs"] = ""
+	common.OptionMap["UsageLogExportDirectLimit"] = strconv.Itoa(common.UsageLogExportDirectLimit())
+	common.OptionMap["UsageLogExportMaxRows"] = strconv.FormatInt(common.UsageLogExportMaxRows(), 10)
+	common.OptionMap["UsageLogExportBatchSize"] = strconv.Itoa(common.UsageLogExportBatchSize())
+	common.OptionMap["UsageLogExportRetentionHours"] = strconv.Itoa(common.UsageLogExportRetentionHours())
 	common.OptionMap["DatasetCaptureEnabled"] = strconv.FormatBool(datasetCaptureEnabled)
 	common.OptionMap["DatasetCaptureModelMode"] = dataset_capture_setting.ModelModeAll
 	common.OptionMap["DatasetCaptureModels"] = "[]"
@@ -422,6 +428,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.AutomaticEnableChannelEnabled = boolValue
 		case "LogConsumeEnabled":
 			common.LogConsumeEnabled = boolValue
+		case "UsageLogIPCaptureEnabled":
+			common.UsageLogIPCaptureEnabled.Store(boolValue)
 		case "DatasetCaptureEnabled":
 			return dataset_capture_setting.SetEnabled(boolValue)
 		case "DisplayInCurrencyEnabled":
@@ -485,6 +493,28 @@ func updateOptionMap(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "TrustedProxyCIDRs":
+		common.SetUsageLogTrustedProxyCIDRs(value)
+	case "UsageLogExportDirectLimit":
+		intValue, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || !common.SetUsageLogExportDirectLimit(intValue) {
+			return gorm.ErrInvalidValue
+		}
+	case "UsageLogExportMaxRows":
+		intValue, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || !common.SetUsageLogExportMaxRows(intValue) {
+			return gorm.ErrInvalidValue
+		}
+	case "UsageLogExportBatchSize":
+		intValue, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || !common.SetUsageLogExportBatchSize(intValue) {
+			return gorm.ErrInvalidValue
+		}
+	case "UsageLogExportRetentionHours":
+		intValue, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || !common.SetUsageLogExportRetentionHours(intValue) {
+			return gorm.ErrInvalidValue
+		}
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":

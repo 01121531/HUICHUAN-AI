@@ -150,6 +150,35 @@ func UpdateOption(c *gin.Context) {
 		}
 	}
 	switch option.Key {
+	case "TrustedProxyCIDRs":
+		if invalid := common.SetUsageLogTrustedProxyCIDRs(option.Value.(string)); len(invalid) > 0 {
+			common.ApiErrorMsg(c, "无效的可信代理 CIDR: "+strings.Join(invalid, ", "))
+			return
+		}
+	case "UsageLogExportDirectLimit":
+		value, err := strconv.ParseInt(option.Value.(string), 10, 64)
+		if err != nil || value < 1 || value > 50000 {
+			common.ApiErrorMsg(c, "同步导出阈值必须在 1 到 50000 之间")
+			return
+		}
+	case "UsageLogExportMaxRows":
+		value, err := strconv.ParseInt(option.Value.(string), 10, 64)
+		if err != nil || value < 0 {
+			common.ApiErrorMsg(c, "单次最大导出行数不能小于 0")
+			return
+		}
+	case "UsageLogExportBatchSize":
+		value, err := strconv.ParseInt(option.Value.(string), 10, 64)
+		if err != nil || value < 100 || value > 5000 {
+			common.ApiErrorMsg(c, "导出查询批次必须在 100 到 5000 之间")
+			return
+		}
+	case "UsageLogExportRetentionHours":
+		value, err := strconv.ParseInt(option.Value.(string), 10, 64)
+		if err != nil || value < 1 || value > 720 {
+			common.ApiErrorMsg(c, "导出文件保留时间必须在 1 到 720 小时之间")
+			return
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

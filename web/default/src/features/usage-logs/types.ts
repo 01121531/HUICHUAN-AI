@@ -107,6 +107,7 @@ export type UsageBillingPath =
   (typeof USAGE_BILLING_PATH)[keyof typeof USAGE_BILLING_PATH]
 
 export interface LogOtherData {
+  billing_snapshot_v1?: BillingSnapshotV1
   admin_info?: {
     is_multi_key?: boolean
     multi_key_index?: number
@@ -313,6 +314,55 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  audit_reveal?: boolean
+}
+
+export interface UsageLogExportRequest {
+  selection_mode: 'selected' | 'filtered'
+  format: 'csv' | 'xlsx'
+  ids?: number[]
+  request_ids?: string[]
+  filters: Omit<GetLogsParams, 'p' | 'page_size' | 'audit_reveal'>
+}
+
+export interface UsageLogExportResult {
+  downloaded: boolean
+  requiresBackground: boolean
+  total?: number
+  message?: string
+  task?: UsageLogExportTask
+}
+
+export interface UsageLogExportTask {
+  task_id: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  error?: string
+  state?: {
+    phase?:
+      | 'pending'
+      | 'counting'
+      | 'exporting'
+      | 'finalizing'
+      | 'succeeded'
+      | 'failed'
+      | 'expired'
+    total?: number
+    processed?: number
+    progress?: number
+    format?: 'csv' | 'xlsx'
+    file_id?: string
+    file_size?: number
+    sha256?: string
+    expires_at?: number
+    error_code?: string
+  }
+  result?: {
+    file_id?: string
+    file_size?: number
+    sha256?: string
+    expires_at?: number
+    format?: 'csv' | 'xlsx'
+  }
 }
 
 export interface GetLogsResponse {
@@ -385,6 +435,60 @@ export interface FetchLogsConfig {
   pageSize: number
   searchParams: Record<string, unknown>
   columnFilters: Array<{ id: string; value: unknown }>
+  auditReveal?: boolean
+}
+
+export interface BillingComponent {
+  kind: string
+  quantity: number
+  unit: string
+  unit_price_usd: string
+  price_unit: number
+  ratio: string
+  subtotal_quota: number
+  subtotal_quota_exact: string
+  note?: string
+}
+
+export interface BillingSnapshotV1 {
+  version: string
+  status: 'complete' | 'failed' | 'legacy' | 'missing' | string
+  error_code?: string
+  mode:
+    | 'per_token'
+    | 'per_call'
+    | 'tiered_expr'
+    | 'subscription'
+    | 'free'
+    | 'violation_fee'
+    | 'unknown'
+    | string
+  source: string
+  requested_model: string
+  effective_model: string
+  base_currency: string
+  quota_per_unit: string
+  display_currency: string
+  exchange_rate: string
+  group_ratio: string
+  user_group_ratio?: string | null
+  components: BillingComponent[]
+  pre_consumed_quota: number
+  settlement_delta: number
+  final_charged_quota: number
+  wallet_quota: number
+  subscription_quota: number
+  rounding: string
+  tier_version?: string
+  tier_hash?: string
+  matched_tier?: string
+  tier_inputs?: Record<string, unknown>
+  clamp?: {
+    applied: boolean
+    kind?: string
+    original?: string
+    clamped?: number
+  }
 }
 
 // ============================================================================

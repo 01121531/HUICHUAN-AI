@@ -199,6 +199,8 @@ func main() {
 	// This will cause SSE not to work!!!
 	//server.Use(gzip.Gzip(gzip.DefaultCompression))
 	server.Use(middleware.RequestId())
+	server.Use(middleware.UsageLogClientIP())
+	server.Use(middleware.UsageLogAfterResponse())
 	server.Use(middleware.Version())
 	server.Use(middleware.I18n())
 	middleware.SetUpLogger(server)
@@ -271,6 +273,9 @@ func main() {
 		}
 	}
 	// 内存中的看板数据保存入库，避免重启丢失未落库数据 (issue #5679)
+	if !model.WaitForUsageLogQueue(5 * time.Second) {
+		common.SysLog("usage log queue did not drain before shutdown timeout")
+	}
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
 	}

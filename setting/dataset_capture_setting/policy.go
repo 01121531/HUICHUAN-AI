@@ -25,13 +25,14 @@ var allowedAlertTypes = map[string]struct{}{
 	"queue_full": {}, "inflight_bytes_exceeded": {}, "sample_too_large": {},
 	"disk_low": {}, "disk_limit_reached": {}, "jsonl_write_failed": {},
 	"index_write_failed": {}, "worker_panic": {},
-	"spool_write_failed": {},
+	"spool_write_failed":   {},
+	"usage_log_queue_full": {}, "usage_log_write_failed": {},
 }
 
 var defaultAlertTypes = []string{
 	"disk_limit_reached", "disk_low", "index_write_failed", "inflight_bytes_exceeded",
 	"jsonl_write_failed", "queue_full", "sample_too_large", "spool_write_failed",
-	"worker_panic",
+	"usage_log_queue_full", "usage_log_write_failed", "worker_panic",
 }
 
 type PerformancePolicy struct {
