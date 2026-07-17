@@ -65,6 +65,16 @@ export type DatasetCaptureAlertPolicy = {
   silence_minutes: number
   alert_after_drops: number
   send_recovery: boolean
+  access: DatasetCaptureAccessAlertPolicy
+}
+
+export type DatasetCaptureAccessAlertPolicy = {
+  enabled: boolean
+  actions: DatasetCaptureAccessAuditAction[]
+  operator_mode: DatasetCaptureScopeMode
+  operator_user_ids: number[]
+  owner_mode: DatasetCaptureScopeMode
+  owner_user_ids: number[]
 }
 
 export type DatasetCapturePolicy = {
@@ -104,6 +114,7 @@ export type DatasetCaptureModelsResponse = {
 export type DatasetCapturePolicyUserOption = {
   id: number
   username: string
+  role: number
 }
 
 export type DatasetCapturePolicyTokenOption = {
@@ -118,6 +129,7 @@ export type DatasetCaptureSubjectsResponse = {
   message?: string
   data: {
     users: DatasetCapturePolicyUserOption[]
+    operators: DatasetCapturePolicyUserOption[]
     tokens: DatasetCapturePolicyTokenOption[]
   }
 }
@@ -165,11 +177,15 @@ export type DatasetCaptureActivityWindow = {
 
 export type DatasetCaptureAlertStatus = {
   event_queue_depth: number
+  access_queue_depth: number
   mail_queue_depth: number
   events_dropped: number
+  access_dropped: number
+  access_queued: number
   mail_dropped: number
   send_failed: number
   last_alert_at: number
+  last_access_at: number
   last_recovery_at: number
 }
 

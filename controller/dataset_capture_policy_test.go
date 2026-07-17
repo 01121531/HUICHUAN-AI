@@ -54,5 +54,8 @@ func TestGetDatasetCapturePolicyReturnsEmptyModelsArray(t *testing.T) {
 	assert.NotNil(t, payload.Data.Models)
 	assert.NotNil(t, payload.Data.UserIDs)
 	assert.NotNil(t, payload.Data.TokenIDs)
+	assert.NotNil(t, payload.Data.Alerts.Access.Actions)
+	assert.NotNil(t, payload.Data.Alerts.Access.OperatorUserIDs)
+	assert.NotNil(t, payload.Data.Alerts.Access.OwnerUserIDs)
 	assert.Equal(t, 1024, payload.Data.Performance.QueueSize)
 }

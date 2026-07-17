@@ -73,11 +73,16 @@ func TestUpdateDatasetCapturePolicyPersistsAndAppliesTogether(t *testing.T) {
 		_ = dataset_capture_setting.Apply(originalPolicy)
 	})
 
-	want := dataset_capture_setting.Policy{
-		Enabled:   true,
-		ModelMode: dataset_capture_setting.ModelModeSelected,
-		Models:    []string{"claude-sonnet-4", "gpt-5.2"},
-	}
+	want := dataset_capture_setting.DefaultPolicy()
+	want.Enabled = true
+	want.ModelMode = dataset_capture_setting.ModelModeSelected
+	want.Models = []string{"claude-sonnet-4", "gpt-5.2"}
+	want.Alerts.Access.Enabled = true
+	want.Alerts.Recipients = []string{"audit@example.com"}
+	want.Alerts.Access.OperatorMode = dataset_capture_setting.ScopeModeSelected
+	want.Alerts.Access.OperatorUserIDs = []int{100}
+	want.Alerts.Access.OwnerMode = dataset_capture_setting.ScopeModeSelected
+	want.Alerts.Access.OwnerUserIDs = []int{200}
 	if err := UpdateDatasetCapturePolicy(want); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +112,11 @@ func TestUpdateDatasetCapturePolicyPersistsAndAppliesTogether(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if persistedPolicy.Version != dataset_capture_setting.CurrentVersion || persistedPolicy.Performance.QueueSize != 1024 {
+	if persistedPolicy.Version != dataset_capture_setting.CurrentVersion ||
+		persistedPolicy.Performance.QueueSize != 1024 ||
+		!persistedPolicy.Alerts.Access.Enabled ||
+		len(persistedPolicy.Alerts.Access.OperatorUserIDs) != 1 ||
+		len(persistedPolicy.Alerts.Access.OwnerUserIDs) != 1 {
 		t.Fatalf("persisted v2 policy = %#v", persistedPolicy)
 	}
 }

@@ -232,12 +232,16 @@ export function DatasetCaptures() {
   }
 
   const runDelete = async () => {
-    if (selectedRecords.length === 0) return
+    if (!allFiltered && selectedUsers.length === 0 && selectedRecords.length === 0)
+      return
     setDeleting(true)
     try {
-      const response = await deleteCaptureRecords(
-        selectedRecords.map((record) => record.capture_id)
-      )
+      const response = await deleteCaptureRecords({
+        userIds: selectedUsers.map((user) => user.user_id),
+        captureIds: selectedRecords.map((record) => record.capture_id),
+        allFiltered,
+        filters,
+      })
       const failed = new Set(
         response.items
           .filter((item) => !item.success)
@@ -446,7 +450,6 @@ export function DatasetCaptures() {
         userCount={selectionSummary.userCount}
         recordCount={selectionSummary.recordCount}
         totalSize={selectionSummary.totalSize}
-        explicitRecordCount={selectedRecords.length}
         canDownload={canDownload}
         canDelete={canDelete}
         exporting={exporting}
@@ -461,7 +464,7 @@ export function DatasetCaptures() {
         title={t('Delete captured conversations')}
         desc={t(
           'Delete the complete conversations containing {{count}} selected records? This action cannot be undone.',
-          { count: selectedRecords.length }
+          { count: selectionSummary.recordCount }
         )}
         destructive
         isLoading={deleting}

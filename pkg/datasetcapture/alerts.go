@@ -18,6 +18,38 @@ type AlertConfig struct {
 	SendRecovery    bool
 	Node            string
 	Version         string
+	Access          AccessAlertConfig
+}
+
+type AccessAlertConfig struct {
+	Enabled         bool
+	Actions         []string
+	OperatorMode    string
+	OperatorUserIDs []int
+	OwnerMode       string
+	OwnerUserIDs    []int
+}
+
+type AccessAlertRecord struct {
+	CaptureID string
+	UserID    int
+	Username  string
+	Model     string
+	SessionID string
+}
+
+type AccessAlertEvent struct {
+	EventID          string
+	Action           string
+	OperatorUserID   int
+	OperatorUsername string
+	OperatorRole     int
+	SelectionMode    string
+	RecordCount      int
+	UserCount        int
+	Bytes            int64
+	At               time.Time
+	Records          []AccessAlertRecord
 }
 
 type AlertNotification struct {
@@ -27,13 +59,17 @@ type AlertNotification struct {
 }
 
 type AlertStatus struct {
-	EventQueueDepth int   `json:"event_queue_depth"`
-	MailQueueDepth  int   `json:"mail_queue_depth"`
-	EventsDropped   int64 `json:"events_dropped"`
-	MailDropped     int64 `json:"mail_dropped"`
-	SendFailed      int64 `json:"send_failed"`
-	LastAlertAt     int64 `json:"last_alert_at"`
-	LastRecoveryAt  int64 `json:"last_recovery_at"`
+	EventQueueDepth  int   `json:"event_queue_depth"`
+	AccessQueueDepth int   `json:"access_queue_depth"`
+	MailQueueDepth   int   `json:"mail_queue_depth"`
+	EventsDropped    int64 `json:"events_dropped"`
+	AccessDropped    int64 `json:"access_dropped"`
+	AccessQueued     int64 `json:"access_queued"`
+	MailDropped      int64 `json:"mail_dropped"`
+	SendFailed       int64 `json:"send_failed"`
+	LastAlertAt      int64 `json:"last_alert_at"`
+	LastAccessAt     int64 `json:"last_access_at"`
+	LastRecoveryAt   int64 `json:"last_recovery_at"`
 }
 
 type alertState struct {
@@ -49,6 +85,7 @@ type alertState struct {
 type AlertManager struct {
 	sender         func(AlertNotification) error
 	events         chan Event
+	accessEvents   chan AccessAlertEvent
 	mail           chan AlertNotification
 	done           chan struct{}
 	stop           chan struct{}
@@ -57,16 +94,20 @@ type AlertManager struct {
 	config         AlertConfig
 	states         map[string]*alertState
 	eventsDropped  atomic.Int64
+	accessDropped  atomic.Int64
+	accessQueued   atomic.Int64
 	mailDropped    atomic.Int64
 	sendFailed     atomic.Int64
 	lastAlertAt    atomic.Int64
+	lastAccessAt   atomic.Int64
 	lastRecoveryAt atomic.Int64
 }
 
 func NewAlertManager(sender func(AlertNotification) error) *AlertManager {
 	manager := &AlertManager{
-		sender: sender, events: make(chan Event, 256), mail: make(chan AlertNotification, 32),
-		done: make(chan struct{}), stop: make(chan struct{}), states: make(map[string]*alertState),
+		sender: sender, events: make(chan Event, 256), accessEvents: make(chan AccessAlertEvent, 256),
+		mail: make(chan AlertNotification, 32), done: make(chan struct{}), stop: make(chan struct{}),
+		states: make(map[string]*alertState),
 	}
 	go manager.runEvents()
 	go manager.runMail()
@@ -83,8 +124,7 @@ func (m *AlertManager) Update(config AlertConfig) {
 	if config.AlertAfterDrops <= 0 {
 		config.AlertAfterDrops = 1
 	}
-	config.Recipients = append([]string(nil), config.Recipients...)
-	config.Types = append([]string(nil), config.Types...)
+	cloneAlertConfig(&config)
 	m.mu.Lock()
 	m.config = config
 	m.mu.Unlock()
@@ -104,6 +144,23 @@ func (m *AlertManager) Notify(event Event) {
 	}
 }
 
+// NotifyAccess only transfers bounded metadata to a background queue. Email
+// formatting and SMTP delivery never run in the view/download request path.
+func (m *AlertManager) NotifyAccess(event AccessAlertEvent) {
+	if m == nil {
+		return
+	}
+	if event.At.IsZero() {
+		event.At = time.Now()
+	}
+	event.Records = append([]AccessAlertRecord(nil), event.Records...)
+	select {
+	case m.accessEvents <- event:
+	default:
+		m.accessDropped.Add(1)
+	}
+}
+
 func (m *AlertManager) Resolve(eventType string) {
 	m.Notify(Event{Type: eventType, At: time.Now(), Resolved: true})
 }
@@ -113,15 +170,17 @@ func (m *AlertManager) SendTest() bool {
 		return false
 	}
 	config := m.getConfig()
-	if !config.Enabled || len(config.Recipients) == 0 {
+	if (!config.Enabled && !config.Access.Enabled) || len(config.Recipients) == 0 {
 		return false
 	}
-	notification := AlertNotification{
+	return m.enqueueMail(AlertNotification{
 		Subject:    "[HUICHUAN] 数据快照告警测试",
 		Recipients: append([]string(nil), config.Recipients...),
-		HTML:       fmt.Sprintf("<h2>数据快照告警测试</h2><p>节点：%s</p><p>版本：%s</p>", html.EscapeString(config.Node), html.EscapeString(config.Version)),
-	}
-	return m.enqueueMail(notification)
+		HTML: fmt.Sprintf(
+			"<h2>数据快照告警测试</h2><p>节点：%s</p><p>版本：%s</p>",
+			html.EscapeString(config.Node), html.EscapeString(config.Version),
+		),
+	})
 }
 
 func (m *AlertManager) Status() AlertStatus {
@@ -129,9 +188,11 @@ func (m *AlertManager) Status() AlertStatus {
 		return AlertStatus{}
 	}
 	return AlertStatus{
-		EventQueueDepth: len(m.events), MailQueueDepth: len(m.mail),
-		EventsDropped: m.eventsDropped.Load(), MailDropped: m.mailDropped.Load(),
-		SendFailed: m.sendFailed.Load(), LastAlertAt: m.lastAlertAt.Load(), LastRecoveryAt: m.lastRecoveryAt.Load(),
+		EventQueueDepth: len(m.events), AccessQueueDepth: len(m.accessEvents), MailQueueDepth: len(m.mail),
+		EventsDropped: m.eventsDropped.Load(), AccessDropped: m.accessDropped.Load(),
+		AccessQueued: m.accessQueued.Load(), MailDropped: m.mailDropped.Load(),
+		SendFailed: m.sendFailed.Load(), LastAlertAt: m.lastAlertAt.Load(),
+		LastAccessAt: m.lastAccessAt.Load(), LastRecoveryAt: m.lastRecoveryAt.Load(),
 	}
 }
 
@@ -149,6 +210,8 @@ func (m *AlertManager) runEvents() {
 		select {
 		case event := <-m.events:
 			m.handleEvent(event)
+		case event := <-m.accessEvents:
+			m.handleAccessEvent(event)
 		case <-m.stop:
 			return
 		}
@@ -192,7 +255,8 @@ func (m *AlertManager) handleEvent(event Event) {
 	state.count++
 	state.dropped += event.Dropped
 	state.bytes += event.Bytes
-	shouldSend := state.count >= config.AlertAfterDrops && (state.lastSent.IsZero() || event.At.Sub(state.lastSent) >= config.Silence)
+	shouldSend := state.count >= config.AlertAfterDrops &&
+		(state.lastSent.IsZero() || event.At.Sub(state.lastSent) >= config.Silence)
 	if shouldSend {
 		state.lastSent = event.At
 	}
@@ -220,6 +284,17 @@ func (m *AlertManager) handleRecovery(config AlertConfig, event Event) {
 	}
 }
 
+func (m *AlertManager) handleAccessEvent(event AccessAlertEvent) {
+	config := m.getConfig()
+	if !matchesAccessAlert(config.Access, event) || len(config.Recipients) == 0 {
+		return
+	}
+	if m.enqueueMail(buildAccessAlertNotification(config, event)) {
+		m.accessQueued.Add(1)
+		m.lastAccessAt.Store(event.At.Unix())
+	}
+}
+
 func (m *AlertManager) enqueueMail(notification AlertNotification) bool {
 	select {
 	case m.mail <- notification:
@@ -234,9 +309,16 @@ func (m *AlertManager) getConfig() AlertConfig {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	config := m.config
+	cloneAlertConfig(&config)
+	return config
+}
+
+func cloneAlertConfig(config *AlertConfig) {
 	config.Recipients = append([]string(nil), config.Recipients...)
 	config.Types = append([]string(nil), config.Types...)
-	return config
+	config.Access.Actions = append([]string(nil), config.Access.Actions...)
+	config.Access.OperatorUserIDs = append([]int(nil), config.Access.OperatorUserIDs...)
+	config.Access.OwnerUserIDs = append([]int(nil), config.Access.OwnerUserIDs...)
 }
 
 func buildAlertNotification(config AlertConfig, eventType string, state alertState, recovered bool) AlertNotification {
@@ -259,9 +341,88 @@ func buildAlertNotification(config AlertConfig, eventType string, state alertSta
 	}
 }
 
+func matchesAccessAlert(config AccessAlertConfig, event AccessAlertEvent) bool {
+	if !config.Enabled || !containsAlertType(config.Actions, event.Action) {
+		return false
+	}
+	if config.OperatorMode == "selected" && !containsInt(config.OperatorUserIDs, event.OperatorUserID) {
+		return false
+	}
+	if config.OwnerMode != "selected" {
+		return true
+	}
+	for _, record := range event.Records {
+		if containsInt(config.OwnerUserIDs, record.UserID) {
+			return true
+		}
+	}
+	return false
+}
+
+func buildAccessAlertNotification(config AlertConfig, event AccessAlertEvent) AlertNotification {
+	actionLabel := event.Action
+	switch event.Action {
+	case "view":
+		actionLabel = "查看"
+	case "download":
+		actionLabel = "下载"
+	}
+	records := event.Records
+	if config.Access.OwnerMode == "selected" {
+		records = make([]AccessAlertRecord, 0, len(event.Records))
+		for _, record := range event.Records {
+			if containsInt(config.Access.OwnerUserIDs, record.UserID) {
+				records = append(records, record)
+			}
+		}
+	}
+	var rows strings.Builder
+	const maxDetails = 20
+	for index, record := range records {
+		if index >= maxDetails {
+			break
+		}
+		fmt.Fprintf(
+			&rows,
+			"<tr><td>%s</td><td>%d / %s</td><td>%s</td><td>%s</td></tr>",
+			html.EscapeString(record.CaptureID), record.UserID, html.EscapeString(record.Username),
+			html.EscapeString(record.Model), html.EscapeString(record.SessionID),
+		)
+	}
+	detailNote := ""
+	if len(records) > maxDetails {
+		detailNote = fmt.Sprintf("<p>仅展示前 %d 条定位信息，其余请通过访问审计查看。</p>", maxDetails)
+	}
+	content := fmt.Sprintf(
+		"<h2>数据快照访问提醒</h2><table><tr><td>节点</td><td>%s</td></tr><tr><td>版本</td><td>%s</td></tr><tr><td>时间</td><td>%s</td></tr><tr><td>审计事件</td><td>%s</td></tr><tr><td>操作人</td><td>%d / %s</td></tr><tr><td>操作人角色</td><td>%d</td></tr><tr><td>操作</td><td>%s</td></tr><tr><td>选择方式</td><td>%s</td></tr><tr><td>记录数</td><td>%d</td></tr><tr><td>用户数</td><td>%d</td></tr><tr><td>导出字节数</td><td>%d</td></tr></table><h3>匹配的数据定位（不含对话正文和令牌密钥）</h3><table><tr><th>快照 ID</th><th>所属用户</th><th>模型</th><th>会话 ID</th></tr>%s</table>%s",
+		html.EscapeString(config.Node), html.EscapeString(config.Version), event.At.Format(time.RFC3339),
+		html.EscapeString(event.EventID), event.OperatorUserID, html.EscapeString(event.OperatorUsername),
+		event.OperatorRole, actionLabel, html.EscapeString(event.SelectionMode), event.RecordCount, event.UserCount, event.Bytes,
+		rows.String(), detailNote,
+	)
+	return AlertNotification{
+		Subject:    fmt.Sprintf("[HUICHUAN] 数据快照%s提醒：%s", actionLabel, safeSubjectValue(event.OperatorUsername)),
+		Recipients: append([]string(nil), config.Recipients...),
+		HTML:       content,
+	}
+}
+
+func safeSubjectValue(value string) string {
+	return strings.TrimSpace(strings.NewReplacer("\r", " ", "\n", " ").Replace(value))
+}
+
 func containsAlertType(values []string, target string) bool {
 	for _, value := range values {
 		if strings.EqualFold(value, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsInt(values []int, target int) bool {
+	for _, value := range values {
+		if value == target {
 			return true
 		}
 	}

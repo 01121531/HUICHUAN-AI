@@ -3,6 +3,7 @@ package model
 type DatasetCapturePolicyUser struct {
 	ID       int    `json:"id"`
 	Username string `json:"username"`
+	Role     int    `json:"role"`
 }
 
 type DatasetCapturePolicyToken struct {
@@ -18,7 +19,7 @@ func ListDatasetCapturePolicySubjects(selectedUserIDs, selectedTokenIDs []int, l
 	}
 	users := make([]DatasetCapturePolicyUser, 0, limit)
 	if err := DB.Unscoped().Model(&User{}).
-		Select("id, username").Order("id DESC").Limit(limit).Scan(&users).Error; err != nil {
+		Select("id, username, role").Order("id DESC").Limit(limit).Scan(&users).Error; err != nil {
 		return nil, nil, err
 	}
 	if err := appendSelectedPolicyUsers(&users, selectedUserIDs); err != nil {
@@ -50,7 +51,7 @@ func appendSelectedPolicyUsers(users *[]DatasetCapturePolicyUser, selected []int
 		return nil
 	}
 	var extra []DatasetCapturePolicyUser
-	if err := DB.Unscoped().Model(&User{}).Select("id, username").Where("id IN ?", missing).Scan(&extra).Error; err != nil {
+	if err := DB.Unscoped().Model(&User{}).Select("id, username, role").Where("id IN ?", missing).Scan(&extra).Error; err != nil {
 		return err
 	}
 	*users = append(*users, extra...)

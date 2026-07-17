@@ -23,6 +23,7 @@ import {
   Database,
   Gauge,
   HardDrive,
+  HelpCircle,
   Mail,
   RefreshCw,
 } from 'lucide-react'
@@ -54,6 +55,11 @@ import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 import {
   getDatasetCaptureModels,
@@ -124,6 +130,14 @@ const DEFAULT_POLICY: DatasetCapturePolicy = {
     silence_minutes: 10,
     alert_after_drops: 1,
     send_recovery: true,
+    access: {
+      enabled: false,
+      actions: ['view', 'download'],
+      operator_mode: 'all',
+      operator_user_ids: [],
+      owner_mode: 'all',
+      owner_user_ids: [],
+    },
   },
 }
 
@@ -151,7 +165,7 @@ function createDatasetCaptureSchema(translate: (key: string) => string) {
         index_batch_size: z.number().int().min(1).max(1000),
         index_flush_interval_ms: z.number().int().min(100).max(60000),
         min_free_disk_gb: z.number().int().min(0).max(10240),
-        max_disk_gb: z.number().int().min(1).max(1048576),
+        max_disk_gb: z.number().int().min(0).max(1048576),
         export_concurrency: z.number().int().min(1).max(8),
         export_read_mbps: z.number().int().min(0).max(1024),
       }),
@@ -162,6 +176,14 @@ function createDatasetCaptureSchema(translate: (key: string) => string) {
         silence_minutes: z.number().int().min(1).max(1440),
         alert_after_drops: z.number().int().min(1).max(1000000),
         send_recovery: z.boolean(),
+        access: z.object({
+          enabled: z.boolean(),
+          actions: z.array(z.enum(['view', 'download'])),
+          operator_mode: z.enum(['all', 'selected']),
+          operator_user_ids: z.array(z.number().int().positive()),
+          owner_mode: z.enum(['all', 'selected']),
+          owner_user_ids: z.array(z.number().int().positive()),
+        }),
       }),
     })
     .superRefine((value, context) => {
@@ -186,11 +208,46 @@ function createDatasetCaptureSchema(translate: (key: string) => string) {
           message: translate('Select at least one token'),
         })
       }
-      if (value.alerts.enabled && value.alerts.recipients.length === 0) {
+      if (
+        (value.alerts.enabled || value.alerts.access.enabled) &&
+        value.alerts.recipients.length === 0
+      ) {
         context.addIssue({
           code: 'custom',
           path: ['alerts', 'recipients'],
           message: translate('Add at least one alert recipient'),
+        })
+      }
+      if (
+        value.alerts.access.enabled &&
+        value.alerts.access.actions.length === 0
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['alerts', 'access', 'actions'],
+          message: translate('Select at least one access action'),
+        })
+      }
+      if (
+        value.alerts.access.enabled &&
+        value.alerts.access.operator_mode === 'selected' &&
+        value.alerts.access.operator_user_ids.length === 0
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['alerts', 'access', 'operator_user_ids'],
+          message: translate('Select at least one administrator'),
+        })
+      }
+      if (
+        value.alerts.access.enabled &&
+        value.alerts.access.owner_mode === 'selected' &&
+        value.alerts.access.owner_user_ids.length === 0
+      ) {
+        context.addIssue({
+          code: 'custom',
+          path: ['alerts', 'access', 'owner_user_ids'],
+          message: translate('Select at least one data owner'),
         })
       }
       if (
@@ -227,6 +284,21 @@ function normalizePolicy(policy: DatasetCapturePolicy): DatasetCapturePolicy {
       types: Array.isArray(policy.alerts?.types)
         ? policy.alerts.types
         : [...ALERT_TYPES],
+      access: {
+        ...DEFAULT_POLICY.alerts.access,
+        ...policy.alerts?.access,
+        actions: Array.isArray(policy.alerts?.access?.actions)
+          ? policy.alerts.access.actions
+          : [...DEFAULT_POLICY.alerts.access.actions],
+        operator_user_ids: Array.isArray(
+          policy.alerts?.access?.operator_user_ids
+        )
+          ? policy.alerts.access.operator_user_ids
+          : [],
+        owner_user_ids: Array.isArray(policy.alerts?.access?.owner_user_ids)
+          ? policy.alerts.access.owner_user_ids
+          : [],
+      },
     },
   }
 }
@@ -286,39 +358,124 @@ function NumberField({
   name,
   label,
   description,
+  help,
+  range,
+  defaultValue,
   min,
   max,
+  allowUnlimited = false,
+  unlimitedFallback,
+  unlimitedDescription,
 }: {
   form: UseFormReturn<DatasetCaptureFormValues>
   name: NumberPath
   label: string
   description?: string
+  help: string
+  range: string
+  defaultValue: number
   min: number
   max: number
+  allowUnlimited?: boolean
+  unlimitedFallback?: number
+  unlimitedDescription?: string
 }) {
+  const { t } = useTranslation()
   return (
     <FormField
       control={form.control}
       name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input
-              type='number'
-              min={min}
-              max={max}
-              value={field.value}
-              onBlur={field.onBlur}
-              onChange={(event) => field.onChange(event.target.valueAsNumber)}
-            />
-          </FormControl>
-          {description ? (
-            <FormDescription>{description}</FormDescription>
-          ) : null}
-          <FormMessage />
-        </FormItem>
-      )}
+      render={({ field }) => {
+        const unlimited = allowUnlimited && field.value === 0
+        return (
+          <FormItem>
+            <div className='flex min-h-6 items-center justify-between gap-3'>
+              <div className='flex min-w-0 items-center gap-1.5'>
+                <FormLabel>{label}</FormLabel>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon-sm'
+                        className='text-muted-foreground hover:text-foreground size-5 shrink-0 rounded-full p-0'
+                        aria-label={t('Explain {{parameter}}', {
+                          parameter: label,
+                        })}
+                      />
+                    }
+                  >
+                    <HelpCircle className='size-4' aria-hidden='true' />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side='top'
+                    align='start'
+                    className='max-w-80 flex-col items-start gap-2 px-3 py-2 text-left'
+                  >
+                    <p className='text-xs leading-5'>{help}</p>
+                    <div className='border-background/20 w-full border-t pt-2 text-[11px] leading-4'>
+                      <p>
+                        {t('Parameter range: {{range}}', {
+                          range,
+                        })}
+                      </p>
+                      <p>
+                        {t('Default value: {{value}}', {
+                          value: defaultValue,
+                        })}
+                      </p>
+                      <p>
+                        {allowUnlimited
+                          ? t('This parameter supports unlimited mode')
+                          : t('This safety parameter must keep a finite limit')}
+                      </p>
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              {allowUnlimited ? (
+                <div className='text-muted-foreground flex shrink-0 items-center gap-2 text-xs'>
+                  <span>{t('Unlimited')}</span>
+                  <Switch
+                    checked={unlimited}
+                    onCheckedChange={(checked) =>
+                      field.onChange(
+                        checked
+                          ? 0
+                          : (unlimitedFallback ?? Math.max(min, defaultValue))
+                      )
+                    }
+                    aria-label={t('Set {{parameter}} to unlimited', {
+                      parameter: label,
+                    })}
+                  />
+                </div>
+              ) : null}
+            </div>
+            <FormControl>
+              <Input
+                type='number'
+                min={min}
+                max={max}
+                value={field.value}
+                disabled={unlimited}
+                onBlur={field.onBlur}
+                onChange={(event) => field.onChange(event.target.valueAsNumber)}
+              />
+            </FormControl>
+            {unlimited ? (
+              <FormDescription>
+                {unlimitedDescription ??
+                  t('The current parameter is not limited')}
+              </FormDescription>
+            ) : description ? (
+              <FormDescription>{description}</FormDescription>
+            ) : null}
+            <FormMessage />
+          </FormItem>
+        )
+      }}
     />
   )
 }
@@ -418,6 +575,12 @@ export function DatasetCaptureSettingsSection() {
     value: String(user.id),
     label: `${user.username} (#${user.id})`,
   }))
+  const operatorOptions = (subjectsQuery.data?.data?.operators ?? []).map(
+    (user) => ({
+      value: String(user.id),
+      label: `${user.username} (#${user.id})`,
+    })
+  )
   const tokenOptions = (subjectsQuery.data?.data?.tokens ?? []).map(
     (token) => ({
       value: String(token.id),
@@ -428,11 +591,19 @@ export function DatasetCaptureSettingsSection() {
     value: type,
     label: t(`Dataset capture alert ${type}`),
   }))
+  const accessActionOptions = [
+    { value: 'view', label: t('View snapshot details') },
+    { value: 'download', label: t('Download snapshot export') },
+  ]
 
   const selectedModelMode = form.watch('model_mode')
   const selectedUserMode = form.watch('user_mode')
   const selectedTokenMode = form.watch('token_mode')
   const alertsEnabled = form.watch('alerts.enabled')
+  const accessAlertsEnabled = form.watch('alerts.access.enabled')
+  const accessOperatorMode = form.watch('alerts.access.operator_mode')
+  const accessOwnerMode = form.watch('alerts.access.owner_mode')
+  const emailAlertsEnabled = alertsEnabled || accessAlertsEnabled
   const selectedModels = form.watch('models') ?? EMPTY_VALUES
   const unavailableModels = selectedModels.filter(
     (model) => !availableModels.includes(model)
@@ -823,13 +994,18 @@ export function DatasetCaptureSettingsSection() {
           <Subsection
             title={t('Performance protection')}
             description={t(
-              'Bound memory, disk and database work without blocking API responses'
+              'Bound memory, disk and database work without blocking API responses. Only disk reserve, storage cap and export speed support unlimited mode.'
             )}
           />
           <NumberField
             form={form}
             name='performance.queue_size'
             label={t('Completion queue size')}
+            help={t(
+              'Stores completed capture tasks waiting for normalization. A larger queue absorbs traffic bursts but retains more memory.'
+            )}
+            range='16–65,536'
+            defaultValue={1024}
             min={16}
             max={65536}
           />
@@ -837,6 +1013,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.workers'
             label={t('Normalization workers')}
+            help={t(
+              'Controls concurrent request normalization, schema validation and record assembly. More workers use more CPU and may increase disk contention.'
+            )}
+            range='1–32'
+            defaultValue={2}
             min={1}
             max={32}
           />
@@ -844,6 +1025,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.buffer_segment_kb'
             label={t('Buffer segment (KB)')}
+            help={t(
+              'Sets the reusable memory block size used while copying streaming responses. Larger blocks reduce allocations but may waste memory for small responses.'
+            )}
+            range='4–1,024 KB'
+            defaultValue={64}
             min={4}
             max={1024}
           />
@@ -851,6 +1037,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.max_sample_mb'
             label={t('Maximum snapshot (MB)')}
+            help={t(
+              'Limits one complete request and response snapshot. A snapshot exceeding this safety limit is discarded as a whole instead of being truncated.'
+            )}
+            range='1–1,024 MB'
+            defaultValue={100}
             min={1}
             max={1024}
           />
@@ -858,6 +1049,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.max_inflight_mb'
             label={t('Maximum in-flight memory (MB)')}
+            help={t(
+              'Limits memory reserved by all capture buffers at the same time. New snapshots are dropped when the limit is reached so API responses remain unaffected.'
+            )}
+            range='16–65,536 MB'
+            defaultValue={512}
             min={16}
             max={65536}
           />
@@ -865,6 +1061,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.spool_threshold_mb'
             label={t('Background spool threshold (MB)')}
+            help={t(
+              'Moves large completed response data to a protected temporary file in the background. Lower values save memory but increase disk I/O.'
+            )}
+            range='1–1,024 MB'
+            defaultValue={2}
             min={1}
             max={1024}
           />
@@ -872,6 +1073,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.index_queue_size'
             label={t('Index queue size')}
+            help={t(
+              'Stores completed JSONL records waiting for database index updates. A larger queue tolerates temporary database latency but uses more memory.'
+            )}
+            range='16–131,072'
+            defaultValue={2048}
             min={16}
             max={131072}
           />
@@ -879,6 +1085,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.index_batch_size'
             label={t('Index batch size')}
+            help={t(
+              'Controls how many snapshot index rows are written per database batch. Larger batches improve throughput but delay visibility and increase transaction size.'
+            )}
+            range='1–1,000'
+            defaultValue={50}
             min={1}
             max={1000}
           />
@@ -886,6 +1097,11 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.index_flush_interval_ms'
             label={t('Index flush interval (ms)')}
+            help={t(
+              'Sets the maximum wait before a partially filled index batch is written. Lower values show snapshots sooner but cause more database writes.'
+            )}
+            range='100–60,000 ms'
+            defaultValue={1000}
             min={100}
             max={60000}
           />
@@ -893,20 +1109,45 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.min_free_disk_gb'
             label={t('Minimum free disk (GB)')}
+            help={t(
+              'Stops writing new snapshots when the filesystem free space falls below this reserve. Unlimited mode disables this reserve check.'
+            )}
+            range={t('Unlimited or 1–10,240 GB')}
+            defaultValue={2}
             min={0}
             max={10240}
+            allowUnlimited
+            unlimitedFallback={2}
+            unlimitedDescription={t(
+              'Free-space reserve protection is disabled'
+            )}
           />
           <NumberField
             form={form}
             name='performance.max_disk_gb'
             label={t('Maximum snapshot storage (GB)')}
-            min={1}
+            help={t(
+              'Limits total disk space used by the snapshot directory on this node. Unlimited mode removes the total-size cap but does not bypass filesystem errors.'
+            )}
+            range={t('Unlimited or 1–1,048,576 GB')}
+            defaultValue={10}
+            min={0}
             max={1048576}
+            allowUnlimited
+            unlimitedFallback={10}
+            unlimitedDescription={t(
+              'Snapshot storage may grow until the filesystem is full'
+            )}
           />
           <NumberField
             form={form}
             name='performance.export_concurrency'
             label={t('Export concurrency')}
+            help={t(
+              'Limits simultaneous snapshot export jobs. Higher values increase disk reads, temporary-file usage and database pressure.'
+            )}
+            range='1–8'
+            defaultValue={1}
             min={1}
             max={8}
           />
@@ -914,15 +1155,22 @@ export function DatasetCaptureSettingsSection() {
             form={form}
             name='performance.export_read_mbps'
             label={t('Export read limit (MB/s)')}
+            help={t(
+              'Throttles the read and write throughput of each export job to reduce competition with API traffic. Unlimited mode disables throttling.'
+            )}
+            range={t('Unlimited or 1–1,024 MB/s')}
+            defaultValue={32}
             min={0}
             max={1024}
-            description={t('Set to 0 for no export speed limit')}
+            allowUnlimited
+            unlimitedFallback={32}
+            unlimitedDescription={t('Snapshot exports are not throttled')}
           />
 
           <Subsection
-            title={t('Exception email alerts')}
+            title={t('Email alerts')}
             description={t(
-              'The first failure is sent immediately and repeated failures are aggregated'
+              'Configure operational failures and successful snapshot access notifications'
             )}
           />
           <FormField
@@ -942,28 +1190,52 @@ export function DatasetCaptureSettingsSection() {
               </SettingsSwitchItem>
             )}
           />
+          <FormField
+            control={form.control}
+            name='alerts.access.enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Enable snapshot access emails')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Send an asynchronous email after a matching view or download is delivered'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+          {emailAlertsEnabled ? (
+            <FormField
+              control={form.control}
+              name='alerts.recipients'
+              render={({ field }) => (
+                <FormItem data-settings-form-span='full'>
+                  <FormLabel>{t('Alert recipients')}</FormLabel>
+                  <FormControl>
+                    <MultiSelect
+                      options={[]}
+                      selected={field.value ?? EMPTY_VALUES}
+                      onChange={field.onChange}
+                      allowCreate
+                      placeholder={t('Enter email addresses...')}
+                      maxVisibleChips={5}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
           {alertsEnabled ? (
             <>
-              <FormField
-                control={form.control}
-                name='alerts.recipients'
-                render={({ field }) => (
-                  <FormItem data-settings-form-span='full'>
-                    <FormLabel>{t('Alert recipients')}</FormLabel>
-                    <FormControl>
-                      <MultiSelect
-                        options={[]}
-                        selected={field.value ?? EMPTY_VALUES}
-                        onChange={field.onChange}
-                        allowCreate
-                        placeholder={t('Enter email addresses...')}
-                        maxVisibleChips={5}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
               <FormField
                 control={form.control}
                 name='alerts.types'
@@ -987,6 +1259,11 @@ export function DatasetCaptureSettingsSection() {
                 form={form}
                 name='alerts.silence_minutes'
                 label={t('Alert silence window (minutes)')}
+                help={t(
+                  'Suppresses repeated emails of the same operational alert type during this period while continuing to aggregate event counts.'
+                )}
+                range='1–1,440 min'
+                defaultValue={10}
                 min={1}
                 max={1440}
               />
@@ -994,6 +1271,11 @@ export function DatasetCaptureSettingsSection() {
                 form={form}
                 name='alerts.alert_after_drops'
                 label={t('Alert after dropped snapshots')}
+                help={t(
+                  'Sets how many matching drop events activate an operational alert. The first email is queued when this threshold is reached.'
+                )}
+                range='1–1,000,000'
+                defaultValue={1}
                 min={1}
                 max={1000000}
               />
@@ -1014,20 +1296,136 @@ export function DatasetCaptureSettingsSection() {
                   </SettingsSwitchItem>
                 )}
               />
-              <div data-settings-form-span='full' className='flex justify-end'>
-                <Button
-                  type='button'
-                  variant='outline'
-                  onClick={() => testAlertMutation.mutate()}
-                  disabled={
-                    testAlertMutation.isPending || form.formState.isDirty
-                  }
-                >
-                  <Mail className='size-4' />
-                  {t('Send test email')}
-                </Button>
-              </div>
             </>
+          ) : null}
+          {accessAlertsEnabled ? (
+            <>
+              <Subsection
+                title={t('Snapshot access email scope')}
+                description={t(
+                  'When both selected ranges are used, the operator and data owner must both match'
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='alerts.access.actions'
+                render={({ field }) => (
+                  <FormItem data-settings-form-span='full'>
+                    <FormLabel>{t('Access actions')}</FormLabel>
+                    <FormControl>
+                      <MultiSelect
+                        options={accessActionOptions}
+                        selected={field.value ?? EMPTY_VALUES}
+                        onChange={field.onChange}
+                        placeholder={t('Select access actions...')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='alerts.access.operator_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <div className='text-sm font-medium'>
+                      {t('Operator scope')}
+                    </div>
+                    <FormControl>
+                      <ScopeToggle
+                        value={field.value}
+                        onChange={field.onChange}
+                        allLabel={t('All administrators')}
+                        selectedLabel={t('Selected administrators')}
+                        ariaLabel={t('Operator scope')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='alerts.access.owner_mode'
+                render={({ field }) => (
+                  <FormItem>
+                    <div className='text-sm font-medium'>
+                      {t('Data owner scope')}
+                    </div>
+                    <FormControl>
+                      <ScopeToggle
+                        value={field.value}
+                        onChange={field.onChange}
+                        allLabel={t('All data owners')}
+                        selectedLabel={t('Selected data owners')}
+                        ariaLabel={t('Data owner scope')}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              {accessOperatorMode === 'selected' ? (
+                <FormField
+                  control={form.control}
+                  name='alerts.access.operator_user_ids'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Selected administrators')}</FormLabel>
+                      <FormControl>
+                        <MultiSelect
+                          options={operatorOptions}
+                          selected={(field.value ?? []).map(String)}
+                          onChange={(values) =>
+                            field.onChange(values.map(Number))
+                          }
+                          placeholder={t('Select administrators...')}
+                          maxVisibleChips={4}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
+              {accessOwnerMode === 'selected' ? (
+                <FormField
+                  control={form.control}
+                  name='alerts.access.owner_user_ids'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Selected data owners')}</FormLabel>
+                      <FormControl>
+                        <MultiSelect
+                          options={userOptions}
+                          selected={(field.value ?? []).map(String)}
+                          onChange={(values) =>
+                            field.onChange(values.map(Number))
+                          }
+                          placeholder={t('Select data owners...')}
+                          maxVisibleChips={4}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              ) : null}
+            </>
+          ) : null}
+          {emailAlertsEnabled ? (
+            <div data-settings-form-span='full' className='flex justify-end'>
+              <Button
+                type='button'
+                variant='outline'
+                onClick={() => testAlertMutation.mutate()}
+                disabled={testAlertMutation.isPending || form.formState.isDirty}
+              >
+                <Mail className='size-4' />
+                {t('Send test email')}
+              </Button>
+            </div>
           ) : null}
         </SettingsForm>
       </Form>

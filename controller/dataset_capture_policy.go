@@ -38,23 +38,35 @@ func UpdateDatasetCapturePolicy(c *gin.Context) {
 	}
 	middleware.ReloadDatasetCapture()
 	recordManageAudit(c, "dataset_capture.policy_update", map[string]interface{}{
-		"enabled_before":      previous.Enabled,
-		"enabled_after":       policy.Enabled,
-		"mode_before":         previous.ModelMode,
-		"mode_after":          policy.ModelMode,
-		"models_before":       len(previous.Models),
-		"models_after":        len(policy.Models),
-		"user_mode_before":    previous.UserMode,
-		"user_mode_after":     policy.UserMode,
-		"users_before":        len(previous.UserIDs),
-		"users_after":         len(policy.UserIDs),
-		"token_mode_before":   previous.TokenMode,
-		"token_mode_after":    policy.TokenMode,
-		"tokens_before":       len(previous.TokenIDs),
-		"tokens_after":        len(policy.TokenIDs),
-		"alerts_before":       previous.Alerts.Enabled,
-		"alerts_after":        policy.Alerts.Enabled,
-		"performance_changed": previous.Performance != policy.Performance,
+		"enabled_before":              previous.Enabled,
+		"enabled_after":               policy.Enabled,
+		"mode_before":                 previous.ModelMode,
+		"mode_after":                  policy.ModelMode,
+		"models_before":               len(previous.Models),
+		"models_after":                len(policy.Models),
+		"user_mode_before":            previous.UserMode,
+		"user_mode_after":             policy.UserMode,
+		"users_before":                len(previous.UserIDs),
+		"users_after":                 len(policy.UserIDs),
+		"token_mode_before":           previous.TokenMode,
+		"token_mode_after":            policy.TokenMode,
+		"tokens_before":               len(previous.TokenIDs),
+		"tokens_after":                len(policy.TokenIDs),
+		"alerts_before":               previous.Alerts.Enabled,
+		"alerts_after":                policy.Alerts.Enabled,
+		"access_alerts_before":        previous.Alerts.Access.Enabled,
+		"access_alerts_after":         policy.Alerts.Access.Enabled,
+		"access_actions_before":       len(previous.Alerts.Access.Actions),
+		"access_actions_after":        len(policy.Alerts.Access.Actions),
+		"access_operator_mode_before": previous.Alerts.Access.OperatorMode,
+		"access_operator_mode_after":  policy.Alerts.Access.OperatorMode,
+		"access_operators_before":     len(previous.Alerts.Access.OperatorUserIDs),
+		"access_operators_after":      len(policy.Alerts.Access.OperatorUserIDs),
+		"access_owner_mode_before":    previous.Alerts.Access.OwnerMode,
+		"access_owner_mode_after":     policy.Alerts.Access.OwnerMode,
+		"access_owners_before":        len(previous.Alerts.Access.OwnerUserIDs),
+		"access_owners_after":         len(policy.Alerts.Access.OwnerUserIDs),
+		"performance_changed":         previous.Performance != policy.Performance,
 	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": policy})
 }
@@ -82,10 +94,21 @@ func ListDatasetCapturePolicyModels(c *gin.Context) {
 
 func ListDatasetCapturePolicySubjects(c *gin.Context) {
 	policy := dataset_capture_setting.Get()
-	users, tokens, err := model.ListDatasetCapturePolicySubjects(policy.UserIDs, policy.TokenIDs, 500)
+	selectedUsers := append([]int{}, policy.UserIDs...)
+	selectedUsers = append(selectedUsers, policy.Alerts.Access.OperatorUserIDs...)
+	selectedUsers = append(selectedUsers, policy.Alerts.Access.OwnerUserIDs...)
+	users, tokens, err := model.ListDatasetCapturePolicySubjects(selectedUsers, policy.TokenIDs, 500)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"users": users, "tokens": tokens}})
+	operators := make([]model.DatasetCapturePolicyUser, 0)
+	for _, user := range users {
+		if user.Role == common.RoleAdminUser || user.Role == common.RoleRootUser {
+			operators = append(operators, user)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{
+		"users": users, "operators": operators, "tokens": tokens,
+	}})
 }

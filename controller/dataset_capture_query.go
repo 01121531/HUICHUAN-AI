@@ -110,17 +110,18 @@ func GetDatasetCaptureRecord(c *gin.Context) {
 		datasetCaptureQueryError(c, err)
 		return
 	}
-	auditEventID, err := beginDatasetCaptureAccessAudit(c, model.DatasetCaptureAccessAuditInput{
+	auditInput := model.DatasetCaptureAccessAuditInput{
 		Action: model.DatasetCaptureAuditActionView, SelectionMode: "single_record",
 		Records: []model.DatasetCaptureRecordSummary{summary},
-	})
+	}
+	auditEventID, err := beginDatasetCaptureAccessAudit(c, auditInput)
 	if err != nil {
 		common.SysError("dataset capture view audit failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to create dataset capture access audit"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "data": gin.H{"metadata": summary, "record": record}})
-	completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeDelivered)
+	completeDatasetCaptureAccessAudit(c, auditEventID, model.DatasetCaptureAuditOutcomeDelivered, auditInput)
 	recordDatasetCaptureAudit(c, "dataset_capture.record_view", datasetCaptureAuditMetadata(summary))
 }
 

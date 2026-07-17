@@ -95,3 +95,17 @@ func containsAny(value string, needles ...string) bool {
 	}
 	return false
 }
+
+func TestEnvNonNegativeIntAllowsZero(t *testing.T) {
+	t.Setenv("DATASET_CAPTURE_MAX_DISK_GB", "0")
+	if got := envNonNegativeInt("DATASET_CAPTURE_MAX_DISK_GB", 10); got != 0 {
+		t.Fatalf("expected unlimited value 0, got %d", got)
+	}
+}
+
+func TestEnvNonNegativeIntRejectsNegativeValue(t *testing.T) {
+	t.Setenv("DATASET_CAPTURE_MAX_DISK_GB", "-1")
+	if got := envNonNegativeInt("DATASET_CAPTURE_MAX_DISK_GB", 10); got != 10 {
+		t.Fatalf("expected fallback 10, got %d", got)
+	}
+}

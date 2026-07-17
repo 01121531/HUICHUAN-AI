@@ -158,10 +158,15 @@ export async function exportCaptures(
 }
 
 export async function deleteCaptureRecords(
-  captureIds: string[]
+  selection: CaptureExportSelection
 ): Promise<CaptureDeleteResponse> {
   const response = await api.delete('/api/dataset-captures/records/batch', {
-    data: { capture_ids: captureIds },
+    data: {
+      user_ids: selection.userIds,
+      capture_ids: selection.captureIds,
+      all_filtered: selection.allFiltered,
+      filter: exportFilter(selection.filters),
+    },
   })
   return response.data.data as CaptureDeleteResponse
 }

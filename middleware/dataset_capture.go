@@ -394,6 +394,11 @@ func SendDatasetCaptureTestAlert() bool {
 	return datasetCaptureAlertManager().SendTest()
 }
 
+func NotifyDatasetCaptureAccess(event datasetcapture.AccessAlertEvent) {
+	configureDatasetCaptureAlerts()
+	datasetCaptureAlertManager().NotifyAccess(event)
+}
+
 func acquireDatasetWriter() (*datasetcapture.Writer, func()) {
 	if !dataset_capture_setting.IsEnabled() {
 		return nil, func() {}
@@ -479,6 +484,12 @@ func configureDatasetCaptureAlerts() {
 		Silence:         time.Duration(policy.Alerts.SilenceMinutes) * time.Minute,
 		AlertAfterDrops: int64(policy.Alerts.AlertAfterDrops), SendRecovery: policy.Alerts.SendRecovery,
 		Node: DatasetCaptureNode(), Version: common.Version,
+		Access: datasetcapture.AccessAlertConfig{
+			Enabled: policy.Alerts.Access.Enabled, Actions: policy.Alerts.Access.Actions,
+			OperatorMode:    policy.Alerts.Access.OperatorMode,
+			OperatorUserIDs: policy.Alerts.Access.OperatorUserIDs,
+			OwnerMode:       policy.Alerts.Access.OwnerMode, OwnerUserIDs: policy.Alerts.Access.OwnerUserIDs,
+		},
 	})
 }
 

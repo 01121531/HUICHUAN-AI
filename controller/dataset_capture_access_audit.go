@@ -3,10 +3,12 @@ package controller
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/middleware"
 	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 	"github.com/gin-gonic/gin"
 )
 
@@ -20,10 +22,30 @@ func beginDatasetCaptureAccessAudit(c *gin.Context, input model.DatasetCaptureAc
 	return model.BeginDatasetCaptureAccessAudit(input)
 }
 
-func completeDatasetCaptureAccessAudit(eventID, outcome string) {
+func completeDatasetCaptureAccessAudit(c *gin.Context, eventID, outcome string, input model.DatasetCaptureAccessAuditInput) {
 	if err := model.CompleteDatasetCaptureAccessAudit(eventID, outcome); err != nil {
 		common.SysError("dataset capture access audit completion failed: " + err.Error())
+		return
 	}
+	if outcome != model.DatasetCaptureAuditOutcomeDelivered {
+		return
+	}
+	records := make([]datasetcapture.AccessAlertRecord, 0, len(input.Records))
+	users := make(map[int]struct{})
+	for _, record := range input.Records {
+		users[record.UserID] = struct{}{}
+		records = append(records, datasetcapture.AccessAlertRecord{
+			CaptureID: record.CaptureID, UserID: record.UserID, Username: record.Username,
+			Model: record.EffectiveModel, SessionID: record.SessionID,
+		})
+	}
+	middleware.NotifyDatasetCaptureAccess(datasetcapture.AccessAlertEvent{
+		EventID: eventID, Action: input.Action,
+		OperatorUserID: c.GetInt("id"), OperatorUsername: c.GetString("username"),
+		OperatorRole: c.GetInt("role"), SelectionMode: input.SelectionMode,
+		RecordCount: len(input.Records), UserCount: len(users), Bytes: input.Bytes,
+		At: time.Now(), Records: records,
+	})
 }
 
 func ListDatasetCaptureAccessAudits(c *gin.Context) {

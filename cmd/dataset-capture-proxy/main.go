@@ -148,7 +148,7 @@ func main() {
 	maxSampleMB := envInt("DATASET_CAPTURE_MAX_SAMPLE_MB", 100)
 	maxInFlightMB := envInt("DATASET_CAPTURE_MAX_INFLIGHT_MB", 512)
 	spoolThresholdMB := envInt("DATASET_CAPTURE_SPOOL_THRESHOLD_MB", 2)
-	maxDiskGB := envInt("DATASET_CAPTURE_MAX_DISK_GB", 10)
+	maxDiskGB := envNonNegativeInt("DATASET_CAPTURE_MAX_DISK_GB", 10)
 	minFreeDiskGB := envInt("DATASET_CAPTURE_MIN_FREE_DISK_GB", 2)
 	hmacKey := os.Getenv("DATASET_CAPTURE_HMAC_KEY")
 	if hmacKey == "" {
@@ -222,6 +222,19 @@ func envInt(name string, fallback int) int {
 	}
 	parsed, err := strconv.Atoi(value)
 	if err != nil || parsed <= 0 {
+		log.Printf("invalid %s=%q, using %d", name, value, fallback)
+		return fallback
+	}
+	return parsed
+}
+
+func envNonNegativeInt(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
 		log.Printf("invalid %s=%q, using %d", name, value, fallback)
 		return fallback
 	}

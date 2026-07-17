@@ -83,13 +83,14 @@ func ExportDatasetCaptures(c *gin.Context) {
 		datasetCaptureQueryError(c, err)
 		return
 	}
-	auditEventID, err := beginDatasetCaptureAccessAudit(c, model.DatasetCaptureAccessAuditInput{
+	auditInput := model.DatasetCaptureAccessAuditInput{
 		Action:        model.DatasetCaptureAuditActionDownload,
 		SelectionMode: datasetCaptureAuditSelectionMode(request), Bytes: export.Bytes,
 		StartTime: filter.StartTime, EndTime: filter.EndTime, Models: filter.Models,
 		TokenIDs: filter.TokenIDs, Groups: filter.Groups, ChannelIDs: filter.ChannelIDs,
 		UsernameFilter: filter.Username, Records: summaries,
-	})
+	}
+	auditEventID, err := beginDatasetCaptureAccessAudit(c, auditInput)
 	if err != nil {
 		common.SysError("dataset capture download audit failed: " + err.Error())
 		c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": "failed to create dataset capture access audit"})
@@ -102,14 +103,14 @@ func ExportDatasetCaptures(c *gin.Context) {
 	c.Status(http.StatusOK)
 	written, err := io.Copy(c.Writer, export.File)
 	if err != nil || written != export.Bytes {
-		completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeFailed)
+		completeDatasetCaptureAccessAudit(c, auditEventID, model.DatasetCaptureAuditOutcomeFailed, auditInput)
 		if err == nil {
 			err = io.ErrShortWrite
 		}
 		common.SysError("dataset capture export delivery failed: " + err.Error())
 		return
 	}
-	completeDatasetCaptureAccessAudit(auditEventID, model.DatasetCaptureAuditOutcomeDelivered)
+	completeDatasetCaptureAccessAudit(c, auditEventID, model.DatasetCaptureAuditOutcomeDelivered, auditInput)
 	recordDatasetCaptureAudit(c, "dataset_capture.download", map[string]interface{}{
 		"scope": "selection", "user_count": export.UserCount,
 		"record_count": export.RecordCount, "bytes": export.Bytes,
@@ -145,6 +146,8 @@ func parseDatasetCaptureExportRequest(c *gin.Context) (datasetCaptureExportReque
 	if err != nil {
 		return request, model.DatasetCaptureFilter{}, model.DatasetCaptureSelection{}, err
 	}
+	request.UserIDs = userIDs
+	request.CaptureIDs = captureIDs
 	if request.AllFiltered && (len(userIDs) > 0 || len(captureIDs) > 0) {
 		return request, model.DatasetCaptureFilter{}, model.DatasetCaptureSelection{}, errors.New("all_filtered cannot be combined with explicit selections")
 	}

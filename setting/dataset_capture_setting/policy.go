@@ -16,6 +16,9 @@ const (
 	ModelModeSelected = "selected"
 	ScopeModeAll      = "all"
 	ScopeModeSelected = "selected"
+
+	AccessActionView     = "view"
+	AccessActionDownload = "download"
 )
 
 var allowedAlertTypes = map[string]struct{}{
@@ -48,12 +51,22 @@ type PerformancePolicy struct {
 }
 
 type AlertPolicy struct {
+	Enabled         bool              `json:"enabled"`
+	Recipients      []string          `json:"recipients"`
+	Types           []string          `json:"types"`
+	SilenceMinutes  int               `json:"silence_minutes"`
+	AlertAfterDrops int               `json:"alert_after_drops"`
+	SendRecovery    bool              `json:"send_recovery"`
+	Access          AccessAlertPolicy `json:"access"`
+}
+
+type AccessAlertPolicy struct {
 	Enabled         bool     `json:"enabled"`
-	Recipients      []string `json:"recipients"`
-	Types           []string `json:"types"`
-	SilenceMinutes  int      `json:"silence_minutes"`
-	AlertAfterDrops int      `json:"alert_after_drops"`
-	SendRecovery    bool     `json:"send_recovery"`
+	Actions         []string `json:"actions"`
+	OperatorMode    string   `json:"operator_mode"`
+	OperatorUserIDs []int    `json:"operator_user_ids"`
+	OwnerMode       string   `json:"owner_mode"`
+	OwnerUserIDs    []int    `json:"owner_user_ids"`
 }
 
 type Policy struct {
@@ -94,6 +107,11 @@ func DefaultPolicy() Policy {
 		Alerts: AlertPolicy{
 			Recipients: []string{}, Types: append([]string(nil), defaultAlertTypes...),
 			SilenceMinutes: 10, AlertAfterDrops: 1, SendRecovery: true,
+			Access: AccessAlertPolicy{
+				Actions:      []string{AccessActionDownload, AccessActionView},
+				OperatorMode: ScopeModeAll, OperatorUserIDs: []int{},
+				OwnerMode: ScopeModeAll, OwnerUserIDs: []int{},
+			},
 		},
 	}
 }
@@ -172,7 +190,36 @@ func Normalize(policy Policy) (Policy, error) {
 	if policy.Alerts.AlertAfterDrops < 1 || policy.Alerts.AlertAfterDrops > 1000000 {
 		return Policy{}, fmt.Errorf("dataset capture alert_after_drops must be between 1 and 1000000")
 	}
-	if policy.Alerts.Enabled && len(policy.Alerts.Recipients) == 0 {
+	if policy.Alerts.Access.Actions == nil {
+		policy.Alerts.Access.Actions = append([]string(nil), defaults.Alerts.Access.Actions...)
+	} else {
+		policy.Alerts.Access.Actions = normalizeStrings(policy.Alerts.Access.Actions)
+	}
+	for _, action := range policy.Alerts.Access.Actions {
+		if action != AccessActionView && action != AccessActionDownload {
+			return Policy{}, fmt.Errorf("invalid dataset capture access alert action %q", action)
+		}
+	}
+	policy.Alerts.Access.OperatorMode = defaultString(policy.Alerts.Access.OperatorMode, ScopeModeAll)
+	policy.Alerts.Access.OwnerMode = defaultString(policy.Alerts.Access.OwnerMode, ScopeModeAll)
+	if err := validateMode("access alert operator", policy.Alerts.Access.OperatorMode); err != nil {
+		return Policy{}, err
+	}
+	if err := validateMode("access alert owner", policy.Alerts.Access.OwnerMode); err != nil {
+		return Policy{}, err
+	}
+	policy.Alerts.Access.OperatorUserIDs = normalizePositiveInts(policy.Alerts.Access.OperatorUserIDs)
+	policy.Alerts.Access.OwnerUserIDs = normalizePositiveInts(policy.Alerts.Access.OwnerUserIDs)
+	if policy.Alerts.Access.Enabled && len(policy.Alerts.Access.Actions) == 0 {
+		return Policy{}, fmt.Errorf("enabled dataset capture access alerts require at least one action")
+	}
+	if policy.Alerts.Access.Enabled && policy.Alerts.Access.OperatorMode == ScopeModeSelected && len(policy.Alerts.Access.OperatorUserIDs) == 0 {
+		return Policy{}, fmt.Errorf("selected dataset capture access alert operator mode requires at least one user")
+	}
+	if policy.Alerts.Access.Enabled && policy.Alerts.Access.OwnerMode == ScopeModeSelected && len(policy.Alerts.Access.OwnerUserIDs) == 0 {
+		return Policy{}, fmt.Errorf("selected dataset capture access alert owner mode requires at least one user")
+	}
+	if (policy.Alerts.Enabled || policy.Alerts.Access.Enabled) && len(policy.Alerts.Recipients) == 0 {
 		return Policy{}, fmt.Errorf("enabled dataset capture alerts require at least one recipient")
 	}
 	return policy, nil
@@ -208,6 +255,9 @@ func Get() Policy {
 	policy.TokenIDs = append([]int{}, policy.TokenIDs...)
 	policy.Alerts.Recipients = append([]string{}, policy.Alerts.Recipients...)
 	policy.Alerts.Types = append([]string{}, policy.Alerts.Types...)
+	policy.Alerts.Access.Actions = append([]string{}, policy.Alerts.Access.Actions...)
+	policy.Alerts.Access.OperatorUserIDs = append([]int{}, policy.Alerts.Access.OperatorUserIDs...)
+	policy.Alerts.Access.OwnerUserIDs = append([]int{}, policy.Alerts.Access.OwnerUserIDs...)
 	return policy
 }
 
@@ -293,7 +343,7 @@ func validatePerformance(value PerformancePolicy) error {
 		{"max_inflight_mb", value.MaxInFlightMB, 16, 65536}, {"spool_threshold_mb", value.SpoolThresholdMB, 1, 1024},
 		{"index_queue_size", value.IndexQueueSize, 16, 131072}, {"index_batch_size", value.IndexBatchSize, 1, 1000},
 		{"index_flush_interval_ms", value.IndexFlushIntervalMS, 100, 60000}, {"min_free_disk_gb", value.MinFreeDiskGB, 0, 10240},
-		{"max_disk_gb", value.MaxDiskGB, 1, 1048576}, {"export_concurrency", value.ExportConcurrency, 1, 8},
+		{"max_disk_gb", value.MaxDiskGB, 0, 1048576}, {"export_concurrency", value.ExportConcurrency, 1, 8},
 		{"export_read_mbps", value.ExportReadMBps, 0, 1024},
 	}
 	for _, item := range ranges {

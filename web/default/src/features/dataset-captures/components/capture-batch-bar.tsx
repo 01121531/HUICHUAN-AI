@@ -34,7 +34,6 @@ type CaptureBatchBarProps = {
   userCount: number
   recordCount: number
   totalSize: number
-  explicitRecordCount: number
   canDownload: boolean
   canDelete: boolean
   exporting: boolean
@@ -70,7 +69,7 @@ export function CaptureBatchBar(props: CaptureBatchBarProps) {
         </span>
       </div>
       <Separator orientation='vertical' className='hidden h-6 sm:block' />
-      {props.canDelete && props.explicitRecordCount > 0 && (
+      {props.canDelete && (
         <Button
           variant='destructive'
           size='sm'

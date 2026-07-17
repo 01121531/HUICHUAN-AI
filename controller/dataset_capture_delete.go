@@ -1,28 +1,41 @@
 package controller
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/middleware"
+	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/01121531/HUICHUAN-AI/service"
 	"github.com/gin-gonic/gin"
 )
 
-type datasetCaptureDeleteRequest struct {
-	CaptureIDs []string `json:"capture_ids"`
-}
-
 func DeleteDatasetCaptureRecords(c *gin.Context) {
-	request, err := parseDatasetCaptureDeleteRequest(c)
+	request, filter, selection, err := parseDatasetCaptureDeleteRequest(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": err.Error()})
 		return
 	}
+	if err := applyDatasetCaptureContentFilter(&filter, request.Filter.Content); err != nil {
+		datasetCaptureQueryError(c, err)
+		return
+	}
+	indices, err := model.ListDatasetCaptureExportIndices(filter, selection)
+	if err != nil {
+		datasetCaptureQueryError(c, err)
+		return
+	}
+	if len(indices) == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"success": false, "message": "no dataset capture records match the selection"})
+		return
+	}
+	captureIDs := make([]string, 0, len(indices))
+	for _, index := range indices {
+		captureIDs = append(captureIDs, index.CaptureID)
+	}
 	results, err := service.DeleteDatasetCaptureConversations(
-		middleware.DatasetCapturePathTemplate(), middleware.DatasetCaptureNode(), request.CaptureIDs,
+		middleware.DatasetCapturePathTemplate(), middleware.DatasetCaptureNode(), captureIDs,
 	)
 	if err != nil {
 		common.SysError("dataset capture batch delete failed: " + err.Error())
@@ -51,27 +64,15 @@ func DeleteDatasetCaptureRecords(c *gin.Context) {
 	}})
 }
 
-func parseDatasetCaptureDeleteRequest(c *gin.Context) (datasetCaptureDeleteRequest, error) {
-	var request datasetCaptureDeleteRequest
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<20)
-	decoder := json.NewDecoder(c.Request.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil {
-		return request, errors.New("invalid dataset capture delete request")
-	}
-	if err := ensureJSONBodyEnd(decoder); err != nil {
-		return request, errors.New("invalid dataset capture delete request")
-	}
-	if len(request.CaptureIDs) == 0 {
-		return request, errors.New("select at least one capture record")
-	}
-	if len(request.CaptureIDs) > maxDatasetCaptureExportSelection {
-		return request, errors.New("dataset capture delete selection is too large")
-	}
-	captureIDs, err := uniqueCaptureIDs(request.CaptureIDs)
+func parseDatasetCaptureDeleteRequest(c *gin.Context) (
+	datasetCaptureExportRequest,
+	model.DatasetCaptureFilter,
+	model.DatasetCaptureSelection,
+	error,
+) {
+	request, filter, selection, err := parseDatasetCaptureExportRequest(c)
 	if err != nil {
-		return request, err
+		return request, filter, selection, errors.New("invalid dataset capture delete request: " + err.Error())
 	}
-	request.CaptureIDs = captureIDs
-	return request, nil
+	return request, filter, selection, nil
 }

@@ -70,6 +70,151 @@ func TestAlertManagerCountsMailFailureWithoutStopping(t *testing.T) {
 	}
 }
 
+func TestAccessAlertManagerSupportsAllOperatorsAndOwners(t *testing.T) {
+	sent := make(chan AlertNotification, 1)
+	manager := NewAlertManager(func(notification AlertNotification) error {
+		sent <- notification
+		return nil
+	})
+	defer manager.Close()
+	manager.Update(AlertConfig{
+		Recipients: []string{"audit@example.com"}, Node: "node-a", Version: "v1",
+		Access: AccessAlertConfig{
+			Enabled: true, Actions: []string{"view", "download"},
+			OperatorMode: "all", OwnerMode: "all",
+		},
+	})
+	manager.NotifyAccess(AccessAlertEvent{
+		EventID: "event-1", Action: "view", OperatorUserID: 9, OperatorUsername: "<root>",
+		SelectionMode: "single_record", RecordCount: 1, UserCount: 1,
+		Records: []AccessAlertRecord{{
+			CaptureID: "capture-1", UserID: 20, Username: "<owner>",
+			Model: "gpt-test", SessionID: "session-1",
+		}},
+	})
+	notification := waitAlert(t, sent)
+	if !strings.Contains(notification.Subject, "查看") ||
+		!strings.Contains(notification.HTML, "&lt;root&gt;") ||
+		!strings.Contains(notification.HTML, "&lt;owner&gt;") {
+		t.Fatalf("unexpected access alert: %#v", notification)
+	}
+}
+
+func TestAccessAlertManagerRequiresBothSelectedScopes(t *testing.T) {
+	sent := make(chan AlertNotification, 2)
+	manager := NewAlertManager(func(notification AlertNotification) error {
+		sent <- notification
+		return nil
+	})
+	defer manager.Close()
+	manager.Update(AlertConfig{
+		Recipients: []string{"audit@example.com"},
+		Access: AccessAlertConfig{
+			Enabled: true, Actions: []string{"download"},
+			OperatorMode: "selected", OperatorUserIDs: []int{9},
+			OwnerMode: "selected", OwnerUserIDs: []int{20},
+		},
+	})
+
+	manager.NotifyAccess(accessAlertTestEvent("download", 8, 20))
+	manager.NotifyAccess(accessAlertTestEvent("download", 9, 21))
+	manager.NotifyAccess(accessAlertTestEvent("view", 9, 20))
+	select {
+	case unexpected := <-sent:
+		t.Fatalf("access alert should require action, operator and owner to match: %#v", unexpected)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	manager.NotifyAccess(accessAlertTestEvent("download", 9, 20))
+	notification := waitAlert(t, sent)
+	if !strings.Contains(notification.Subject, "下载") {
+		t.Fatalf("unexpected access alert: %#v", notification)
+	}
+}
+
+func TestAccessAlertEmailOnlyListsMatchingSelectedOwners(t *testing.T) {
+	sent := make(chan AlertNotification, 1)
+	manager := NewAlertManager(func(notification AlertNotification) error {
+		sent <- notification
+		return nil
+	})
+	defer manager.Close()
+	manager.Update(AlertConfig{
+		Recipients: []string{"audit@example.com"},
+		Access: AccessAlertConfig{
+			Enabled: true, Actions: []string{"download"}, OperatorMode: "all",
+			OwnerMode: "selected", OwnerUserIDs: []int{20},
+		},
+	})
+	event := accessAlertTestEvent("download", 9, 20)
+	event.Records = append(event.Records, AccessAlertRecord{
+		CaptureID: "unrelated-capture", UserID: 21, Username: "unrelated-owner",
+	})
+	event.RecordCount = 2
+	event.UserCount = 2
+	manager.NotifyAccess(event)
+
+	notification := waitAlert(t, sent)
+	if strings.Contains(notification.HTML, "unrelated-owner") ||
+		!strings.Contains(notification.HTML, "owner") {
+		t.Fatalf("selected-owner email leaked unrelated location metadata: %#v", notification)
+	}
+}
+
+func TestAccessAlertManagerTestMailWorksWithoutOperationalAlerts(t *testing.T) {
+	sent := make(chan AlertNotification, 1)
+	manager := NewAlertManager(func(notification AlertNotification) error {
+		sent <- notification
+		return nil
+	})
+	defer manager.Close()
+	manager.Update(AlertConfig{
+		Recipients: []string{"audit@example.com"},
+		Access:     AccessAlertConfig{Enabled: true, Actions: []string{"view"}},
+	})
+	if !manager.SendTest() {
+		t.Fatal("access-only alert configuration should allow a test email")
+	}
+	if notification := waitAlert(t, sent); !strings.Contains(notification.Subject, "测试") {
+		t.Fatalf("unexpected test notification: %#v", notification)
+	}
+}
+
+func TestAccessAlertNotificationDoesNotBlockOnSMTP(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	manager := NewAlertManager(func(AlertNotification) error {
+		started <- struct{}{}
+		<-release
+		return nil
+	})
+	manager.Update(AlertConfig{
+		Recipients: []string{"audit@example.com"},
+		Access: AccessAlertConfig{
+			Enabled: true, Actions: []string{"view"}, OperatorMode: "all", OwnerMode: "all",
+		},
+	})
+	manager.NotifyAccess(accessAlertTestEvent("view", 9, 20))
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("SMTP worker did not start")
+	}
+
+	returned := make(chan struct{})
+	go func() {
+		manager.NotifyAccess(accessAlertTestEvent("view", 9, 20))
+		close(returned)
+	}()
+	select {
+	case <-returned:
+	case <-time.After(50 * time.Millisecond):
+		t.Fatal("access notification waited for SMTP")
+	}
+	close(release)
+	manager.Close()
+}
+
 type assertSensitiveError string
 
 func (e assertSensitiveError) Error() string { return string(e) }
@@ -82,5 +227,13 @@ func waitAlert(t *testing.T, alerts <-chan AlertNotification) AlertNotification 
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for alert")
 		return AlertNotification{}
+	}
+}
+
+func accessAlertTestEvent(action string, operatorID, ownerID int) AccessAlertEvent {
+	return AccessAlertEvent{
+		EventID: "event-test", Action: action, OperatorUserID: operatorID,
+		OperatorUsername: "admin", RecordCount: 1, UserCount: 1,
+		Records: []AccessAlertRecord{{CaptureID: "capture", UserID: ownerID, Username: "owner"}},
 	}
 }
