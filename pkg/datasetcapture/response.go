@@ -34,6 +34,13 @@ func normalizeResponse(protocol string, body []byte) (normalizedResponse, error)
 	if streamed && !terminal && result.RawFinishReason == nil {
 		result.Complete = false
 	}
+	if streamed && terminal {
+		result.Complete = true
+	}
+	result.StreamTerminated = terminal || !streamed
+	if result.ReasoningStatus == "" {
+		result.ReasoningStatus = ReasoningStatusNotRequested
+	}
 	return result, nil
 }
 
@@ -66,11 +73,15 @@ func responseObjects(body []byte) ([]map[string]any, bool, bool, error) {
 			continue
 		}
 		var value map[string]any
-		if json.Unmarshal([]byte(data), &value) == nil {
-			objects = append(objects, value)
-			if eventType := asString(value["type"]); eventType == "message_stop" || eventType == "response.completed" || eventType == "response.done" {
-				terminal = true
-			}
+		if err := json.Unmarshal([]byte(data), &value); err != nil {
+			return nil, true, terminal, fmt.Errorf("invalid JSON response event: %w", err)
+		}
+		if value == nil {
+			return nil, true, terminal, fmt.Errorf("invalid JSON response event: null")
+		}
+		objects = append(objects, value)
+		if eventType := asString(value["type"]); eventType == "message_stop" || eventType == "response.completed" || eventType == "response.done" {
+			terminal = true
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -82,9 +93,33 @@ func responseObjects(body []byte) ([]map[string]any, bool, bool, error) {
 	return objects, true, terminal, nil
 }
 
+// DecodeResponseEvents exposes the same bounded event decoding used by the
+// normalizer for diagnostics and protocol golden tests.
+func DecodeResponseEvents(protocol string, body []byte) ([]ResponseEvent, bool, error) {
+	objects, streamed, terminal, err := responseObjects(body)
+	if err != nil {
+		return nil, streamed, err
+	}
+	events := make([]ResponseEvent, 0, len(objects))
+	for index, payload := range objects {
+		event := ResponseEvent{
+			Protocol: protocol,
+			Type:     asString(payload["type"]),
+			Sequence: index,
+			Payload:  payload,
+		}
+		if index == len(objects)-1 && terminal {
+			event.Terminal = true
+		}
+		events = append(events, event)
+	}
+	return events, streamed, nil
+}
+
 func normalizeOpenAIChatResponse(objects []map[string]any) normalizedResponse {
 	var text strings.Builder
 	toolBuilders := map[int]*toolCallBuilder{}
+	var reasoning reasoningAccumulator
 	var rawFinish string
 	var usage Usage
 	for _, object := range objects {
@@ -97,11 +132,13 @@ func normalizeOpenAIChatResponse(objects []map[string]any) normalizedResponse {
 			message := asMap(choice["message"])
 			if len(message) > 0 {
 				text.WriteString(contentText(message["content"]))
+				reasoning.consumeMap(message, "openai.chat.message")
 				mergeOpenAIToolCalls(toolBuilders, asSlice(message["tool_calls"]))
 			}
 			delta := asMap(choice["delta"])
 			if len(delta) > 0 {
 				text.WriteString(contentText(delta["content"]))
+				reasoning.consumeMap(delta, "openai.chat.delta")
 				mergeOpenAIToolCalls(toolBuilders, asSlice(delta["tool_calls"]))
 			}
 			if completion := asString(choice["text"]); completion != "" {
@@ -110,10 +147,13 @@ func normalizeOpenAIChatResponse(objects []map[string]any) normalizedResponse {
 		}
 	}
 	toolCalls := builtToolCalls(toolBuilders)
+	reasoningValue, reasoningStatus := reasoning.result()
 	content := optionalString(text.String())
 	stop := mapStopReason(rawFinish, len(toolCalls) > 0)
 	return normalizedResponse{
 		Content:         content,
+		Reasoning:       reasoningValue,
+		ReasoningStatus: reasoningStatus,
 		StopReason:      stop,
 		RawFinishReason: optionalString(rawFinish),
 		ToolCalls:       toolCalls,
@@ -125,6 +165,7 @@ func normalizeOpenAIChatResponse(objects []map[string]any) normalizedResponse {
 func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedResponse {
 	var text strings.Builder
 	toolBuilders := map[int]*toolCallBuilder{}
+	var reasoning reasoningAccumulator
 	var rawFinish string
 	var usage Usage
 	for _, event := range objects {
@@ -132,6 +173,10 @@ func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedRespon
 		switch eventType {
 		case "response.output_text.delta":
 			text.WriteString(asString(event["delta"]))
+		case "response.reasoning_summary_text.delta", "response.reasoning_content.delta":
+			reasoning.addText(asString(event["delta"]), "reasoning", "openai.responses.event")
+		case "response.reasoning_summary_part.added", "response.reasoning_summary_part.done":
+			reasoning.consumeValue(event["part"], "openai.responses.event")
 		case "response.function_call_arguments.delta":
 			index := asInt(event["output_index"])
 			builder := getToolBuilder(toolBuilders, index)
@@ -147,7 +192,9 @@ func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedRespon
 			}
 		case "response.output_item.added", "response.output_item.done":
 			item := asMap(event["item"])
-			if asString(item["type"]) == "function_call" {
+			if asString(item["type"]) == "reasoning" {
+				reasoning.consumeMap(item, "openai.responses.item")
+			} else if asString(item["type"]) == "function_call" {
 				index := asInt(event["output_index"])
 				builder := getToolBuilder(toolBuilders, index)
 				builder.ID = firstNonEmpty(builder.ID, asString(item["call_id"]), asString(item["id"]))
@@ -179,6 +226,9 @@ func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedRespon
 				switch asString(output["type"]) {
 				case "message":
 					text.WriteString(contentText(output["content"]))
+					reasoning.consumeMap(output, "openai.responses.output")
+				case "reasoning":
+					reasoning.consumeMap(output, "openai.responses.output")
 				case "function_call":
 					builder := getToolBuilder(toolBuilders, index)
 					builder.ID = firstNonEmpty(asString(output["call_id"]), asString(output["id"]))
@@ -190,9 +240,12 @@ func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedRespon
 		mergeOpenAIUsage(&usage, asMap(event["usage"]))
 	}
 	toolCalls := builtToolCalls(toolBuilders)
+	reasoningValue, reasoningStatus := reasoning.result()
 	stop := mapStopReason(rawFinish, len(toolCalls) > 0)
 	return normalizedResponse{
 		Content:         optionalString(text.String()),
+		Reasoning:       reasoningValue,
+		ReasoningStatus: reasoningStatus,
 		StopReason:      stop,
 		RawFinishReason: optionalString(rawFinish),
 		ToolCalls:       toolCalls,
@@ -204,6 +257,7 @@ func normalizeOpenAIResponsesResponse(objects []map[string]any) normalizedRespon
 func normalizeAnthropicResponse(objects []map[string]any) normalizedResponse {
 	var text strings.Builder
 	toolBuilders := map[int]*toolCallBuilder{}
+	var reasoning reasoningAccumulator
 	var rawFinish string
 	var usage Usage
 	for _, event := range objects {
@@ -226,23 +280,29 @@ func normalizeAnthropicResponse(objects []map[string]any) normalizedResponse {
 		if asString(delta["type"]) == "text_delta" {
 			text.WriteString(asString(delta["text"]))
 		}
+		if asString(delta["type"]) == "thinking_delta" {
+			reasoning.addText(asString(delta["thinking"]), "thinking", "anthropic.delta")
+		}
 		if asString(delta["type"]) == "input_json_delta" {
 			getToolBuilder(toolBuilders, asInt(event["index"])).Arguments.WriteString(asString(delta["partial_json"]))
 		}
 		contentBlock := asMap(event["content_block"])
 		if len(contentBlock) > 0 {
-			consumeAnthropicBlock(&text, toolBuilders, asInt(event["index"]), contentBlock)
+			consumeAnthropicBlock(&text, &reasoning, toolBuilders, asInt(event["index"]), contentBlock)
 		}
 		for index, blockValue := range asSlice(event["content"]) {
-			consumeAnthropicBlock(&text, toolBuilders, index, asMap(blockValue))
+			consumeAnthropicBlock(&text, &reasoning, toolBuilders, index, asMap(blockValue))
 		}
 		if eventType == "message_stop" && rawFinish == "" {
 			rawFinish = "end_turn"
 		}
 	}
 	toolCalls := builtToolCalls(toolBuilders)
+	reasoningValue, reasoningStatus := reasoning.result()
 	return normalizedResponse{
 		Content:         optionalString(text.String()),
+		Reasoning:       reasoningValue,
+		ReasoningStatus: reasoningStatus,
 		StopReason:      mapStopReason(rawFinish, len(toolCalls) > 0),
 		RawFinishReason: optionalString(rawFinish),
 		ToolCalls:       toolCalls,
@@ -253,8 +313,11 @@ func normalizeAnthropicResponse(objects []map[string]any) normalizedResponse {
 
 func normalizeGeminiResponse(objects []map[string]any) normalizedResponse {
 	var text strings.Builder
+	var reasoning reasoningAccumulator
 	var rawFinish string
-	var toolCalls []ToolCall
+	toolBuilders := map[int]*toolCallBuilder{}
+	toolIndexes := map[string]int{}
+	nextToolIndex := 0
 	var usage Usage
 	for _, object := range objects {
 		mergeGeminiUsage(&usage, asMap(object["usageMetadata"]))
@@ -264,23 +327,51 @@ func normalizeGeminiResponse(objects []map[string]any) normalizedResponse {
 				rawFinish = finish
 			}
 			content := asMap(candidate["content"])
-			for _, partValue := range asSlice(content["parts"]) {
+			for partIndex, partValue := range asSlice(content["parts"]) {
 				part := asMap(partValue)
 				if part["text"] != nil {
-					text.WriteString(asString(part["text"]))
+					if thought, ok := part["thought"].(bool); ok && thought {
+						reasoning.addText(asString(part["text"]), "thinking", "gemini.part")
+					} else {
+						text.WriteString(asString(part["text"]))
+					}
 				}
 				if part["functionCall"] != nil {
 					call := asMap(part["functionCall"])
-					toolCalls = append(toolCalls, ToolCall{ID: asString(call["id"]), Name: asString(call["name"]), Input: valueOrEmptyMap(call["args"])})
+					id := asString(call["id"])
+					index, hasExplicitIndex := part["index"], part["index"] != nil
+					toolIndex := asInt(index)
+					if !hasExplicitIndex && id != "" {
+						if previous, ok := toolIndexes[id]; ok {
+							toolIndex = previous
+						} else {
+							toolIndex = nextToolIndex
+							toolIndexes[id] = toolIndex
+							nextToolIndex++
+						}
+					}
+					if !hasExplicitIndex && id == "" {
+						toolIndex = partIndex
+					}
+					builder := getToolBuilder(toolBuilders, toolIndex)
+					builder.ID = firstNonEmpty(builder.ID, id)
+					builder.Name = firstNonEmpty(builder.Name, asString(call["name"]))
+					if call["args"] != nil {
+						builder.Input = call["args"]
+					}
 				}
 			}
 		}
 	}
+	reasoningValue, reasoningStatus := reasoning.result()
+	toolCalls := builtToolCalls(toolBuilders)
 	return normalizedResponse{
 		Content:         optionalString(text.String()),
+		Reasoning:       reasoningValue,
+		ReasoningStatus: reasoningStatus,
 		StopReason:      mapStopReason(rawFinish, len(toolCalls) > 0),
 		RawFinishReason: optionalString(rawFinish),
-		ToolCalls:       nonNilToolCalls(toolCalls),
+		ToolCalls:       toolCalls,
 		Usage:           usage,
 		Complete:        rawFinish != "" || len(objects) == 1,
 	}
@@ -335,16 +426,145 @@ func builtToolCalls(builders map[int]*toolCallBuilder) []ToolCall {
 	return nonNilToolCalls(calls)
 }
 
-func consumeAnthropicBlock(text *strings.Builder, builders map[int]*toolCallBuilder, index int, block map[string]any) {
+func consumeAnthropicBlock(text *strings.Builder, reasoning *reasoningAccumulator, builders map[int]*toolCallBuilder, index int, block map[string]any) {
 	switch asString(block["type"]) {
 	case "text":
 		text.WriteString(asString(block["text"]))
+	case "thinking":
+		reasoning.addText(asString(block["thinking"]), "thinking", "anthropic.block")
+	case "redacted_thinking":
+		reasoning.addRedacted(block, "anthropic.block")
 	case "tool_use":
 		builder := getToolBuilder(builders, index)
 		builder.ID = asString(block["id"])
 		builder.Name = asString(block["name"])
 		builder.Input = block["input"]
 	}
+}
+
+type reasoningAccumulator struct {
+	text     strings.Builder
+	blocks   []ContentBlock
+	seen     bool
+	redacted bool
+	source   string
+}
+
+func (r *reasoningAccumulator) addText(value, blockType, source string) {
+	if r == nil || value == "" {
+		return
+	}
+	r.seen = true
+	if r.source == "" {
+		r.source = source
+	}
+	r.text.WriteString(value)
+	key := "text"
+	if blockType == "thinking" {
+		key = "thinking"
+	}
+	r.blocks = append(r.blocks, ContentBlock{"type": blockType, key: value})
+}
+
+func (r *reasoningAccumulator) addRedacted(block map[string]any, source string) {
+	if r == nil {
+		return
+	}
+	r.seen = true
+	r.redacted = true
+	if r.source == "" {
+		r.source = source
+	}
+	value := ContentBlock{"type": "redacted_thinking", "redacted": true}
+	if signature := asString(block["signature"]); signature != "" {
+		value["signature"] = signature
+	}
+	r.blocks = append(r.blocks, value)
+}
+
+func (r *reasoningAccumulator) consumeValue(value any, source string) {
+	if r == nil || value == nil {
+		return
+	}
+	switch typed := value.(type) {
+	case string:
+		r.addText(typed, "reasoning", source)
+	case map[string]any:
+		r.consumeMap(typed, source)
+	case []any:
+		for _, item := range typed {
+			r.consumeValue(item, source)
+		}
+	}
+}
+
+func (r *reasoningAccumulator) consumeMap(value map[string]any, source string) {
+	if r == nil || len(value) == 0 {
+		return
+	}
+	typeName := asString(value["type"])
+	if typeName == "thinking" || typeName == "reasoning" || typeName == "reasoning_summary_text" {
+		text := firstNonEmpty(asString(value["text"]), asString(value["thinking"]), asString(value["summary_text"]))
+		if text != "" {
+			blockType := "reasoning"
+			if typeName == "thinking" {
+				blockType = "thinking"
+			}
+			r.addText(text, blockType, source)
+		}
+	}
+	if typeName == "redacted_thinking" || typeName == "redacted_reasoning" {
+		r.addRedacted(value, source)
+	}
+	for _, key := range []string{"reasoning_content", "reasoning", "thinking"} {
+		if item, ok := value[key]; ok {
+			r.consumeValue(item, source)
+		}
+	}
+	for _, key := range []string{"reasoning_details", "summary", "content"} {
+		for _, item := range asSlice(value[key]) {
+			block := asMap(item)
+			typeName := asString(block["type"])
+			if typeName == "redacted_thinking" || typeName == "redacted_reasoning" {
+				r.addRedacted(block, source)
+				continue
+			}
+			if key == "content" && typeName != "thinking" && typeName != "reasoning" {
+				continue
+			}
+			text := firstNonEmpty(asString(block["text"]), asString(block["thinking"]), asString(block["summary_text"]))
+			if text != "" {
+				r.addText(text, "reasoning", source)
+			}
+		}
+	}
+	for _, item := range asSlice(value["content"]) {
+		block := asMap(item)
+		typeName := asString(block["type"])
+		if typeName == "thinking" || typeName == "reasoning" {
+			r.consumeMap(block, source)
+		} else if typeName == "redacted_thinking" || typeName == "redacted_reasoning" {
+			r.addRedacted(block, source)
+		}
+	}
+}
+
+func (r *reasoningAccumulator) result() (*Reasoning, string) {
+	if r == nil || !r.seen {
+		return nil, ReasoningStatusNotRequested
+	}
+	status := ReasoningStatusCaptured
+	visibility := "captured"
+	if r.redacted {
+		status = ReasoningStatusRedacted
+		visibility = "redacted"
+	}
+	return &Reasoning{
+		Content:    optionalString(r.text.String()),
+		Blocks:     nonNilBlocks(r.blocks),
+		Visibility: visibility,
+		Source:     firstNonEmpty(r.source, "provider_event"),
+	}, status
 }
 
 func mergeOpenAIUsage(target *Usage, value map[string]any) {

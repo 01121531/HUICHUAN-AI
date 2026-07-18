@@ -287,6 +287,10 @@ func (w *Writer) runNormalizer() {
 			w.reportEvent(EventWorkerPanic, err, 1, 0)
 		} else if errors.Is(err, ErrSpoolWriteFailed) {
 			w.reportEvent(EventSpoolWriteFailed, err, 1, 0)
+		} else if errors.Is(err, ErrIncompleteCapture) {
+			w.metrics.incompleteDropped.Add(1)
+			w.metrics.setLastError(EventCaptureIncomplete)
+			w.emit(Event{Type: EventCaptureIncomplete, Err: err, Dropped: 1})
 		} else if errors.Is(err, ErrSampleTooLarge) || errors.Is(err, ErrInFlightLimitReached) {
 			w.ReportCaptureDrop(err)
 		} else if err == nil {
@@ -551,6 +555,7 @@ func (w *Writer) ReportCaptureHealthy() {
 	}
 	w.emit(Event{Type: EventSampleTooLarge, Resolved: true})
 	w.emit(Event{Type: EventInFlightBytesExceeded, Resolved: true})
+	w.emit(Event{Type: EventCaptureIncomplete, Resolved: true})
 }
 
 func (w *Writer) Status() WriterStatus {
@@ -571,7 +576,8 @@ func (w *Writer) Status() WriterStatus {
 		DroppedSampleTooLarge: w.buffers.droppedSampleTooLarge.Load(),
 		DroppedInFlightLimit:  w.buffers.droppedInFlightLimit.Load(),
 		BuildFailed:           w.metrics.buildFailed.Load(), JSONLWriteFailed: w.metrics.jsonlWriteFailed.Load(),
-		IndexWriteFailed: w.metrics.indexWriteFailed.Load(), DiskLimitDropped: w.metrics.diskLimitDropped.Load(),
+		IncompleteDropped: w.metrics.incompleteDropped.Load(),
+		IndexWriteFailed:  w.metrics.indexWriteFailed.Load(), DiskLimitDropped: w.metrics.diskLimitDropped.Load(),
 		DiskLowDropped:  w.metrics.diskLowDropped.Load(),
 		LastMinute:      w.metrics.activity.since(now, time.Minute, totals),
 		LastFiveMinutes: w.metrics.activity.since(now, 5*time.Minute, totals),
@@ -596,7 +602,8 @@ func (w *Writer) activityTotals() ActivityWindow {
 		DroppedSampleTooLarge: w.buffers.droppedSampleTooLarge.Load(),
 		DroppedInFlightLimit:  w.buffers.droppedInFlightLimit.Load(),
 		BuildFailed:           w.metrics.buildFailed.Load(), JSONLWriteFailed: w.metrics.jsonlWriteFailed.Load(),
-		DiskLimitDropped: w.metrics.diskLimitDropped.Load(), DiskLowDropped: w.metrics.diskLowDropped.Load(),
+		IncompleteDropped: w.metrics.incompleteDropped.Load(),
+		DiskLimitDropped:  w.metrics.diskLimitDropped.Load(), DiskLowDropped: w.metrics.diskLowDropped.Load(),
 	}
 }
 

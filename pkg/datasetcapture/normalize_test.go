@@ -204,6 +204,210 @@ data: [DONE]
 	}
 }
 
+func TestNormalizeOpenAIChatReasoning(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-reasoning","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte(`{"choices":[{"message":{"reasoning_content":"first check","content":"answer"},"finish_reason":"stop"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Content == nil || *record.Response.Content != "answer" {
+		t.Fatalf("visible content=%v", record.Response.Content)
+	}
+	if record.Response.Reasoning == nil || record.Meta.ReasoningStatus != ReasoningStatusCaptured {
+		t.Fatalf("reasoning was not captured: %#v", record.Response)
+	}
+	if record.Response.Reasoning.Content == nil || *record.Response.Reasoning.Content != "first check" {
+		t.Fatalf("reasoning content=%v", record.Response.Reasoning.Content)
+	}
+}
+
+func TestNormalizeOpenAIResponsesReasoningSummary(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/responses",
+		[]byte(`{"model":"gpt-response","input":"solve"}`),
+		[]byte(`{"status":"completed","output":[{"type":"reasoning","summary":[{"type":"summary_text","text":"inspect constraints"}]},{"type":"message","content":[{"type":"output_text","text":"answer"}]}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Reasoning == nil || record.Response.Reasoning.Content == nil {
+		t.Fatalf("reasoning summary missing: %#v", record.Response)
+	}
+	if *record.Response.Reasoning.Content != "inspect constraints" {
+		t.Fatalf("unexpected reasoning: %q", *record.Response.Reasoning.Content)
+	}
+	if record.Response.Content == nil || *record.Response.Content != "answer" {
+		if record.Response.Content == nil {
+			t.Fatal("visible response content is nil")
+		}
+		t.Fatalf("unexpected visible content: %q", *record.Response.Content)
+	}
+}
+
+func TestNormalizeAnthropicThinkingAndRedactedThinking(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/messages",
+		[]byte(`{"model":"claude-reasoning","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte(`{"type":"message","stop_reason":"end_turn","content":[{"type":"thinking","thinking":"private check"},{"type":"text","text":"answer"},{"type":"redacted_thinking","signature":"sig"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Reasoning == nil || record.Meta.ReasoningStatus != ReasoningStatusRedacted {
+		t.Fatalf("thinking status=%q response=%#v", record.Meta.ReasoningStatus, record.Response)
+	}
+	if record.Response.Reasoning.Content == nil || *record.Response.Reasoning.Content != "private check" {
+		t.Fatalf("thinking content=%v", record.Response.Reasoning.Content)
+	}
+	if len(record.Response.Reasoning.Blocks) != 2 {
+		t.Fatalf("reasoning blocks=%#v", record.Response.Reasoning.Blocks)
+	}
+}
+
+func TestNormalizeGeminiThoughtPart(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1beta/models/gemini-reasoning:generateContent",
+		[]byte(`{"contents":[{"role":"user","parts":[{"text":"solve"}]}]}`),
+		[]byte(`{"candidates":[{"content":{"parts":[{"thought":true,"text":"check"},{"text":"answer"}]},"finishReason":"STOP"}]}`),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Reasoning == nil || record.Response.Reasoning.Content == nil || *record.Response.Reasoning.Content != "check" {
+		t.Fatalf("Gemini reasoning=%#v", record.Response.Reasoning)
+	}
+	if record.Response.Content == nil || *record.Response.Content != "answer" {
+		t.Fatalf("Gemini visible content=%v", record.Response.Content)
+	}
+}
+
+func TestNormalizeOpenAIStreamCompletesOnDoneAndCapturesReasoning(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-stream","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"check \"},\"finish_reason\":null}]}\n\n"+
+			"data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\n"+
+			"data: [DONE]\n\n"),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !record.Meta.StreamTerminated || record.Response.Content == nil || *record.Response.Content != "answer" {
+		t.Fatalf("stream completion/content mismatch: %#v", record)
+	}
+	if record.Response.Reasoning == nil || record.Response.Reasoning.Content == nil || *record.Response.Reasoning.Content != "check " {
+		t.Fatalf("stream reasoning missing: %#v", record.Response.Reasoning)
+	}
+}
+
+func TestNormalizeAnthropicThinkingStream(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/messages",
+		[]byte(`{"model":"claude-stream","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte("event: message_start\n"+
+			"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":2}}}\n\n"+
+			"event: content_block_delta\n"+
+			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"check\"}}\n\n"+
+			"event: content_block_delta\n"+
+			"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"answer\"}}\n\n"+
+			"event: message_delta\n"+
+			"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n"+
+			"event: message_stop\n"+
+			"data: {\"type\":\"message_stop\"}\n\n"),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Reasoning == nil || record.Response.Content == nil {
+		t.Fatalf("Anthropic stream output missing: %#v", record.Response)
+	}
+	if *record.Response.Reasoning.Content != "check" || *record.Response.Content != "answer" {
+		t.Fatalf("Anthropic stream output mismatch: %#v", record.Response)
+	}
+}
+
+func TestNormalizeResponsesReasoningStream(t *testing.T) {
+	record, err := Normalize(testCapture(
+		"/v1/responses",
+		[]byte(`{"model":"gpt-responses-stream","input":"solve"}`),
+		[]byte("data: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"check\"}\n\n"+
+			"data: {\"type\":\"response.output_text.delta\",\"delta\":\"answer\"}\n\n"+
+			"data: {\"type\":\"response.completed\"}\n\n"),
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Reasoning == nil || record.Response.Content == nil || !record.Meta.StreamTerminated {
+		t.Fatalf("Responses stream output missing: %#v", record)
+	}
+}
+
+func TestNormalizeRejectsMalformedSSEEvent(t *testing.T) {
+	request := []byte(`{"model":"gpt-test","messages":[{"role":"user","content":"hello"}]}`)
+	response := []byte("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n" + "data: {not-json}\n\n")
+	_, err := Normalize(testCapture("/v1/chat/completions", request, response))
+	if err == nil {
+		t.Fatal("malformed SSE event was accepted")
+	}
+}
+
+func TestNormalizeAppliesReasoningCapturePolicy(t *testing.T) {
+	capture := testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-policy","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte(`{"choices":[{"message":{"reasoning_content":"private","content":"answer"},"finish_reason":"stop"}]}`),
+	)
+	capture.ReasoningMode = ReasoningModeRedacted
+	redacted, err := Normalize(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redacted.Response.Reasoning == nil || redacted.Response.Reasoning.Content != nil || redacted.Meta.ReasoningStatus != ReasoningStatusRedacted {
+		t.Fatalf("reasoning was not redacted: %#v", redacted.Response.Reasoning)
+	}
+
+	capture.ReasoningMode = ReasoningModeDisabled
+	disabled, err := Normalize(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if disabled.Response.Reasoning == nil || len(disabled.Response.Reasoning.Blocks) != 0 || disabled.Meta.ReasoningStatus != ReasoningStatusRedacted {
+		t.Fatalf("reasoning was not disabled: %#v", disabled.Response.Reasoning)
+	}
+}
+
+func TestNormalizeKeepsReasoningOnlyResponseWhenPolicyDisablesBody(t *testing.T) {
+	capture := testCapture(
+		"/v1/chat/completions",
+		[]byte(`{"model":"gpt-policy","messages":[{"role":"user","content":"solve"}]}`),
+		[]byte(`{"choices":[{"message":{"reasoning_content":"private"},"finish_reason":"stop"}]}`),
+	)
+	capture.ReasoningMode = ReasoningModeDisabled
+	record, err := Normalize(capture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Response.Content != nil || record.Response.Reasoning == nil {
+		t.Fatalf("reasoning-only response was not retained as metadata: %#v", record.Response)
+	}
+}
+
+func TestDecodeResponseEventsProvidesProtocolNeutralEnvelope(t *testing.T) {
+	events, streamed, err := DecodeResponseEvents(
+		"openai-chat",
+		[]byte("data: {\"type\":\"chunk\"}\n\n"+"data: [DONE]\n\n"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !streamed || len(events) != 1 || events[0].Protocol != "openai-chat" || !events[0].Terminal {
+		t.Fatalf("unexpected response events: streamed=%v events=%#v", streamed, events)
+	}
+}
+
 func testCapture(path string, request, response []byte) Capture {
 	return Capture{
 		RequestBody:  request,

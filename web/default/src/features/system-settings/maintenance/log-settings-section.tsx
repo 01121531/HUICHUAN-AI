@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm } from 'react-hook-form'
@@ -486,13 +468,13 @@ export function LogSettingsSection({
                   <FormLabel>{t('Trusted proxy CIDRs')}</FormLabel>
                   <FormDescription>
                     {t(
-                      'Only requests received from these proxy networks may use forwarded IP headers. Separate entries with commas or new lines.'
+                      'Loopback proxies are trusted by default. Add other proxy or load balancer CIDRs here; only trusted peers may use forwarded IP headers. Separate entries with commas or new lines.'
                     )}
                   </FormDescription>
                   <FormControl>
                     <Input
                       {...field}
-                      placeholder='127.0.0.1/32, 10.0.0.0/8'
+                      placeholder='127.0.0.0/8, ::1/128, 10.0.0.0/8'
                       autoComplete='off'
                     />
                   </FormControl>

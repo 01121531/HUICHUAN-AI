@@ -78,7 +78,7 @@ func InitOptionMap() {
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["UsageLogIPCaptureEnabled"] = strconv.FormatBool(common.UsageLogIPCaptureEnabled.Load())
-	common.OptionMap["TrustedProxyCIDRs"] = ""
+	common.OptionMap["TrustedProxyCIDRs"] = common.DefaultUsageLogTrustedProxyCIDRs
 	common.OptionMap["UsageLogExportDirectLimit"] = strconv.Itoa(common.UsageLogExportDirectLimit())
 	common.OptionMap["UsageLogExportMaxRows"] = strconv.FormatInt(common.UsageLogExportMaxRows(), 10)
 	common.OptionMap["UsageLogExportBatchSize"] = strconv.Itoa(common.UsageLogExportBatchSize())
@@ -494,6 +494,10 @@ func updateOptionMap(key string, value string) (err error) {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
 	case "TrustedProxyCIDRs":
+		if strings.TrimSpace(value) == "" {
+			value = common.DefaultUsageLogTrustedProxyCIDRs
+			common.OptionMap[key] = value
+		}
 		common.SetUsageLogTrustedProxyCIDRs(value)
 	case "UsageLogExportDirectLimit":
 		intValue, err := strconv.ParseInt(value, 10, 64)

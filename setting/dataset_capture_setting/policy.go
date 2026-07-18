@@ -3,6 +3,7 @@ package dataset_capture_setting
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"net/mail"
 	"sort"
 	"strconv"
@@ -19,6 +20,10 @@ const (
 
 	AccessActionView     = "view"
 	AccessActionDownload = "download"
+
+	ReasoningModeFull     = "full"
+	ReasoningModeRedacted = "redacted"
+	ReasoningModeDisabled = "disabled"
 )
 
 var allowedAlertTypes = map[string]struct{}{
@@ -27,10 +32,11 @@ var allowedAlertTypes = map[string]struct{}{
 	"index_write_failed": {}, "worker_panic": {},
 	"spool_write_failed":   {},
 	"usage_log_queue_full": {}, "usage_log_write_failed": {},
+	"incomplete_capture": {},
 }
 
 var defaultAlertTypes = []string{
-	"disk_limit_reached", "disk_low", "index_write_failed", "inflight_bytes_exceeded",
+	"disk_limit_reached", "disk_low", "incomplete_capture", "index_write_failed", "inflight_bytes_exceeded",
 	"jsonl_write_failed", "queue_full", "sample_too_large", "spool_write_failed",
 	"usage_log_queue_full", "usage_log_write_failed", "worker_panic",
 }
@@ -81,6 +87,8 @@ type Policy struct {
 	TokenIDs                 []int             `json:"token_ids"`
 	CaptureStream            bool              `json:"capture_stream"`
 	PreserveMultimodalBase64 bool              `json:"preserve_multimodal_base64"`
+	ReasoningMode            string            `json:"reasoning_mode"`
+	ReasoningSamplePercent   int               `json:"reasoning_sample_percent"`
 	Performance              PerformancePolicy `json:"performance"`
 	Alerts                   AlertPolicy       `json:"alerts"`
 }
@@ -99,6 +107,7 @@ func DefaultPolicy() Policy {
 		Version: CurrentVersion, ModelMode: ModelModeAll, Models: []string{},
 		UserMode: ScopeModeAll, UserIDs: []int{}, TokenMode: ScopeModeAll, TokenIDs: []int{},
 		CaptureStream: true, PreserveMultimodalBase64: true,
+		ReasoningMode: ReasoningModeFull, ReasoningSamplePercent: 100,
 		Performance: PerformancePolicy{
 			QueueSize: 1024, Workers: 2, BufferSegmentKB: 64, MaxSampleMB: 100,
 			MaxInFlightMB: 512, SpoolThresholdMB: 2, IndexQueueSize: 2048,
@@ -136,6 +145,16 @@ func Normalize(policy Policy) (Policy, error) {
 	policy.ModelMode = defaultString(policy.ModelMode, ModelModeAll)
 	policy.UserMode = defaultString(policy.UserMode, ScopeModeAll)
 	policy.TokenMode = defaultString(policy.TokenMode, ScopeModeAll)
+	policy.ReasoningMode = defaultString(policy.ReasoningMode, ReasoningModeFull)
+	if policy.ReasoningSamplePercent == 0 {
+		policy.ReasoningSamplePercent = 100
+	}
+	if policy.ReasoningMode != ReasoningModeFull && policy.ReasoningMode != ReasoningModeRedacted && policy.ReasoningMode != ReasoningModeDisabled {
+		return Policy{}, fmt.Errorf("invalid dataset capture reasoning_mode %q", policy.ReasoningMode)
+	}
+	if policy.ReasoningSamplePercent < 1 || policy.ReasoningSamplePercent > 100 {
+		return Policy{}, fmt.Errorf("dataset capture reasoning_sample_percent must be between 1 and 100")
+	}
 	if err := validateMode("model", policy.ModelMode); err != nil {
 		return Policy{}, err
 	}
@@ -295,6 +314,22 @@ func RequestCaptureOptions(model string, userID, tokenID int, stream bool) (bool
 		}
 	}
 	return true, runtime.policy.PreserveMultimodalBase64
+}
+
+// ReasoningModeForRequest applies deterministic request-ID sampling so the
+// API hot path does not contend on a process-global random source.
+func ReasoningModeForRequest(requestID string) string {
+	runtime := current.Load().(runtimePolicy)
+	mode := runtime.policy.ReasoningMode
+	if mode == ReasoningModeDisabled || runtime.policy.ReasoningSamplePercent >= 100 || strings.TrimSpace(requestID) == "" {
+		return mode
+	}
+	hash := fnv.New32a()
+	_, _ = hash.Write([]byte(requestID))
+	if int(hash.Sum32()%100)+1 > runtime.policy.ReasoningSamplePercent {
+		return ReasoningModeDisabled
+	}
+	return mode
 }
 
 func SetEnabled(enabled bool) error {

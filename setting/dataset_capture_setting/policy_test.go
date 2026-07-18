@@ -183,3 +183,40 @@ func TestGetDeepCopiesAccessAlertSelections(t *testing.T) {
 	assert.Equal(t, []int{7}, current.Alerts.Access.OperatorUserIDs)
 	assert.Equal(t, []int{20}, current.Alerts.Access.OwnerUserIDs)
 }
+
+func TestNormalizeReasoningPolicyDefaultsAndValidation(t *testing.T) {
+	policy, err := Normalize(Policy{})
+	require.NoError(t, err)
+	assert.Equal(t, ReasoningModeFull, policy.ReasoningMode)
+	assert.Equal(t, 100, policy.ReasoningSamplePercent)
+
+	policy.ReasoningMode = ReasoningModeRedacted
+	policy.ReasoningSamplePercent = 25
+	normalized, err := Normalize(policy)
+	require.NoError(t, err)
+	assert.Equal(t, ReasoningModeRedacted, normalized.ReasoningMode)
+	assert.Equal(t, 25, normalized.ReasoningSamplePercent)
+
+	policy.ReasoningMode = "unknown"
+	_, err = Normalize(policy)
+	assert.ErrorContains(t, err, "invalid dataset capture reasoning_mode")
+
+	policy = DefaultPolicy()
+	policy.ReasoningSamplePercent = 101
+	_, err = Normalize(policy)
+	assert.EqualError(t, err, "dataset capture reasoning_sample_percent must be between 1 and 100")
+}
+
+func TestReasoningModeForRequestUsesStableSampling(t *testing.T) {
+	original := Get()
+	t.Cleanup(func() { require.NoError(t, Apply(original)) })
+	policy := DefaultPolicy()
+	policy.ReasoningMode = ReasoningModeRedacted
+	policy.ReasoningSamplePercent = 50
+	require.NoError(t, Apply(policy))
+	first := ReasoningModeForRequest("request-42")
+	for range 10 {
+		assert.Equal(t, first, ReasoningModeForRequest("request-42"))
+	}
+	assert.Equal(t, ReasoningModeRedacted, ReasoningModeForRequest(""))
+}

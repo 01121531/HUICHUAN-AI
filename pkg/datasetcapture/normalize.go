@@ -45,10 +45,11 @@ func normalizeProtocols(capture Capture, requestPath, responsePath string) (Reco
 	if err != nil {
 		return Record{}, fmt.Errorf("%w: response: %v", ErrInvalidCapture, err)
 	}
+	applyReasoningPolicy(&response, capture.ReasoningMode)
 	if !response.Complete {
 		return Record{}, ErrIncompleteCapture
 	}
-	if response.Content == nil && len(response.ToolCalls) == 0 {
+	if response.Content == nil && len(response.ToolCalls) == 0 && !hasReasoningOutput(response.Reasoning) {
 		return Record{}, ErrInvalidCapture
 	}
 
@@ -83,6 +84,7 @@ func normalizeProtocols(capture Capture, requestPath, responsePath string) (Reco
 		Messages:     request.Messages,
 		Response: Response{
 			Content:    response.Content,
+			Reasoning:  response.Reasoning,
 			StopReason: response.StopReason,
 			ToolUse: ToolUse{
 				InputAlreadyMerged: true,
@@ -102,6 +104,11 @@ func normalizeProtocols(capture Capture, requestPath, responsePath string) (Reco
 			UserQuery:             lastUserQuery(request.Messages),
 			RawFinishReason:       response.RawFinishReason,
 			IsColdStartSimulation: false,
+			CaptureStatus:         CaptureStatusComplete,
+			ResponseProtocol:      responseProtocol,
+			ReasoningStatus:       response.ReasoningStatus,
+			StreamTerminated:      response.StreamTerminated,
+			CaptureWarnings:       nonNilStrings(response.Warnings),
 		},
 		Storage: StorageScope{
 			UserKey:        storageScopeKey(capture.UserID),
@@ -115,6 +122,60 @@ func normalizeProtocols(capture Capture, requestPath, responsePath string) (Reco
 		stripMultimodalBase64(&record)
 	}
 	return record, Validate(record)
+}
+
+func hasReasoningOutput(reasoning *Reasoning) bool {
+	if reasoning == nil {
+		return false
+	}
+	return reasoning.Content != nil || len(reasoning.Blocks) > 0 || reasoning.Visibility == ReasoningStatusRedacted
+}
+
+func nonNilStrings(values []string) []string {
+	if values == nil {
+		return []string{}
+	}
+	return values
+}
+
+func applyReasoningPolicy(response *normalizedResponse, mode string) {
+	if response == nil || response.Reasoning == nil {
+		return
+	}
+	if mode == "" || mode == ReasoningModeFull {
+		return
+	}
+	if mode == ReasoningModeDisabled {
+		response.Reasoning = &Reasoning{
+			Visibility: ReasoningStatusRedacted,
+			Source:     "policy.disabled",
+		}
+		response.ReasoningStatus = ReasoningStatusRedacted
+		response.Warnings = append(response.Warnings, "reasoning_disabled_by_policy")
+		return
+	}
+	if mode != ReasoningModeRedacted {
+		return
+	}
+	blocks := make([]ContentBlock, 0, len(response.Reasoning.Blocks))
+	for _, original := range response.Reasoning.Blocks {
+		copyBlock := make(ContentBlock, len(original)+1)
+		for key, value := range original {
+			if key == "text" || key == "thinking" || key == "content" {
+				continue
+			}
+			copyBlock[key] = value
+		}
+		copyBlock["redacted"] = true
+		blocks = append(blocks, copyBlock)
+	}
+	response.Reasoning = &Reasoning{
+		Blocks:     nonNilBlocks(blocks),
+		Visibility: ReasoningStatusRedacted,
+		Source:     "policy.redacted",
+	}
+	response.ReasoningStatus = ReasoningStatusRedacted
+	response.Warnings = append(response.Warnings, "reasoning_redacted_by_policy")
 }
 
 func stripMultimodalBase64(record *Record) {

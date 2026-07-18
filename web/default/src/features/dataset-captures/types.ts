@@ -93,13 +93,26 @@ export type CaptureRecord = {
   messages: unknown[]
   response: {
     content: string | null
+    reasoning?: {
+      content?: string | null
+      blocks?: unknown[]
+      visibility?: string
+      source?: string
+    } | null
     stop_reason: string | null
     tool_use: unknown
     usage: unknown
   }
   created_at: string | null
   cwd: string | null
-  _meta: Record<string, unknown>
+  _meta: Record<string, unknown> & {
+    capture_status?: string
+    response_protocol?: string
+    reasoning_status?: string
+    stream_terminated?: boolean
+    assistant_blocks?: number
+    capture_warnings?: string[]
+  }
 }
 
 export type CaptureRecordDetail = {

@@ -70,6 +70,8 @@ export type DatasetCapturePolicy = {
   token_ids: number[]
   capture_stream: boolean
   preserve_multimodal_base64: boolean
+  reasoning_mode: 'full' | 'redacted' | 'disabled'
+  reasoning_sample_percent: number
   performance: DatasetCapturePerformancePolicy
   alerts: DatasetCaptureAlertPolicy
 }
@@ -131,6 +133,7 @@ export type DatasetCaptureWriterStatus = {
   dropped_sample_too_large: number
   dropped_inflight_limit: number
   build_failed: number
+  incomplete_dropped: number
   jsonl_write_failed: number
   index_write_failed: number
   disk_limit_dropped: number
@@ -152,6 +155,7 @@ export type DatasetCaptureActivityWindow = {
   dropped_sample_too_large: number
   dropped_inflight_limit: number
   build_failed: number
+  incomplete_dropped: number
   jsonl_write_failed: number
   disk_limit_dropped: number
   disk_low_dropped: number

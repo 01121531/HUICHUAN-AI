@@ -258,11 +258,17 @@ type datasetResponseOrderProbe struct {
 	gin.ResponseWriter
 	buffer      *datasetcapture.SegmentedBuffer
 	observedLen int64
+	flushLen    int64
 }
 
 func (w *datasetResponseOrderProbe) Write(data []byte) (int, error) {
 	w.observedLen = w.buffer.Len()
 	return w.ResponseWriter.Write(data)
+}
+
+func (w *datasetResponseOrderProbe) Flush() {
+	w.flushLen = w.buffer.Len()
+	w.ResponseWriter.Flush()
 }
 
 func TestDatasetResponseWriterDeliversBeforeCapture(t *testing.T) {
@@ -286,6 +292,27 @@ func TestDatasetResponseWriterDeliversBeforeCapture(t *testing.T) {
 	}
 	if buffer.Len() != int64(len("answer")) {
 		t.Fatalf("capture buffer len=%d", buffer.Len())
+	}
+	buffer.Release()
+}
+
+func TestDatasetResponseWriterFlushesAfterCaptureAppend(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	context, _ := gin.CreateTestContext(recorder)
+	buffer := datasetcapture.NewBufferPool(4, 16).NewBuffer(16)
+	probe := &datasetResponseOrderProbe{ResponseWriter: context.Writer, buffer: buffer}
+	writer := &datasetResponseWriter{ResponseWriter: probe, buffer: buffer}
+
+	if _, err := writer.Write([]byte("answer")); err != nil {
+		t.Fatal(err)
+	}
+	writer.Flush()
+	if probe.flushLen != int64(len("answer")) {
+		t.Fatalf("flush observed buffer len=%d, want %d", probe.flushLen, len("answer"))
+	}
+	if recorder.Body.String() != "answer" {
+		t.Fatalf("client body=%q", recorder.Body.String())
 	}
 	buffer.Release()
 }

@@ -40,6 +40,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import {
   Tooltip,
   TooltipContent,
+  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 
@@ -77,6 +78,7 @@ const ALERT_TYPES = [
   'index_write_failed',
   'spool_write_failed',
   'worker_panic',
+  'incomplete_capture',
   'usage_log_queue_full',
   'usage_log_write_failed',
 ] as const
@@ -92,6 +94,8 @@ const DEFAULT_POLICY: DatasetCapturePolicy = {
   token_ids: [],
   capture_stream: true,
   preserve_multimodal_base64: true,
+  reasoning_mode: 'full',
+  reasoning_sample_percent: 100,
   performance: {
     queue_size: 1024,
     workers: 2,
@@ -138,6 +142,8 @@ function createDatasetCaptureSchema(translate: (key: string) => string) {
       token_ids: z.array(z.number().int().positive()),
       capture_stream: z.boolean(),
       preserve_multimodal_base64: z.boolean(),
+      reasoning_mode: z.enum(['full', 'redacted', 'disabled']),
+      reasoning_sample_percent: z.number().int().min(1).max(100),
       performance: z.object({
         queue_size: z.number().int().min(16).max(65536),
         workers: z.number().int().min(1).max(32),
@@ -258,6 +264,10 @@ function normalizePolicy(policy: DatasetCapturePolicy): DatasetCapturePolicy {
     models: Array.isArray(policy.models) ? policy.models : [],
     user_ids: Array.isArray(policy.user_ids) ? policy.user_ids : [],
     token_ids: Array.isArray(policy.token_ids) ? policy.token_ids : [],
+    reasoning_mode: policy.reasoning_mode ?? DEFAULT_POLICY.reasoning_mode,
+    reasoning_sample_percent:
+      policy.reasoning_sample_percent ||
+      DEFAULT_POLICY.reasoning_sample_percent,
     performance: { ...DEFAULT_POLICY.performance, ...policy.performance },
     alerts: {
       ...DEFAULT_POLICY.alerts,
@@ -481,6 +491,7 @@ function windowDropped(window?: DatasetCaptureActivityWindow) {
     window.dropped_sample_too_large +
     window.dropped_inflight_limit +
     window.build_failed +
+    window.incomplete_dropped +
     window.jsonl_write_failed +
     window.disk_limit_dropped +
     window.disk_low_dropped
@@ -603,6 +614,7 @@ export function DatasetCaptureSettingsSection() {
     ? runtime.writer.dropped_queue_full +
       runtime.writer.dropped_sample_too_large +
       runtime.writer.dropped_inflight_limit +
+      runtime.writer.incomplete_dropped +
       runtime.writer.disk_limit_dropped +
       runtime.writer.disk_low_dropped
     : 0
@@ -723,6 +735,10 @@ export function DatasetCaptureSettingsSection() {
             ],
             ['build_failed', window?.build_failed ?? 0],
             [
+              t('Dataset capture alert incomplete_capture'),
+              window?.incomplete_dropped ?? 0,
+            ],
+            [
               t('Dataset capture alert jsonl_write_failed'),
               window?.jsonl_write_failed ?? 0,
             ],
@@ -755,7 +771,8 @@ export function DatasetCaptureSettingsSection() {
         })}
       </div>
 
-      <Form {...form}>
+      <TooltipProvider delay={0}>
+        <Form {...form}>
         <SettingsForm
           onSubmit={form.handleSubmit((values) => mutation.mutate(values))}
         >
@@ -972,6 +989,73 @@ export function DatasetCaptureSettingsSection() {
                   />
                 </FormControl>
               </SettingsSwitchItem>
+            )}
+          />
+
+          <Subsection
+            title={t('Reasoning capture policy')}
+            description={t(
+              'Control whether provider-declared reasoning is retained. The client response is never changed by this policy.'
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='reasoning_mode'
+            render={({ field }) => (
+              <FormItem data-settings-form-span='full'>
+                <div className='text-sm font-medium'>
+                  {t('Reasoning retention mode')}
+                </div>
+                <FormControl>
+                  <ToggleGroup
+                    value={[field.value]}
+                    onValueChange={(values) => {
+                      const next = values.find((value) => value !== field.value)
+                      if (
+                        next === 'full' ||
+                        next === 'redacted' ||
+                        next === 'disabled'
+                      ) {
+                        field.onChange(next)
+                      }
+                    }}
+                    variant='outline'
+                    spacing={0}
+                    aria-label={t('Reasoning retention mode')}
+                  >
+                    <ToggleGroupItem value='full'>
+                      {t('Full reasoning')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value='redacted'>
+                      {t('Redacted reasoning')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value='disabled'>
+                      {t('Disable reasoning content')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </FormControl>
+                <FormDescription>
+                  {t(
+                    'Redacted mode keeps block types and capture status without retaining reasoning text.'
+                  )}
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <NumberField
+            form={form}
+            name='reasoning_sample_percent'
+            label={t('Reasoning capture sample')}
+            help={t(
+              'Stable request-ID sampling controls how often reasoning content is retained. It does not affect the model response.'
+            )}
+            range='1-100%'
+            defaultValue={100}
+            min={1}
+            max={100}
+            description={t(
+              'Use 100% to retain reasoning for every eligible request.'
             )}
           />
 
@@ -1412,7 +1496,8 @@ export function DatasetCaptureSettingsSection() {
             </div>
           ) : null}
         </SettingsForm>
-      </Form>
+        </Form>
+      </TooltipProvider>
 
       <div className='border-border/70 border-t pt-6'>
         <DatasetCaptureAccessAuditSection />

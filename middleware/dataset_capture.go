@@ -208,6 +208,10 @@ func datasetCaptureWithPolicyAndLease(
 			c.Next()
 			return
 		}
+		reasoningMode := policy.ReasoningMode
+		if policyProvider == nil {
+			reasoningMode = dataset_capture_setting.ReasoningModeForRequest(c.GetString(common.RequestIdKey))
+		}
 		writer, releaseWriter := writerProvider()
 		if writer == nil {
 			releaseWriter()
@@ -230,6 +234,7 @@ func datasetCaptureWithPolicyAndLease(
 			HMACKey:               datasetCaptureHMACKey(),
 			CreatedAt:             startedAt,
 			StripMultimodalBase64: !preserveMultimodalBase64,
+			ReasoningMode:         reasoningMode,
 		})
 		writer.PrepareSession(session)
 		c.Request = c.Request.WithContext(datasetcapture.WithSession(c.Request.Context(), session))
@@ -238,6 +243,12 @@ func datasetCaptureWithPolicyAndLease(
 		c.Set(datasetCaptureWriterKey, writer)
 
 		c.Next()
+		if c.Writer.Written() {
+			// Complete client delivery before handing the immutable capture to
+			// the background queue. Flush only touches the underlying response
+			// writer; normalization and persistence remain asynchronous.
+			c.Writer.Flush()
+		}
 
 		if c.Request.Context().Err() != nil || capturingWriter.writeErr != nil || capturingWriter.captureErr != nil || c.Writer.Status() < 200 || c.Writer.Status() >= 300 {
 			if capturingWriter.captureErr != nil {

@@ -22,7 +22,7 @@ HUICHUAN-AI 提供多模型供应商接入、渠道路由、令牌管理、用�
 
 | 项目 | 值 |
 | --- | --- |
-| 版本 | [`v1.0.9`](https://github.com/01121531/HUICHUAN-AI/releases/tag/v1.0.9) |
+| 版本 | [`v1.0.10`](https://github.com/01121531/HUICHUAN-AI/releases/tag/v1.0.10) |
 | Go module | `github.com/01121531/HUICHUAN-AI` |
 | 默认服务文件 | `HUICHUAN.service` |
 | 默认前端 | `web/default` |
@@ -373,6 +373,16 @@ systemd 部署应使用 `KillMode=process`，避免在线升级辅助进程随�
 4. 升级后检查数据库迁移、数据快照开关、模型范围、管理员权限和访问审计。
 
 Docker、Kubernetes 或其他编排环境建议更新镜像并由编排系统完成滚动升级，不应在容器内部直接替换可执行文件。
+
+## v1.0.10 更新摘要
+
+- 完善 OpenAI Chat、OpenAI Responses、Anthropic Messages 和 Gemini 响应事件归一化，统一保存模型输出、推理/思考内容、工具调用和工具结果。
+- 数据快照详情页改为完整对话时间线，区分用户消息、模型正文、推理内容、工具调用、工具结果和结束状态。
+- 新增 `reasoning_mode`（`full`、`redacted`、`disabled`）和 `reasoning_sample_percent` 配置，支持按稳定请求 ID 灰度采集推理内容。
+- 流式响应识别 OpenAI `[DONE]`、Anthropic `message_stop`、Responses completed/done 等终止事件；非法或半截 SSE 不写入主数据集。
+- 数据快照元数据增加 `capture_status`、`response_protocol`、`reasoning_status`、`stream_terminated` 和 `capture_warnings`，便于审计完整性。
+- API 响应完成并刷新给客户端后才提交快照后台队列，新增 `incomplete_capture` 指标和聚合告警，不改变响应交付逻辑。
+- 保持原有 11 个顶层 JSONL 字段兼容；推理内容作为 `response.reasoning` 可选字段保存，未启用或不可用时明确标记状态。
 
 ## v1.0.9 更新摘要
 

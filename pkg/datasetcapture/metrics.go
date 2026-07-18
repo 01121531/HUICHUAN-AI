@@ -18,6 +18,7 @@ const (
 	EventIndexWriteFailed      = "index_write_failed"
 	EventSpoolWriteFailed      = "spool_write_failed"
 	EventWorkerPanic           = "worker_panic"
+	EventCaptureIncomplete     = "incomplete_capture"
 )
 
 var ErrDiskLimitReached = errors.New("dataset capture disk limit reached")
@@ -48,6 +49,7 @@ type WriterStatus struct {
 	DroppedSampleTooLarge int64          `json:"dropped_sample_too_large"`
 	DroppedInFlightLimit  int64          `json:"dropped_inflight_limit"`
 	BuildFailed           int64          `json:"build_failed"`
+	IncompleteDropped     int64          `json:"incomplete_dropped"`
 	JSONLWriteFailed      int64          `json:"jsonl_write_failed"`
 	IndexWriteFailed      int64          `json:"index_write_failed"`
 	DiskLimitDropped      int64          `json:"disk_limit_dropped"`
@@ -69,6 +71,7 @@ type ActivityWindow struct {
 	DroppedSampleTooLarge int64 `json:"dropped_sample_too_large"`
 	DroppedInFlightLimit  int64 `json:"dropped_inflight_limit"`
 	BuildFailed           int64 `json:"build_failed"`
+	IncompleteDropped     int64 `json:"incomplete_dropped"`
 	JSONLWriteFailed      int64 `json:"jsonl_write_failed"`
 	DiskLimitDropped      int64 `json:"disk_limit_dropped"`
 	DiskLowDropped        int64 `json:"disk_low_dropped"`
@@ -81,6 +84,7 @@ func (w ActivityWindow) subtract(previous ActivityWindow) ActivityWindow {
 		DroppedSampleTooLarge: w.DroppedSampleTooLarge - previous.DroppedSampleTooLarge,
 		DroppedInFlightLimit:  w.DroppedInFlightLimit - previous.DroppedInFlightLimit,
 		BuildFailed:           w.BuildFailed - previous.BuildFailed,
+		IncompleteDropped:     w.IncompleteDropped - previous.IncompleteDropped,
 		JSONLWriteFailed:      w.JSONLWriteFailed - previous.JSONLWriteFailed,
 		DiskLimitDropped:      w.DiskLimitDropped - previous.DiskLimitDropped,
 		DiskLowDropped:        w.DiskLowDropped - previous.DiskLowDropped,
@@ -130,20 +134,21 @@ func (h *activityHistory) since(now time.Time, window time.Duration, current Act
 }
 
 type writerMetrics struct {
-	submitted        atomic.Int64
-	written          atomic.Int64
-	droppedQueueFull atomic.Int64
-	buildFailed      atomic.Int64
-	jsonlWriteFailed atomic.Int64
-	indexWriteFailed atomic.Int64
-	diskLimitDropped atomic.Int64
-	diskLowDropped   atomic.Int64
-	activity         activityHistory
-	jsonlLatency     latencyWindow
-	indexLatency     latencyWindow
-	lastErrorMu      sync.RWMutex
-	lastErrorType    string
-	lastErrorAt      int64
+	submitted         atomic.Int64
+	written           atomic.Int64
+	droppedQueueFull  atomic.Int64
+	buildFailed       atomic.Int64
+	incompleteDropped atomic.Int64
+	jsonlWriteFailed  atomic.Int64
+	indexWriteFailed  atomic.Int64
+	diskLimitDropped  atomic.Int64
+	diskLowDropped    atomic.Int64
+	activity          activityHistory
+	jsonlLatency      latencyWindow
+	indexLatency      latencyWindow
+	lastErrorMu       sync.RWMutex
+	lastErrorType     string
+	lastErrorAt       int64
 }
 
 type latencyWindow struct {
