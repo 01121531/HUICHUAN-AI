@@ -24,7 +24,11 @@ import { StatusBadge } from '@/components/status-badge'
 import { formatLogQuota } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
-import type { BillingSnapshotV1, LogOtherData } from '../types'
+import type {
+  BillingComponent,
+  BillingSnapshotV1,
+  LogOtherData,
+} from '../types'
 
 const MODE_KEYS: Record<string, string> = {
   per_token: 'Per-token',
@@ -58,6 +62,36 @@ function SnapshotValue({
       </div>
     </div>
   )
+}
+
+function formatEffectiveUnitPrice(component: BillingComponent): string {
+  const unitPrice = Number(component.unit_price_usd)
+  const ratio = Number(component.ratio)
+
+  // Rounding and multiplier adjustments are quota-only reconciliation rows,
+  // not independently priced components.
+  if (
+    !Number.isFinite(unitPrice) ||
+    !Number.isFinite(ratio) ||
+    (unitPrice === 0 && component.subtotal_quota !== 0)
+  ) {
+    return '-'
+  }
+
+  const effectivePrice = unitPrice * ratio
+  const digits = Math.abs(effectivePrice) >= 1 ? 6 : 8
+  const formattedPrice = `$${effectivePrice.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: digits,
+  })}`
+  const denominator =
+    component.price_unit === 1_000_000
+      ? 'M'
+      : component.price_unit === 1_000
+        ? 'K'
+        : component.unit
+
+  return `${formattedPrice}/${denominator}`
 }
 
 export function BillingSnapshotPanel({
@@ -124,7 +158,7 @@ export function BillingSnapshotPanel({
       <div
         className={cn(
           'grid gap-2',
-          compact ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-4'
+          compact ? 'grid-cols-2' : 'grid-cols-2 lg:grid-cols-3'
         )}
       >
         <SnapshotValue
@@ -142,16 +176,11 @@ export function BillingSnapshotPanel({
           value={formatLogQuota(snapshot.final_charged_quota)}
           mono
         />
-        <SnapshotValue
-          label={t('Group Ratio')}
-          value={`${snapshot.group_ratio}x`}
-          mono
-        />
       </div>
 
       {snapshot.components.length > 0 && (
         <div className='overflow-x-auto rounded-md border'>
-          <table className='w-full min-w-[660px] text-left text-xs'>
+          <table className='w-full min-w-[560px] text-left text-xs'>
             <thead className='bg-muted/50 text-muted-foreground'>
               <tr>
                 <th className='px-2.5 py-2 font-medium'>{t('Component')}</th>
@@ -159,7 +188,6 @@ export function BillingSnapshotPanel({
                 <th className='px-2.5 py-2 font-medium'>
                   {t('Request-time Unit Price')}
                 </th>
-                <th className='px-2.5 py-2 font-medium'>{t('Ratio')}</th>
                 <th className='px-2.5 py-2 text-right font-medium'>
                   {t('Subtotal')}
                 </th>
@@ -183,9 +211,8 @@ export function BillingSnapshotPanel({
                     {component.quantity.toLocaleString()} {component.unit}
                   </td>
                   <td className='px-2.5 py-2 font-mono'>
-                    ${component.unit_price_usd}/{component.price_unit}
+                    {formatEffectiveUnitPrice(component)}
                   </td>
-                  <td className='px-2.5 py-2 font-mono'>{component.ratio}x</td>
                   <td className='px-2.5 py-2 text-right font-mono font-medium'>
                     {formatLogQuota(component.subtotal_quota)}
                   </td>

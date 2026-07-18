@@ -76,6 +76,7 @@ function blockText(block: ContentBlock) {
 }
 
 function ContentBlocks(props: { value: unknown; emptyLabel: string }) {
+  const { t } = useTranslation()
   const blocks = asContentBlocks(props.value)
   if (blocks.length === 0) {
     return <p className='text-muted-foreground text-sm'>{props.emptyLabel}</p>
@@ -90,7 +91,7 @@ function ContentBlocks(props: { value: unknown; emptyLabel: string }) {
             className='bg-muted/35 rounded-md border p-3'
           >
             <div className='text-muted-foreground mb-1 text-[11px] font-medium uppercase tracking-wide'>
-              {blockLabel(block, 'Content')}
+              {t(blockLabel(block, 'Content'))}
             </div>
             {text ? (
               <p className='text-sm whitespace-pre-wrap [overflow-wrap:anywhere]'>
@@ -119,19 +120,57 @@ function ConversationTimeline(props: {
       : undefined
   const calls = Array.isArray(toolUse?.calls) ? toolUse.calls : []
   const meta = record._meta
-  const reasoningStatus = meta.reasoning_status ??
-    reasoning?.visibility ??
-    'not_requested'
+  const reasoningStatus = String(
+    meta.reasoning_status ?? reasoning?.visibility ?? 'not_requested'
+  )
+  const captureStatus = String(meta.capture_status ?? 'complete')
+  const statusLabelKeys: Record<string, string> = {
+    complete: 'Complete',
+    incomplete: 'Incomplete',
+    delivery_failed: 'Delivery failed',
+    provider_missing: 'Provider missing',
+    redacted: 'Redacted',
+  }
+  const reasoningStatusLabelKeys: Record<string, string> = {
+    captured: 'Captured',
+    redacted: 'Redacted',
+    unsupported: 'Unsupported',
+    missing: 'Missing',
+    not_requested: 'Not requested',
+  }
+  const protocolLabelKeys: Record<string, string> = {
+    'openai-chat': 'OpenAI Chat',
+    'openai-responses': 'OpenAI Responses',
+    anthropic: 'Anthropic Messages',
+    gemini: 'Gemini',
+  }
+  const roleLabelKeys: Record<string, string> = {
+    user: 'User',
+    assistant: 'Assistant',
+    tool: 'Tool',
+    system: 'System',
+  }
+  const stopReasonLabelKeys: Record<string, string> = {
+    end_turn: 'End turn',
+    tool_use: 'Tool use',
+    max_tokens: 'Max tokens',
+    stop_sequence: 'Stop sequence',
+  }
 
   return (
     <div className='space-y-4'>
       <div className='flex flex-wrap items-center gap-2'>
         <h3 className='text-sm font-semibold'>{t('Complete conversation')}</h3>
         <Badge variant='outline'>
-          {t(`Capture status: ${meta.capture_status ?? 'complete'}`)}
+          {t('Capture status')}: {t(statusLabelKeys[captureStatus] ?? 'Unknown')}
         </Badge>
         {meta.response_protocol ? (
-          <Badge variant='secondary'>{meta.response_protocol}</Badge>
+          <Badge variant='secondary'>
+            {t(
+              protocolLabelKeys[meta.response_protocol] ??
+                meta.response_protocol
+            )}
+          </Badge>
         ) : null}
       </div>
 
@@ -157,7 +196,7 @@ function ConversationTimeline(props: {
             <div key={`${role}-${index}`} className='rounded-md border p-3'>
               <div className='mb-2 flex items-center gap-2'>
                 <Badge variant={role === 'assistant' ? 'default' : 'secondary'}>
-                  {role}
+                  {t(roleLabelKeys[role] ?? 'Message')}
                 </Badge>
                 <span className='text-muted-foreground text-xs'>
                   {t('Conversation context')}
@@ -176,7 +215,9 @@ function ConversationTimeline(props: {
         <div className='mb-2 flex flex-wrap items-center gap-2'>
           <Badge variant='outline'>{t('Reasoning')}</Badge>
           <span className='text-muted-foreground text-xs'>
-            {t(`Reasoning status: ${reasoningStatus}`)}
+            {t('Reasoning status')}: {t(
+              reasoningStatusLabelKeys[reasoningStatus] ?? 'Unknown'
+            )}
           </span>
         </div>
         {reasoning ? (
@@ -186,7 +227,9 @@ function ConversationTimeline(props: {
           />
         ) : (
           <p className='text-muted-foreground text-sm'>
-            {t(`Reasoning status: ${reasoningStatus}`)}
+            {t('Reasoning status')}: {t(
+              reasoningStatusLabelKeys[reasoningStatus] ?? 'Unknown'
+            )}
           </p>
         )}
       </section>
@@ -196,7 +239,11 @@ function ConversationTimeline(props: {
           <Badge>{t('Assistant output')}</Badge>
           {record.response.stop_reason ? (
             <span className='text-muted-foreground text-xs'>
-              {t('Stop reason')}: {record.response.stop_reason}
+              {t('Stop reason')}:{' '}
+              {t(
+                stopReasonLabelKeys[record.response.stop_reason] ??
+                  record.response.stop_reason
+              )}
             </span>
           ) : null}
         </div>
