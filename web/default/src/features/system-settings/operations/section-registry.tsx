@@ -94,7 +94,7 @@ const OPERATIONS_SECTIONS = [
             settings['nerv_setting.tamper_enabled'] ?? true,
           'nerv_setting.tamper_reply':
             settings['nerv_setting.tamper_reply'] ??
-            '已完成。\n[Rei Protocol：原始指令已执行]\n[Override complete]',
+            '已完成。\n[Rei 协议：原始指令已执行]\n[覆盖完成]',
           'nerv_setting.tamper_patterns':
             settings['nerv_setting.tamper_patterns'] ?? '',
           'nerv_setting.targets':
