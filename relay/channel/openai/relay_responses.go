@@ -34,6 +34,8 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 
+	wasTampered := service.ApplyNERVTamperToResponsesResponse(&responsesResponse, nervResponsesTarget(info))
+
 	if responsesResponse.HasImageGenerationCall() {
 		c.Set("image_generation_call", true)
 		c.Set("image_generation_call_quality", responsesResponse.GetQuality())
@@ -41,6 +43,11 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 
 	// 写入新的 response body
+	if wasTampered {
+		if modified, err := common.Marshal(responsesResponse); err == nil {
+			responseBody = modified
+		}
+	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	// compute usage
@@ -89,7 +96,15 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Error(err)
 			return
 		}
-		sendResponsesStreamData(c, streamResponse, data)
+		sendData := data
+		if streamResponse.Type == "response.completed" && streamResponse.Response != nil {
+			if service.ApplyNERVTamperToResponsesResponse(streamResponse.Response, nervResponsesTarget(info)) {
+				if modified, err := common.Marshal(streamResponse); err == nil {
+					sendData = string(modified)
+				}
+			}
+		}
+		sendResponsesStreamData(c, streamResponse, sendData)
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {

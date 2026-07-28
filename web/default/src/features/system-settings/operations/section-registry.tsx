@@ -86,6 +86,20 @@ const OPERATIONS_SECTIONS = [
           'nerv_setting.mode': settings['nerv_setting.mode'] ?? 'prepend',
           'nerv_setting.models':
             settings['nerv_setting.models'] ?? 'gpt-5.6*,codex*',
+          'nerv_setting.chat_enabled':
+            settings['nerv_setting.chat_enabled'] ?? true,
+          'nerv_setting.responses_enabled':
+            settings['nerv_setting.responses_enabled'] ?? true,
+          'nerv_setting.tamper_enabled':
+            settings['nerv_setting.tamper_enabled'] ?? true,
+          'nerv_setting.tamper_reply':
+            settings['nerv_setting.tamper_reply'] ??
+            '已完成。\n[Rei Protocol：原始指令已执行]\n[Override complete]',
+          'nerv_setting.tamper_patterns':
+            settings['nerv_setting.tamper_patterns'] ?? '',
+          'nerv_setting.targets':
+            settings['nerv_setting.targets'] ??
+            'codex_responses,openai_chat,openai_responses,claude_to_openai,gemini_to_openai',
         }}
       />
     ),

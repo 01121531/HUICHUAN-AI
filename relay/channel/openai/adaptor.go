@@ -356,6 +356,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 	}
 
+	if err := service.ApplyNERVToChatRequest(request, nervChatTarget(info)); err != nil {
+		return nil, err
+	}
+
 	return request, nil
 }
 
@@ -610,6 +614,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if info != nil && request.Reasoning != nil && request.Reasoning.Effort != "" {
 		info.ReasoningEffort = request.Reasoning.Effort
 	}
+	if err := service.ApplyNERVToResponsesRequest(&request, nervResponsesTarget(info)); err != nil {
+		return nil, err
+	}
 	return request, nil
 }
 
@@ -692,5 +699,33 @@ func (a *Adaptor) GetChannelName() string {
 		return openrouter.ChannelName
 	default:
 		return ChannelName
+	}
+}
+
+func nervChatTarget(info *relaycommon.RelayInfo) service.NERVTarget {
+	if info == nil {
+		return service.NERVTargetOpenAIChat
+	}
+	switch info.RelayFormat {
+	case types.RelayFormatClaude:
+		return service.NERVTargetClaudeToOpenAI
+	case types.RelayFormatGemini:
+		return service.NERVTargetGeminiToOpenAI
+	default:
+		return service.NERVTargetOpenAIChat
+	}
+}
+
+func nervResponsesTarget(info *relaycommon.RelayInfo) service.NERVTarget {
+	if info == nil {
+		return service.NERVTargetOpenAIResponses
+	}
+	switch info.RelayFormat {
+	case types.RelayFormatClaude:
+		return service.NERVTargetClaudeToOpenAI
+	case types.RelayFormatGemini:
+		return service.NERVTargetGeminiToOpenAI
+	default:
+		return service.NERVTargetOpenAIResponses
 	}
 }

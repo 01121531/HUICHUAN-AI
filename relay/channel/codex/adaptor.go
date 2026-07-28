@@ -13,6 +13,7 @@ import (
 	"github.com/01121531/HUICHUAN-AI/relay/channel/openai"
 	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
 	relayconstant "github.com/01121531/HUICHUAN-AI/relay/constant"
+	"github.com/01121531/HUICHUAN-AI/service"
 	"github.com/01121531/HUICHUAN-AI/types"
 
 	"github.com/gin-gonic/gin"
@@ -90,7 +91,7 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 			}
 		}
 	}
-	if err := applyNERVCodexInstructions(&request); err != nil {
+	if err := service.ApplyNERVToResponsesRequest(&request, service.NERVTargetCodexResponses); err != nil {
 		return nil, err
 	}
 	// Codex backend requires the `instructions` field to be present.
@@ -135,105 +136,6 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return ChannelName
-}
-
-const (
-	nervCodexEnabledKey = "nerv_setting.enabled"
-	nervCodexPromptKey  = "nerv_setting.prompt"
-	nervCodexModeKey    = "nerv_setting.mode"
-	nervCodexModelsKey  = "nerv_setting.models"
-)
-
-func applyNERVCodexInstructions(request *dto.OpenAIResponsesRequest) error {
-	if request == nil {
-		return nil
-	}
-	enabled, prompt, mode, models := getNERVCodexOptions()
-	if !enabled || !nervCodexModelAllowed(request.Model, models) {
-		return nil
-	}
-	prompt = strings.TrimSpace(prompt)
-	if prompt == "" {
-		return nil
-	}
-
-	existing, hasExisting := decodeResponsesInstructions(request.Instructions)
-	combined := combineNERVCodexInstructions(prompt, existing, hasExisting, mode)
-	data, err := common.Marshal(combined)
-	if err != nil {
-		return err
-	}
-	request.Instructions = data
-	return nil
-}
-
-func getNERVCodexOptions() (enabled bool, prompt string, mode string, models string) {
-	common.OptionMapRWMutex.RLock()
-	defer common.OptionMapRWMutex.RUnlock()
-	return common.OptionMap[nervCodexEnabledKey] == "true",
-		common.OptionMap[nervCodexPromptKey],
-		common.OptionMap[nervCodexModeKey],
-		common.OptionMap[nervCodexModelsKey]
-}
-
-func decodeResponsesInstructions(raw json.RawMessage) (string, bool) {
-	if len(raw) == 0 || strings.TrimSpace(string(raw)) == "null" {
-		return "", false
-	}
-	var existing string
-	if err := common.Unmarshal(raw, &existing); err == nil {
-		existing = strings.TrimSpace(existing)
-		return existing, existing != ""
-	}
-	return strings.TrimSpace(string(raw)), true
-}
-
-func combineNERVCodexInstructions(prompt, existing string, hasExisting bool, mode string) string {
-	if !hasExisting {
-		return prompt
-	}
-	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "override":
-		return prompt
-	case "append":
-		return existing + "\n\n" + prompt
-	default:
-		return prompt + "\n\n" + existing
-	}
-}
-
-func nervCodexModelAllowed(model string, patterns string) bool {
-	model = strings.ToLower(strings.TrimSpace(model))
-	patterns = strings.TrimSpace(patterns)
-	if patterns == "" || patterns == "*" {
-		return true
-	}
-	for _, pattern := range strings.FieldsFunc(patterns, func(r rune) bool {
-		return r == ',' || r == '\n' || r == ';'
-	}) {
-		pattern = strings.ToLower(strings.TrimSpace(pattern))
-		if pattern == "" {
-			continue
-		}
-		if matchNERVCodexPattern(model, pattern) {
-			return true
-		}
-	}
-	return false
-}
-
-func matchNERVCodexPattern(model string, pattern string) bool {
-	if pattern == "*" || pattern == model {
-		return true
-	}
-	if !strings.Contains(pattern, "*") {
-		return false
-	}
-	parts := strings.SplitN(pattern, "*", 2)
-	prefix := parts[0]
-	suffix := parts[1]
-	return (prefix == "" || strings.HasPrefix(model, prefix)) &&
-		(suffix == "" || strings.HasSuffix(model, suffix))
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {

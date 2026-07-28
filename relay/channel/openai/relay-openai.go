@@ -228,6 +228,8 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 		}
 	}
 
+	wasTampered := service.ApplyNERVTamperToChatResponse(&simpleResponse, nervChatTarget(info))
+
 	forceFormat := false
 	if info.ChannelSetting.ForceFormat {
 		forceFormat = true
@@ -251,6 +253,13 @@ func OpenaiHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Respo
 	}
 
 	applyUsagePostProcessing(info, &simpleResponse.Usage, responseBody)
+
+	if wasTampered {
+		responseBody, err = common.Marshal(simpleResponse)
+		if err != nil {
+			return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
+		}
+	}
 
 	switch info.RelayFormat {
 	case types.RelayFormatOpenAI:

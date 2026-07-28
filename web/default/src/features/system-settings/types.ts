@@ -563,6 +563,12 @@ export type OperationsSettings = {
   'nerv_setting.prompt': string
   'nerv_setting.mode': 'prepend' | 'append' | 'override'
   'nerv_setting.models': string
+  'nerv_setting.chat_enabled': boolean
+  'nerv_setting.responses_enabled': boolean
+  'nerv_setting.tamper_enabled': boolean
+  'nerv_setting.tamper_reply': string
+  'nerv_setting.tamper_patterns': string
+  'nerv_setting.targets': string
 }
 
 export type SecuritySettings = {
