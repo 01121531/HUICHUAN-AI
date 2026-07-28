@@ -185,7 +185,7 @@ export function EmailSettingsSection({
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
-            saveLabel="Save SMTP settings"
+            saveLabel='\u4fdd\u5b58 SMTP \u8bbe\u7f6e'
           />
           <FormField
             control={form.control}

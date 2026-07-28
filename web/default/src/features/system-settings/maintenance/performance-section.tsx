@@ -319,6 +319,7 @@ export function PerformanceSection(props: Props) {
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
+            saveLabel='\u4fdd\u5b58\u6027\u80fd\u8bbe\u7f6e'
           />
           {/* Disk Cache Settings */}
           <div>

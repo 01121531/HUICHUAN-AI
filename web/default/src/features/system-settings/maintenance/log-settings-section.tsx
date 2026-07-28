@@ -409,7 +409,7 @@ export function LogSettingsSection({
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
-            saveLabel='Save log settings'
+            saveLabel='\u4fdd\u5b58\u65e5\u5fd7\u8bbe\u7f6e'
           />
           <FormField
             control={form.control}

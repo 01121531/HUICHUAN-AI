@@ -82,6 +82,7 @@ export function SystemBehaviorSection({
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
+            saveLabel='\u4fdd\u5b58\u8bbe\u7f6e'
           />
           <FormField
             control={form.control}

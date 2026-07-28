@@ -113,7 +113,7 @@ export function WorkerSettingsSection({
           <SettingsPageFormActions
             onSave={form.handleSubmit(onSubmit)}
             isSaving={updateOption.isPending}
-            saveLabel='Save Worker settings'
+            saveLabel='\u4fdd\u5b58\u4ee3\u7406\u8bbe\u7f6e'
           />
           <FormField
             control={form.control}
