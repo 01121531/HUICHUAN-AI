@@ -569,6 +569,10 @@ export type OperationsSettings = {
   'nerv_setting.tamper_reply': string
   'nerv_setting.tamper_patterns': string
   'nerv_setting.targets': string
+  'nerv_setting.mcp_backend': 'auto' | 'local' | 'wsl' | 'docker' | 'ssh'
+  'nerv_setting.wsl_distro': string
+  'nerv_setting.docker_container': string
+  'nerv_setting.ssh_host': string
 }
 
 export type SecuritySettings = {

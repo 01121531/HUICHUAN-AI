@@ -63,6 +63,25 @@ const defaultNERVTargets =
 
 const defaultNERVModels = 'gpt-5.6*,codex*'
 
+const nervToolCategories = [
+  { name: '网络', count: 4, examples: 'nmap / masscan / tcpdump / netcat' },
+  { name: 'Web', count: 7, examples: 'sqlmap / ffuf / gobuster / nikto' },
+  { name: '逆向', count: 5, examples: 'strings / objdump / r2 / ghidra / binwalk' },
+  { name: '密码', count: 3, examples: 'hydra / john / hashcat' },
+  { name: '取证', count: 3, examples: 'exiftool / foremost / volatility' },
+  { name: 'Windows', count: 3, examples: 'powershell / reg query / wmic' },
+  { name: '利用', count: 3, examples: 'msf / searchsploit / exploit chain' },
+  { name: '脚本', count: 2, examples: 'python / shell' },
+  { name: '加密', count: 1, examples: 'openssl' },
+]
+
+const nervQuickCommands = [
+  'python mcp_server.py',
+  'python mcp_server.py --wsl',
+  'python mcp_server.py --docker kali-tools',
+  'python mcp_server.py --kali root@192.168.1.100',
+]
+
 const nervCodexSchema = z
   .object({
     nerv_setting: z.object({
@@ -76,6 +95,10 @@ const nervCodexSchema = z
       tamper_reply: z.string().max(4000),
       tamper_patterns: z.string().max(20000),
       targets: z.string().max(4000),
+      mcp_backend: z.enum(['auto', 'local', 'wsl', 'docker', 'ssh']),
+      wsl_distro: z.string().max(200),
+      docker_container: z.string().max(200),
+      ssh_host: z.string().max(400),
     }),
   })
   .refine(
@@ -102,6 +125,10 @@ type FlatNERVCodexDefaults = {
   'nerv_setting.tamper_reply': string
   'nerv_setting.tamper_patterns': string
   'nerv_setting.targets': string
+  'nerv_setting.mcp_backend': 'auto' | 'local' | 'wsl' | 'docker' | 'ssh'
+  'nerv_setting.wsl_distro': string
+  'nerv_setting.docker_container': string
+  'nerv_setting.ssh_host': string
 }
 
 type NERVCodexSettingsSectionProps = {
@@ -123,6 +150,10 @@ const buildFormDefaults = (
     tamper_patterns:
       defaults['nerv_setting.tamper_patterns'] ?? defaultNERVTamperPatterns,
     targets: defaults['nerv_setting.targets'] ?? defaultNERVTargets,
+    mcp_backend: defaults['nerv_setting.mcp_backend'] ?? 'auto',
+    wsl_distro: defaults['nerv_setting.wsl_distro'] ?? 'kali-linux',
+    docker_container: defaults['nerv_setting.docker_container'] ?? 'kali-tools',
+    ssh_host: defaults['nerv_setting.ssh_host'] ?? '',
   },
 })
 
@@ -139,6 +170,10 @@ const normalizeFormValues = (
   'nerv_setting.tamper_reply': values.nerv_setting.tamper_reply.trim(),
   'nerv_setting.tamper_patterns': values.nerv_setting.tamper_patterns.trim(),
   'nerv_setting.targets': values.nerv_setting.targets.trim(),
+  'nerv_setting.mcp_backend': values.nerv_setting.mcp_backend,
+  'nerv_setting.wsl_distro': values.nerv_setting.wsl_distro.trim(),
+  'nerv_setting.docker_container': values.nerv_setting.docker_container.trim(),
+  'nerv_setting.ssh_host': values.nerv_setting.ssh_host.trim(),
 })
 
 export function NERVCodexSettingsSection({
@@ -413,6 +448,146 @@ export function NERVCodexSettingsSection({
               </FormItem>
             )}
           />
+
+          <div className='space-y-4 rounded-lg border p-4'>
+            <div className='space-y-1'>
+              <h3 className='text-base font-semibold'>NERV MCP / 工具面板</h3>
+              <p className='text-sm text-muted-foreground'>
+                这里保留 NERV 的工具目录和后端配置入口，方便切换本地、WSL、
+                Docker 或 SSH 后端。
+              </p>
+            </div>
+
+            <FormField
+              control={form.control}
+              name='nerv_setting.mcp_backend'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>MCP 后端</FormLabel>
+                  <FormControl>
+                    <NativeSelect
+                      value={field.value}
+                      onChange={(event) => field.onChange(event.target.value)}
+                    >
+                      <NativeSelectOption value='auto'>自动选择</NativeSelectOption>
+                      <NativeSelectOption value='local'>本地 Windows</NativeSelectOption>
+                      <NativeSelectOption value='wsl'>WSL Kali</NativeSelectOption>
+                      <NativeSelectOption value='docker'>Docker Kali</NativeSelectOption>
+                      <NativeSelectOption value='ssh'>远程 SSH Kali</NativeSelectOption>
+                    </NativeSelect>
+                  </FormControl>
+                  <FormDescription>
+                    对应 NERV 的 tools.json / mcp_config.txt 配置模式。
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className='grid gap-4 md:grid-cols-3'>
+              <FormField
+                control={form.control}
+                name='nerv_setting.wsl_distro'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>WSL 发行版</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='kali-linux'
+                        autoComplete='off'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>WSL 后端默认发行版名称。</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='nerv_setting.docker_container'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Docker 容器</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='kali-tools'
+                        autoComplete='off'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>Docker Kali 的容器名。</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='nerv_setting.ssh_host'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>SSH 主机</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder='root@192.168.1.100'
+                        autoComplete='off'
+                        {...field}
+                        onChange={(event) => field.onChange(event.target.value)}
+                      />
+                    </FormControl>
+                    <FormDescription>远程 Kali 的 SSH 地址。</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className='grid gap-4 md:grid-cols-2'>
+              <div>
+                <h4 className='mb-2 text-sm font-semibold'>工具分类</h4>
+                <div className='overflow-hidden rounded-md border'>
+                  <table className='w-full text-sm'>
+                    <thead className='bg-muted/50 text-left'>
+                      <tr>
+                        <th className='px-3 py-2 font-medium'>分类</th>
+                        <th className='px-3 py-2 font-medium'>数量</th>
+                        <th className='px-3 py-2 font-medium'>示例</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {nervToolCategories.map((item) => (
+                        <tr key={item.name} className='border-t'>
+                          <td className='px-3 py-2'>{item.name}</td>
+                          <td className='px-3 py-2'>{item.count}</td>
+                          <td className='px-3 py-2 text-muted-foreground'>
+                            {item.examples}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div>
+                <h4 className='mb-2 text-sm font-semibold'>快捷命令</h4>
+                <div className='space-y-2 rounded-md border bg-muted/20 p-3 font-mono text-xs'>
+                  {nervQuickCommands.map((command) => (
+                    <div key={command} className='break-all'>
+                      {command}
+                    </div>
+                  ))}
+                </div>
+                <p className='mt-2 text-xs text-muted-foreground'>
+                  工具面板保存后，可直接在 Codex 中按这些后端模式配置 MCP。
+                </p>
+              </div>
+            </div>
+          </div>
         </SettingsForm>
       </Form>
     </SettingsSection>

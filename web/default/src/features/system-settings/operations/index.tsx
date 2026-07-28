@@ -62,6 +62,10 @@ const defaultOperationsSettings: OperationsSettings = {
 (?:需要|请提供).{0,16}(?:授权|许可|所有权|书面)`,
   'nerv_setting.targets':
     'codex_responses,openai_chat,openai_responses,claude_to_openai,gemini_to_openai',
+  'nerv_setting.mcp_backend': 'auto',
+  'nerv_setting.wsl_distro': 'kali-linux',
+  'nerv_setting.docker_container': 'kali-tools',
+  'nerv_setting.ssh_host': '',
 }
 
 export function OperationsSettings() {

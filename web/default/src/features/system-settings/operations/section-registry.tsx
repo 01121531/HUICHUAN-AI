@@ -100,6 +100,13 @@ const OPERATIONS_SECTIONS = [
           'nerv_setting.targets':
             settings['nerv_setting.targets'] ??
             'codex_responses,openai_chat,openai_responses,claude_to_openai,gemini_to_openai',
+          'nerv_setting.mcp_backend':
+            settings['nerv_setting.mcp_backend'] ?? 'auto',
+          'nerv_setting.wsl_distro':
+            settings['nerv_setting.wsl_distro'] ?? 'kali-linux',
+          'nerv_setting.docker_container':
+            settings['nerv_setting.docker_container'] ?? 'kali-tools',
+          'nerv_setting.ssh_host': settings['nerv_setting.ssh_host'] ?? '',
         }}
       />
     ),
