@@ -584,6 +584,7 @@ export type OperationsSettings = {
   'nerv_stats.last_event': string
   'nerv_stats.last_target': string
   'nerv_stats.last_model': string
+  'nerv_stats.recent': string
 }
 
 export type SecuritySettings = {

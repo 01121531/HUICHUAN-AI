@@ -94,6 +94,31 @@ function formatNERVTime(value?: number) {
   if (!value) return '暂无记录'
   return new Date(value * 1000).toLocaleString()
 }
+type NERVRecentEvent = {
+  ts: number
+  event: string
+  target: string
+  model: string
+}
+
+function parseNERVRecentEvents(raw?: string): NERVRecentEvent[] {
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((item): item is NERVRecentEvent => {
+      return (
+        item &&
+        typeof item === 'object' &&
+        typeof item.ts === 'number' &&
+        typeof item.event === 'string'
+      )
+    })
+  } catch {
+    return []
+  }
+}
+
 
 const nervCodexSchema = z
   .object({
@@ -153,6 +178,7 @@ type FlatNERVCodexDefaults = {
   'nerv_stats.last_event'?: string
   'nerv_stats.last_target'?: string
   'nerv_stats.last_model'?: string
+  'nerv_stats.recent'?: string
 }
 
 type NERVCodexSettingsSectionProps = {
@@ -246,6 +272,10 @@ export function NERVCodexSettingsSection({
   ]
   const lastEventKey = defaultValues['nerv_stats.last_event'] ?? ''
   const lastEventName = nervEventNames[lastEventKey] ?? (lastEventKey || '暂无')
+  const recentEvents = useMemo(
+    () => parseNERVRecentEvents(defaultValues['nerv_stats.recent']),
+    [defaultValues['nerv_stats.recent']]
+  )
 
   return (
     <SettingsSection title='NERV 连接设置'>
@@ -308,6 +338,36 @@ export function NERVCodexSettingsSection({
                 <div className='font-medium'>
                   {formatNERVTime(defaultValues['nerv_stats.last_event_at'])}
                 </div>
+              </div>
+            </div>
+
+            <div className='space-y-2 rounded-md border bg-muted/10 p-3'>
+              <div className='text-sm font-semibold'>最近事件</div>
+              <div className='space-y-2'>
+                {recentEvents.length > 0 ? (
+                  recentEvents.slice(0, 6).map((item) => (
+                    <div
+                      key={`${item.ts}-${item.event}-${item.target}-${item.model}`}
+                      className='rounded-md border bg-background px-3 py-2 text-xs'
+                    >
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='font-medium'>
+                          {nervEventNames[item.event] ?? item.event}
+                        </span>
+                        <span className='text-muted-foreground'>
+                          {formatNERVTime(item.ts)}
+                        </span>
+                      </div>
+                      <div className='mt-1 text-muted-foreground'>
+                        范围：{item.target || '暂无'} · 模型：{item.model || '暂无'}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className='rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground'>
+                    暂无最近事件。
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -1,7 +1,9 @@
 package service
 
 import (
+	"encoding/json"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +23,7 @@ const (
 	NERVStatsLastEventKey       = "nerv_stats.last_event"
 	NERVStatsLastTargetKey      = "nerv_stats.last_target"
 	NERVStatsLastModelKey       = "nerv_stats.last_model"
+	NERVStatsRecentKey          = "nerv_stats.recent"
 )
 
 const (
@@ -30,7 +33,15 @@ const (
 	nervEventTamperChat      = "tamper_chat"
 	nervEventTamperResponses = "tamper_responses"
 	nervStatsPersistInterval = 5 * time.Second
+	nervRecentLimit          = 12
 )
+
+type nervRecentEvent struct {
+	TS     int64  `json:"ts"`
+	Event  string `json:"event"`
+	Target string `json:"target"`
+	Model  string `json:"model"`
+}
 
 var nervStatsPersistState struct {
 	sync.Mutex
@@ -63,12 +74,34 @@ func recordNERVEvent(event string, target NERVTarget, modelName string) {
 	updates[NERVStatsLastEventKey] = event
 	updates[NERVStatsLastTargetKey] = string(target)
 	updates[NERVStatsLastModelKey] = modelName
+	updates[NERVStatsRecentKey] = appendNERVRecentEventLocked(now.Unix(), event, target, modelName)
 	for key, value := range updates {
 		common.OptionMap[key] = value
 	}
 	common.OptionMapRWMutex.Unlock()
 
 	persistNERVStatsPeriodically(now, updates)
+}
+
+func appendNERVRecentEventLocked(ts int64, event string, target NERVTarget, modelName string) string {
+	events := make([]nervRecentEvent, 0, nervRecentLimit)
+	if raw, ok := common.OptionMap[NERVStatsRecentKey]; ok && strings.TrimSpace(raw) != "" {
+		_ = json.Unmarshal([]byte(raw), &events)
+	}
+	events = append([]nervRecentEvent{{
+		TS:     ts,
+		Event:  event,
+		Target: string(target),
+		Model:  modelName,
+	}}, events...)
+	if len(events) > nervRecentLimit {
+		events = events[:nervRecentLimit]
+	}
+	data, err := json.Marshal(events)
+	if err != nil {
+		return "[]"
+	}
+	return string(data)
 }
 
 func incrementNERVStatLocked(key string, updates map[string]string) {

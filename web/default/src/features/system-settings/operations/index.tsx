@@ -77,6 +77,7 @@ const defaultOperationsSettings: OperationsSettings = {
   'nerv_stats.last_event': '',
   'nerv_stats.last_target': '',
   'nerv_stats.last_model': '',
+  'nerv_stats.recent': '[]',
 }
 
 export function OperationsSettings() {

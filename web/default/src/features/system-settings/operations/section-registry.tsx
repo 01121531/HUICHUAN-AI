@@ -2,6 +2,7 @@
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
 import { NERVCodexSettingsSection } from '../integrations/nerv-codex-settings-section'
+import { NERVLabToolsSection } from '../integrations/nerv-lab-tools-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
@@ -121,6 +122,23 @@ const OPERATIONS_SECTIONS = [
           'nerv_stats.last_event': settings['nerv_stats.last_event'] ?? '',
           'nerv_stats.last_target': settings['nerv_stats.last_target'] ?? '',
           'nerv_stats.last_model': settings['nerv_stats.last_model'] ?? '',
+          'nerv_stats.recent': settings['nerv_stats.recent'] ?? '[]',
+        }}
+      />
+    ),
+  },
+  {
+    id: 'nerv-lab',
+    titleKey: 'NERV \u5de5\u7a0b\u5de5\u5177',
+    build: (settings: OperationsSettings) => (
+      <NERVLabToolsSection
+        defaultValues={{
+          'nerv_setting.wsl_distro':
+            settings['nerv_setting.wsl_distro'] ?? 'kali-linux',
+          'nerv_setting.docker_container':
+            settings['nerv_setting.docker_container'] ?? 'kali-tools',
+          'nerv_setting.ssh_host': settings['nerv_setting.ssh_host'] ?? '',
+          'nerv_stats.recent': settings['nerv_stats.recent'] ?? '[]',
         }}
       />
     ),
