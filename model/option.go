@@ -116,6 +116,17 @@ func InitOptionMap() {
 	common.OptionMap["nerv_setting.wsl_distro"] = defaultNERVWSLDistro
 	common.OptionMap["nerv_setting.docker_container"] = defaultNERVDockerContainer
 	common.OptionMap["nerv_setting.ssh_host"] = defaultNERVSSHost
+	common.OptionMap["nerv_stats.total"] = "0"
+	common.OptionMap["nerv_stats.inject"] = "0"
+	common.OptionMap["nerv_stats.tamper"] = "0"
+	common.OptionMap["nerv_stats.chat_inject"] = "0"
+	common.OptionMap["nerv_stats.responses_inject"] = "0"
+	common.OptionMap["nerv_stats.chat_tamper"] = "0"
+	common.OptionMap["nerv_stats.responses_tamper"] = "0"
+	common.OptionMap["nerv_stats.last_event_at"] = "0"
+	common.OptionMap["nerv_stats.last_event"] = ""
+	common.OptionMap["nerv_stats.last_target"] = ""
+	common.OptionMap["nerv_stats.last_model"] = ""
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)

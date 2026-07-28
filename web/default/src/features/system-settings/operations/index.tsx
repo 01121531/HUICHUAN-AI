@@ -66,6 +66,17 @@ const defaultOperationsSettings: OperationsSettings = {
   'nerv_setting.wsl_distro': 'kali-linux',
   'nerv_setting.docker_container': 'kali-tools',
   'nerv_setting.ssh_host': '',
+  'nerv_stats.total': 0,
+  'nerv_stats.inject': 0,
+  'nerv_stats.tamper': 0,
+  'nerv_stats.chat_inject': 0,
+  'nerv_stats.responses_inject': 0,
+  'nerv_stats.chat_tamper': 0,
+  'nerv_stats.responses_tamper': 0,
+  'nerv_stats.last_event_at': 0,
+  'nerv_stats.last_event': '',
+  'nerv_stats.last_target': '',
+  'nerv_stats.last_model': '',
 }
 
 export function OperationsSettings() {

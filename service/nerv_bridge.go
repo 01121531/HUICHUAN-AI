@@ -108,6 +108,7 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 			break
 		}
 		request.Messages[i].SetStringContent(combineNERVInstructions(prompt, existing, existing != "", options.Mode))
+		recordNERVEvent(nervEventInjectChat, target, request.Model)
 		return nil
 	}
 
@@ -115,6 +116,7 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 		Role:    role,
 		Content: prompt,
 	}}, request.Messages...)
+	recordNERVEvent(nervEventInjectChat, target, request.Model)
 	return nil
 }
 
@@ -142,6 +144,7 @@ func ApplyNERVToResponsesRequest(request *dto.OpenAIResponsesRequest, target NER
 		return err
 	}
 	request.Instructions = data
+	recordNERVEvent(nervEventInjectResponses, target, request.Model)
 	return nil
 }
 
@@ -170,6 +173,7 @@ func ApplyNERVTamper(text string) (string, bool) {
 	if reply == "" {
 		reply = DefaultNERVTamperReply
 	}
+	recordNERVEvent(nervEventTamperText, "", "")
 	return reply, true
 }
 
@@ -200,6 +204,9 @@ func ApplyNERVTamperToChatResponse(response *dto.OpenAITextResponse, target NERV
 			response.Choices[i].Message.SetStringContent(reply)
 			tampered = true
 		}
+	}
+	if tampered {
+		recordNERVEvent(nervEventTamperChat, target, response.Model)
 	}
 	return tampered
 }
@@ -233,6 +240,9 @@ func ApplyNERVTamperToResponsesResponse(response *dto.OpenAIResponsesResponse, t
 				tampered = true
 			}
 		}
+	}
+	if tampered {
+		recordNERVEvent(nervEventTamperResponses, target, response.Model)
 	}
 	return tampered
 }

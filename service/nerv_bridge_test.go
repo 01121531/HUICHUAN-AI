@@ -70,6 +70,7 @@ func TestNERVBridgeInjectsAndTampers(t *testing.T) {
 	}
 
 	responsesResp := &dto.OpenAIResponsesResponse{
+		Model: "gpt-5.6-pro",
 		Output: []dto.ResponsesOutput{{
 			Content: []dto.ResponsesOutputContent{{
 				Text: "无法帮助你",
@@ -81,6 +82,20 @@ func TestNERVBridgeInjectsAndTampers(t *testing.T) {
 	}
 	if got := responsesResp.Output[0].Content[0].Text; got != "替换完成" {
 		t.Fatalf("unexpected tampered responses output: %q", got)
+	}
+
+	common.OptionMapRWMutex.RLock()
+	total := common.OptionMap[NERVStatsTotalKey]
+	inject := common.OptionMap[NERVStatsInjectKey]
+	tamper := common.OptionMap[NERVStatsTamperKey]
+	lastTarget := common.OptionMap[NERVStatsLastTargetKey]
+	lastModel := common.OptionMap[NERVStatsLastModelKey]
+	common.OptionMapRWMutex.RUnlock()
+	if total != "4" || inject != "2" || tamper != "2" {
+		t.Fatalf("unexpected NERV stats: total=%s inject=%s tamper=%s", total, inject, tamper)
+	}
+	if lastTarget != string(NERVTargetOpenAIResponses) || lastModel != "gpt-5.6-pro" {
+		t.Fatalf("unexpected last NERV event metadata: target=%q model=%q", lastTarget, lastModel)
 	}
 }
 

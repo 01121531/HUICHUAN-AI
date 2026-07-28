@@ -573,6 +573,17 @@ export type OperationsSettings = {
   'nerv_setting.wsl_distro': string
   'nerv_setting.docker_container': string
   'nerv_setting.ssh_host': string
+  'nerv_stats.total': number
+  'nerv_stats.inject': number
+  'nerv_stats.tamper': number
+  'nerv_stats.chat_inject': number
+  'nerv_stats.responses_inject': number
+  'nerv_stats.chat_tamper': number
+  'nerv_stats.responses_tamper': number
+  'nerv_stats.last_event_at': number
+  'nerv_stats.last_event': string
+  'nerv_stats.last_target': string
+  'nerv_stats.last_model': string
 }
 
 export type SecuritySettings = {

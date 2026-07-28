@@ -82,6 +82,19 @@ const nervQuickCommands = [
   'python mcp_server.py --kali root@192.168.1.100',
 ]
 
+const nervEventNames: Record<string, string> = {
+  inject_chat: 'Chat 注入',
+  inject_responses: 'Responses 注入',
+  tamper_text: '文本篡改',
+  tamper_chat: 'Chat 篡改',
+  tamper_responses: 'Responses 篡改',
+}
+
+function formatNERVTime(value?: number) {
+  if (!value) return '暂无记录'
+  return new Date(value * 1000).toLocaleString()
+}
+
 const nervCodexSchema = z
   .object({
     nerv_setting: z.object({
@@ -129,6 +142,17 @@ type FlatNERVCodexDefaults = {
   'nerv_setting.wsl_distro': string
   'nerv_setting.docker_container': string
   'nerv_setting.ssh_host': string
+  'nerv_stats.total'?: number
+  'nerv_stats.inject'?: number
+  'nerv_stats.tamper'?: number
+  'nerv_stats.chat_inject'?: number
+  'nerv_stats.responses_inject'?: number
+  'nerv_stats.chat_tamper'?: number
+  'nerv_stats.responses_tamper'?: number
+  'nerv_stats.last_event_at'?: number
+  'nerv_stats.last_event'?: string
+  'nerv_stats.last_target'?: string
+  'nerv_stats.last_model'?: string
 }
 
 type NERVCodexSettingsSectionProps = {
@@ -205,6 +229,24 @@ export function NERVCodexSettingsSection({
     }
   }
 
+  const stats = [
+    { label: '总事件', value: defaultValues['nerv_stats.total'] ?? 0 },
+    { label: '总注入', value: defaultValues['nerv_stats.inject'] ?? 0 },
+    { label: '总篡改', value: defaultValues['nerv_stats.tamper'] ?? 0 },
+    { label: 'Chat 注入', value: defaultValues['nerv_stats.chat_inject'] ?? 0 },
+    {
+      label: 'Responses 注入',
+      value: defaultValues['nerv_stats.responses_inject'] ?? 0,
+    },
+    { label: 'Chat 篡改', value: defaultValues['nerv_stats.chat_tamper'] ?? 0 },
+    {
+      label: 'Responses 篡改',
+      value: defaultValues['nerv_stats.responses_tamper'] ?? 0,
+    },
+  ]
+  const lastEventKey = defaultValues['nerv_stats.last_event'] ?? ''
+  const lastEventName = nervEventNames[lastEventKey] ?? (lastEventKey || '暂无')
+
   return (
     <SettingsSection title='NERV 连接设置'>
       <Form {...form}>
@@ -223,6 +265,52 @@ export function NERVCodexSettingsSection({
               选启用响应篡改。
             </AlertDescription>
           </Alert>
+
+          <div className='space-y-4 rounded-lg border p-4'>
+            <div className='space-y-1'>
+              <h3 className='text-base font-semibold'>NERV 记忆内核</h3>
+              <p className='text-sm text-muted-foreground'>
+                中转站会记录桥接注入和响应篡改事件，用于替代原项目
+                memory.json 的累计统计与面板展示。
+              </p>
+            </div>
+            <div className='grid gap-3 sm:grid-cols-2 lg:grid-cols-4'>
+              {stats.map((item) => (
+                <div key={item.label} className='rounded-md border p-3'>
+                  <div className='text-xs text-muted-foreground'>
+                    {item.label}
+                  </div>
+                  <div className='mt-1 text-2xl font-semibold tabular-nums'>
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className='grid gap-3 text-sm md:grid-cols-4'>
+              <div>
+                <div className='text-muted-foreground'>最后事件</div>
+                <div className='font-medium'>{lastEventName}</div>
+              </div>
+              <div>
+                <div className='text-muted-foreground'>最后范围</div>
+                <div className='font-medium'>
+                  {defaultValues['nerv_stats.last_target'] || '暂无'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground'>最后模型</div>
+                <div className='font-medium'>
+                  {defaultValues['nerv_stats.last_model'] || '暂无'}
+                </div>
+              </div>
+              <div>
+                <div className='text-muted-foreground'>最后时间</div>
+                <div className='font-medium'>
+                  {formatNERVTime(defaultValues['nerv_stats.last_event_at'])}
+                </div>
+              </div>
+            </div>
+          </div>
 
           <FormField
             control={form.control}
