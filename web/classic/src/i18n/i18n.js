@@ -50,6 +50,10 @@ i18n
     interpolation: {
       escapeValue: false,
     },
+    detection: {
+      order: ['localStorage'],
+      caches: ['localStorage'],
+    },
   });
 
 window.__i18n = i18n;

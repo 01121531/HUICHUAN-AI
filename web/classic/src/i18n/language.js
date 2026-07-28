@@ -29,7 +29,7 @@ export const supportedLanguages = [
 
 export const normalizeLanguage = (language) => {
   if (!language) {
-    return language;
+    return 'zh-CN';
   }
 
   const normalized = language.trim().replace(/_/g, '-');
@@ -57,5 +57,5 @@ export const normalizeLanguage = (language) => {
     (supportedLanguage) => supportedLanguage.toLowerCase() === lower,
   );
 
-  return matchedLanguage || normalized;
+  return matchedLanguage || 'zh-CN';
 };
