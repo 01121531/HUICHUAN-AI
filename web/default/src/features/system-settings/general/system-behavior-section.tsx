@@ -76,7 +76,7 @@ export function SystemBehaviorSection({
   }
 
   return (
-    <SettingsSection title={t('System Behavior')}>
+    <SettingsSection title={t('\u7cfb\u7edf\u884c\u4e3a')}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions

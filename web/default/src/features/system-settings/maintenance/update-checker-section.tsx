@@ -323,7 +323,7 @@ export function UpdateCheckerSection({
 
   return (
     <>
-      <SettingsSection title={t('System maintenance')}>
+      <SettingsSection title={t('\u7cfb\u7edf\u7ef4\u62a4')}>
         <div className='space-y-6'>
           <div className='grid gap-4 md:grid-cols-2'>
             <div className='rounded-lg border p-4'>

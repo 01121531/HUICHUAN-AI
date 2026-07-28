@@ -559,6 +559,10 @@ export type OperationsSettings = {
   'perf_metrics_setting.flush_interval': number
   'perf_metrics_setting.bucket_time': 'hour' | 'minute' | '5min'
   'perf_metrics_setting.retention_days': number
+  'nerv_setting.enabled': boolean
+  'nerv_setting.prompt': string
+  'nerv_setting.mode': 'prepend' | 'append' | 'override'
+  'nerv_setting.models': string
 }
 
 export type SecuritySettings = {

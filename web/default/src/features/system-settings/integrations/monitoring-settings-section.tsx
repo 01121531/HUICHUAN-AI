@@ -179,7 +179,7 @@ export function MonitoringSettingsSection({
   }
 
   return (
-    <SettingsSection title={t('Monitoring & Alerts')}>
+    <SettingsSection title={t('\u76d1\u63a7\u4e0e\u63d0\u9192')}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions

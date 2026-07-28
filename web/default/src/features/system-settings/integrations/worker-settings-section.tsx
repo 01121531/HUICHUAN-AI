@@ -107,7 +107,7 @@ export function WorkerSettingsSection({
   }
 
   return (
-    <SettingsSection title={t('Worker Proxy')}>
+    <SettingsSection title={t('Worker \u4ee3\u7406')}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)} autoComplete='off'>
           <SettingsPageFormActions

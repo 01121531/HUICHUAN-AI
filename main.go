@@ -29,6 +29,7 @@ import (
 	"github.com/01121531/HUICHUAN-AI/router"
 	"github.com/01121531/HUICHUAN-AI/service"
 	"github.com/01121531/HUICHUAN-AI/service/authz"
+	"github.com/01121531/HUICHUAN-AI/setting/dataset_capture_setting"
 	_ "github.com/01121531/HUICHUAN-AI/setting/performance_setting"
 	"github.com/01121531/HUICHUAN-AI/setting/ratio_setting"
 
@@ -368,11 +369,13 @@ func InitResources() error {
 		common.FatalLog("failed to migrate dataset capture permissions: " + err.Error())
 		return err
 	}
-	if err = service.ReconcileDatasetCaptureIndex(
-		middleware.DatasetCapturePathTemplate(),
-		middleware.DatasetCaptureNode(),
-	); err != nil {
-		common.SysError("failed to reconcile dataset capture index: " + err.Error())
+	if dataset_capture_setting.IsEnabled() {
+		if err = service.ReconcileDatasetCaptureIndex(
+			middleware.DatasetCapturePathTemplate(),
+			middleware.DatasetCaptureNode(),
+		); err != nil {
+			common.SysError("failed to reconcile dataset capture index: " + err.Error())
+		}
 	}
 	// Initialize capture workers during startup so the first matching API
 	// request never pays directory calibration or disk-probe costs.

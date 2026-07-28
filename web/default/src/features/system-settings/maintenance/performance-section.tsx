@@ -313,7 +313,7 @@ export function PerformanceSection(props: Props) {
       : 0
 
   return (
-    <SettingsSection title={t('Performance Settings')}>
+    <SettingsSection title={t('\u6027\u80fd\u8bbe\u7f6e')}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions

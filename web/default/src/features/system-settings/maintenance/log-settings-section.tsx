@@ -403,7 +403,7 @@ export function LogSettingsSection({
   }
 
   return (
-    <SettingsSection title={t('Log Maintenance')}>
+    <SettingsSection title={t('\u65e5\u5fd7\u7ef4\u62a4')}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)}>
           <SettingsPageFormActions

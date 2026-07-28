@@ -1,6 +1,7 @@
-import { SystemBehaviorSection } from '../general/system-behavior-section'
+﻿import { SystemBehaviorSection } from '../general/system-behavior-section'
 import { EmailSettingsSection } from '../integrations/email-settings-section'
 import { MonitoringSettingsSection } from '../integrations/monitoring-settings-section'
+import { NERVCodexSettingsSection } from '../integrations/nerv-codex-settings-section'
 import { WorkerSettingsSection } from '../integrations/worker-settings-section'
 import { LogSettingsSection } from '../maintenance/log-settings-section'
 import { PerformanceSection } from '../maintenance/performance-section'
@@ -11,7 +12,7 @@ import { createSectionRegistry } from '../utils/section-registry'
 const OPERATIONS_SECTIONS = [
   {
     id: 'behavior',
-    titleKey: 'System Behavior',
+    titleKey: '\u7cfb\u7edf\u884c\u4e3a',
     build: (settings: OperationsSettings) => (
       <SystemBehaviorSection
         defaultValues={{
@@ -24,7 +25,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'alerts',
-    titleKey: 'Monitoring & Alerts',
+    titleKey: '\u76d1\u63a7\u4e0e\u63d0\u9192',
     build: (settings: OperationsSettings) => (
       <MonitoringSettingsSection
         defaultValues={{
@@ -43,7 +44,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'email',
-    titleKey: 'SMTP Email',
+    titleKey: 'SMTP \u90ae\u4ef6',
     build: (settings: OperationsSettings) => (
       <EmailSettingsSection
         defaultValues={{
@@ -62,7 +63,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'worker',
-    titleKey: 'Worker Proxy',
+    titleKey: 'Worker \u4ee3\u7406',
     build: (settings: OperationsSettings) => (
       <WorkerSettingsSection
         defaultValues={{
@@ -75,8 +76,23 @@ const OPERATIONS_SECTIONS = [
     ),
   },
   {
+    id: 'nerv-codex',
+    titleKey: 'NERV \u8fde\u63a5\u8bbe\u7f6e',
+    build: (settings: OperationsSettings) => (
+      <NERVCodexSettingsSection
+        defaultValues={{
+          'nerv_setting.enabled': settings['nerv_setting.enabled'] ?? false,
+          'nerv_setting.prompt': settings['nerv_setting.prompt'] ?? '',
+          'nerv_setting.mode': settings['nerv_setting.mode'] ?? 'prepend',
+          'nerv_setting.models':
+            settings['nerv_setting.models'] ?? 'gpt-5.6*,codex*',
+        }}
+      />
+    ),
+  },
+  {
     id: 'logs',
-    titleKey: 'Log Maintenance',
+    titleKey: '\u65e5\u5fd7\u7ef4\u62a4',
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultEnabled={Boolean(settings.LogConsumeEnabled)}
@@ -93,7 +109,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'performance',
-    titleKey: 'Performance',
+    titleKey: '\u6027\u80fd',
     build: (settings: OperationsSettings) => (
       <PerformanceSection
         defaultValues={{
@@ -119,7 +135,7 @@ const OPERATIONS_SECTIONS = [
   },
   {
     id: 'update-checker',
-    titleKey: 'System maintenance',
+    titleKey: '\u7cfb\u7edf\u7ef4\u62a4',
     build: (
       _settings: OperationsSettings,
       currentVersion?: string | null,
@@ -152,21 +168,3 @@ export const getOperationsSectionNavItems =
   operationsRegistry.getSectionNavItems
 export const getOperationsSectionContent = operationsRegistry.getSectionContent
 export const getOperationsSectionMeta = operationsRegistry.getSectionMeta
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/

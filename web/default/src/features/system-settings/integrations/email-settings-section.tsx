@@ -179,7 +179,7 @@ export function EmailSettingsSection({
   };
 
   return (
-    <SettingsSection title={t("SMTP Email")}>
+    <SettingsSection title={t("\u90ae\u4ef6\u914d\u7f6e")}>
       <Form {...form}>
         <SettingsForm onSubmit={form.handleSubmit(onSubmit)} autoComplete="off">
           <SettingsPageFormActions
