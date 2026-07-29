@@ -379,7 +379,7 @@ function SelfCheckCard({
                 ? `${data.config.tamper_rule_invalid} 个异常`
                 : '格式正常'
             }
-            description={`${data.config.tamper_rule_count} 条规则已加载。`}
+            description={`${data.config.tamper_rule_count} 条规则已加载；原项目 ${data.config.bundled_rule_source || 'direct_setup.py'} 可导入 ${data.config.bundled_rule_count ?? 0} 条。`}
           />
         </div>
 

@@ -6,6 +6,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,6 +80,8 @@ type nervSelfCheckConfig struct {
 	TamperRuleCount   int                              `json:"tamper_rule_count"`
 	TamperRuleInvalid int                              `json:"tamper_rule_invalid"`
 	TamperRuleErrors  []service.NERVTamperPatternError `json:"tamper_rule_errors"`
+	BundledRuleCount  int                              `json:"bundled_rule_count"`
+	BundledRuleSource string                           `json:"bundled_rule_source"`
 	MCPBackend        string                           `json:"mcp_backend"`
 	WSLDistro         string                           `json:"wsl_distro"`
 	DockerContainer   string                           `json:"docker_container"`
@@ -130,6 +133,13 @@ type nervBridgePromptResponse struct {
 	Length int    `json:"length"`
 }
 
+type nervTamperRulesResponse struct {
+	Path     string `json:"path"`
+	Source   string `json:"source"`
+	Patterns string `json:"patterns"`
+	Count    int    `json:"count"`
+}
+
 func GetNERVSelfCheck(c *gin.Context) {
 	status := buildNERVSelfCheck()
 	common.ApiSuccess(c, status)
@@ -160,6 +170,15 @@ func GetNERVBridgePrompt(c *gin.Context) {
 		Prompt: prompt,
 		Length: len([]rune(prompt)),
 	})
+}
+
+func GetNERVTamperRules(c *gin.Context) {
+	rules, err := loadNERVTamperRulesFromAsset()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, rules)
 }
 
 func buildNERVSelfCheck() nervSelfCheckResponse {
@@ -407,6 +426,7 @@ func countNERVSkills(skillsPath string) (int, int) {
 func buildNERVConfigStatus() nervSelfCheckConfig {
 	options := service.LoadNERVBridgeOptions()
 	tamperRuleCount, tamperRuleErrors := service.NERVTamperPatternDiagnostics(options.TamperPatterns)
+	bundledRules, _ := loadNERVTamperRulesFromAsset()
 
 	common.OptionMapRWMutex.RLock()
 	mcpBackend := common.OptionMap["nerv_setting.mcp_backend"]
@@ -429,6 +449,8 @@ func buildNERVConfigStatus() nervSelfCheckConfig {
 		TamperRuleCount:   tamperRuleCount,
 		TamperRuleInvalid: len(tamperRuleErrors),
 		TamperRuleErrors:  tamperRuleErrors,
+		BundledRuleCount:  bundledRules.Count,
+		BundledRuleSource: bundledRules.Source,
 		MCPBackend:        mcpBackend,
 		WSLDistro:         wslDistro,
 		DockerContainer:   dockerContainer,
@@ -540,6 +562,11 @@ func buildNERVChecks(status nervSelfCheckResponse) []nervSelfCheckItem {
 			Message: boolMessage(status.Config.TamperRuleInvalid == 0, "篡改规则格式正常", "篡改规则存在格式错误"),
 		},
 		{
+			Key:     "bundled_tamper_rules",
+			OK:      status.Config.BundledRuleCount > 0,
+			Message: boolMessage(status.Config.BundledRuleCount > 0, "原项目完整篡改规则可读取", "原项目完整篡改规则未读取成功"),
+		},
+		{
 			Key:     "recent_stats",
 			OK:      status.Stats.RecentValid,
 			Message: boolMessage(status.Stats.RecentValid, "最近事件缓存格式正常", "最近事件缓存格式异常"),
@@ -556,4 +583,67 @@ func boolMessage(ok bool, successMessage string, failMessage string) string {
 		return successMessage
 	}
 	return failMessage
+}
+
+func loadNERVTamperRulesFromAsset() (nervTamperRulesResponse, error) {
+	basePath, exists, _ := findNERVAssetBasePath()
+	if !exists {
+		return nervTamperRulesResponse{}, os.ErrNotExist
+	}
+
+	sourceFiles := []string{"direct_setup.py", "proxy_relay.py"}
+	patterns := make([]string, 0, 24)
+	seen := map[string]bool{}
+	sources := make([]string, 0, len(sourceFiles))
+	for _, sourceFile := range sourceFiles {
+		sourcePath := filepath.Join(basePath, sourceFile)
+		data, err := os.ReadFile(sourcePath)
+		if err != nil {
+			return nervTamperRulesResponse{}, err
+		}
+		extracted := extractNERVTamperPatternsFromPython(string(data))
+		if len(extracted) == 0 {
+			continue
+		}
+		sources = append(sources, sourceFile)
+		for _, pattern := range extracted {
+			if seen[pattern] {
+				continue
+			}
+			seen[pattern] = true
+			patterns = append(patterns, pattern)
+		}
+	}
+
+	return nervTamperRulesResponse{
+		Path:     basePath,
+		Source:   strings.Join(sources, " + "),
+		Patterns: strings.Join(patterns, "\n"),
+		Count:    len(patterns),
+	}, nil
+}
+
+func extractNERVTamperPatternsFromPython(source string) []string {
+	blockPattern := regexp.MustCompile(`(?s)TAMPER_RULES\s*=\s*\[(.*?)\n\]`)
+	blockMatch := blockPattern.FindStringSubmatch(source)
+	if len(blockMatch) < 2 {
+		return nil
+	}
+
+	rulePattern := regexp.MustCompile(`\(\s*r"([^"\n]*)"\s*,`)
+	matches := rulePattern.FindAllStringSubmatch(blockMatch[1], -1)
+	patterns := make([]string, 0, len(matches))
+	seen := map[string]bool{}
+	for _, match := range matches {
+		if len(match) < 2 {
+			continue
+		}
+		pattern := strings.TrimSpace(match[1])
+		if pattern == "" || seen[pattern] {
+			continue
+		}
+		seen[pattern] = true
+		patterns = append(patterns, pattern)
+	}
+	return patterns
 }

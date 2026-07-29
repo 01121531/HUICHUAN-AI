@@ -78,6 +78,8 @@ export type NERVSelfCheckConfig = {
   tamper_rule_count: number
   tamper_rule_invalid: number
   tamper_rule_errors: NERVTamperRuleError[]
+  bundled_rule_count?: number
+  bundled_rule_source?: string
   mcp_backend: string
   wsl_distro: string
   docker_container: string
@@ -139,6 +141,19 @@ export type NERVBridgePromptResponse = {
   success: boolean
   message: string
   data?: NERVBridgePromptData
+}
+
+export type NERVTamperRulesData = {
+  path: string
+  source: string
+  patterns: string
+  count: number
+}
+
+export type NERVTamperRulesResponse = {
+  success: boolean
+  message: string
+  data?: NERVTamperRulesData
 }
 
 export type DatasetCaptureModelMode = 'all' | 'selected'

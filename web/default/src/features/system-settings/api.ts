@@ -29,6 +29,7 @@ import type {
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
   NERVBridgePromptResponse,
+  NERVTamperRulesResponse,
   LogCleanupTask,
   NERVSelfCheckResponse,
   SystemOptionsResponse,
@@ -58,6 +59,13 @@ export async function getNERVSelfCheck() {
 export async function getNERVBridgePrompt() {
   const res = await api.get<NERVBridgePromptResponse>(
     '/api/nerv/bridge-prompt'
+  )
+  return res.data
+}
+
+export async function getNERVTamperRules() {
+  const res = await api.get<NERVTamperRulesResponse>(
+    '/api/nerv/tamper-rules'
   )
   return res.data
 }
