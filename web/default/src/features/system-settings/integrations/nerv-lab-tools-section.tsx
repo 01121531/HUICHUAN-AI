@@ -74,6 +74,55 @@ const backendLabels: Record<NERVLabDefaults['nerv_setting.mcp_backend'], string>
   ssh: '远程主机',
 }
 
+
+const bundledNERVAssetPath = '/opt/new-api/build/HUICHUAN-AI/nerv/5.6-JAILBREAK-NERV'
+const sourceNERVAssetPath = 'nerv/5.6-JAILBREAK-NERV'
+
+const integrationChecklist = [
+  {
+    source: 'bridge.md',
+    status: '已接入',
+    entry: 'NERV 连接设置 / 桥接提示词',
+    evidence: 'service/nerv_bridge.go',
+  },
+  {
+    source: 'proxy_relay.py 注入与篡改',
+    status: '链路已融合，脚本已内置',
+    entry: '聊天补全、响应接口、Codex 响应接口；原脚本位于内置资产包',
+    evidence: 'service/nerv_bridge.go / nerv/5.6-JAILBREAK-NERV/proxy_relay.py',
+  },
+  {
+    source: 'memory.json',
+    status: '已融合到数据库选项',
+    entry: 'NERV 记忆内核 / 最近事件',
+    evidence: 'nerv_stats.*',
+  },
+  {
+    source: 'tools/tools.json',
+    status: '已目录化，原文件已内置',
+    entry: 'NERV 工程工具 / 工具目录',
+    evidence: 'nerv-catalog.ts + nerv/5.6-JAILBREAK-NERV/tools/tools.json',
+  },
+  {
+    source: 'skills/*',
+    status: '已目录化，原文件已内置',
+    entry: 'NERV 工程工具 / 技能目录',
+    evidence: 'nerv-catalog.ts + nerv/5.6-JAILBREAK-NERV/skills/*',
+  },
+  {
+    source: 'deploy.py / verify.py / direct_setup.py',
+    status: '脚本已内置，命令已接入',
+    entry: 'NERV 工程工具 / 快捷命令',
+    evidence: 'nerv/5.6-JAILBREAK-NERV/deploy.py / verify.py / direct_setup.py',
+  },
+  {
+    source: 'mcp_server.py',
+    status: '脚本已内置，配置已接入',
+    entry: 'NERV 连接设置 / MCP 后端',
+    evidence: 'nerv/5.6-JAILBREAK-NERV/mcp_server.py + auto/local/WSL/远程主机',
+  },
+]
+
 const workflowCommands = [
   {
     title: '一键实验室菜单',
@@ -388,6 +437,11 @@ export function NERVLabToolsSection({
               value={backendLabels[backend] ?? backend}
               description='在 NERV 连接设置里切换 MCP 后端。'
             />
+            <OverviewCard
+              label='内置资产'
+              value='已随源码部署'
+              description={bundledNERVAssetPath}
+            />
           </div>
 
           <div className='grid gap-4 lg:grid-cols-2'>
@@ -399,11 +453,18 @@ export function NERVLabToolsSection({
                 </CardDescription>
               </CardHeader>
               <CardContent className='space-y-2 text-sm'>
-                <div className='rounded-md border p-3'>桥接提示词 → NERV 连接设置</div>
-                <div className='rounded-md border p-3'>篡改规则 → 响应篡改配置</div>
-                <div className='rounded-md border p-3'>memory.json → NERV 记忆缓存与最近事件</div>
-                <div className='rounded-md border p-3'>mcp_server.py → MCP 后端命令与工具目录</div>
-                <div className='rounded-md border p-3'>skills / tools → 技能目录与工具目录</div>
+                {integrationChecklist.map((item) => (
+                  <div key={item.source} className='rounded-md border p-3'>
+                    <div className='flex flex-wrap items-center gap-2'>
+                      <span className='font-medium'>{item.source}</span>
+                      <Badge variant='secondary'>{item.status}</Badge>
+                    </div>
+                    <div className='mt-1 text-muted-foreground'>{item.entry}</div>
+                    <div className='mt-1 font-mono text-xs text-muted-foreground'>
+                      {item.evidence}
+                    </div>
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -427,6 +488,15 @@ export function NERVLabToolsSection({
 
         <TabsContent value='commands' className='mt-4 space-y-4'>
           <div className='grid gap-4 lg:grid-cols-2'>
+            <CommandCard
+              title='内置资产路径'
+              description='原 NERV 项目文件已随 HUICHUAN 源码部署到服务器构建目录。'
+              commands={[
+                `cd ${bundledNERVAssetPath}`,
+                `ls ${bundledNERVAssetPath}`,
+                `cd ${sourceNERVAssetPath}`,
+              ]}
+            />
             {workflowCommands.map((item) => (
               <CommandCard
                 key={item.title}
