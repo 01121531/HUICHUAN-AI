@@ -55,6 +55,12 @@ type NERVBridgeOptions struct {
 	TamperPatterns   string
 }
 
+type NERVTamperPatternError struct {
+	Line    int    `json:"line"`
+	Pattern string `json:"pattern"`
+	Error   string `json:"error"`
+}
+
 func LoadNERVBridgeOptions() NERVBridgeOptions {
 	common.OptionMapRWMutex.RLock()
 	defer common.OptionMapRWMutex.RUnlock()
@@ -174,6 +180,30 @@ func ApplyNERVTamper(text string) (string, bool) {
 		reply = DefaultNERVTamperReply
 	}
 	recordNERVEvent(nervEventTamperText, "", "")
+	return reply, true
+}
+
+func NERVStreamTamperGateEnabled(target NERVTarget) bool {
+	options := LoadNERVBridgeOptions()
+	return options.Enabled && options.TamperEnabled && nervTargetAllowed(target, options.Targets)
+}
+
+func ApplyNERVTamperToStreamText(text string, target NERVTarget, modelName string) (string, bool) {
+	options := LoadNERVBridgeOptions()
+	if !options.Enabled || !options.TamperEnabled {
+		return text, false
+	}
+	if !nervTargetAllowed(target, options.Targets) {
+		return text, false
+	}
+	if !matchesNERVTamperPattern(text, options.TamperPatterns) {
+		return text, false
+	}
+	reply := strings.TrimSpace(options.TamperReply)
+	if reply == "" {
+		reply = DefaultNERVTamperReply
+	}
+	recordNERVStreamTamperEvent(target, modelName)
 	return reply, true
 }
 
@@ -299,12 +329,7 @@ func matchNERVPattern(model string, pattern string) bool {
 }
 
 func matchesNERVTamperPattern(text string, configured string) bool {
-	patterns := defaultNERVTamperPatterns
-	if strings.TrimSpace(configured) != "" {
-		patterns = splitNERVPatterns(configured)
-	}
-
-	for _, pattern := range patterns {
+	for _, pattern := range activeNERVTamperPatterns(configured) {
 		if pattern == "" {
 			continue
 		}
@@ -319,6 +344,34 @@ func matchesNERVTamperPattern(text string, configured string) bool {
 	return false
 }
 
+func NERVTamperPatternDiagnostics(configured string) (int, []NERVTamperPatternError) {
+	patterns := activeNERVTamperPatterns(configured)
+	invalid := make([]NERVTamperPatternError, 0)
+	total := 0
+	for i, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		total++
+		if _, err := regexp.Compile(pattern); err != nil {
+			invalid = append(invalid, NERVTamperPatternError{
+				Line:    i + 1,
+				Pattern: pattern,
+				Error:   err.Error(),
+			})
+		}
+	}
+	return total, invalid
+}
+
+func activeNERVTamperPatterns(configured string) []string {
+	if strings.TrimSpace(configured) == "" {
+		return defaultNERVTamperPatterns
+	}
+	return splitNERVPatterns(configured)
+}
+
 func splitNERVPatterns(configured string) []string {
 	var jsonPatterns []string
 	if err := common.Unmarshal([]byte(configured), &jsonPatterns); err == nil {
@@ -326,7 +379,7 @@ func splitNERVPatterns(configured string) []string {
 	}
 
 	return strings.FieldsFunc(configured, func(r rune) bool {
-		return r == '\n' || r == ',' || r == ';'
+		return r == '\n' || r == '\r'
 	})
 }
 

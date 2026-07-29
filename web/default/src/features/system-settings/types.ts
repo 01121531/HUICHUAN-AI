@@ -58,6 +58,12 @@ export type NERVSelfCheckToolAvailability = {
   available: boolean
 }
 
+export type NERVTamperRuleError = {
+  line: number
+  pattern: string
+  error: string
+}
+
 export type NERVSelfCheckConfig = {
   enabled: boolean
   chat_enabled: boolean
@@ -69,6 +75,9 @@ export type NERVSelfCheckConfig = {
   prompt_configured: boolean
   prompt_length: number
   tamper_rule_lines: number
+  tamper_rule_count: number
+  tamper_rule_invalid: number
+  tamper_rule_errors: NERVTamperRuleError[]
   mcp_backend: string
   wsl_distro: string
   docker_container: string

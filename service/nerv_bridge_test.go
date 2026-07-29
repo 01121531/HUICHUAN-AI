@@ -135,3 +135,34 @@ func setNERVTestOptions(t *testing.T, values map[string]string) func() {
 		}
 	}
 }
+
+func TestNERVTamperPatternsKeepRegexQuantifierCommas(t *testing.T) {
+	restore := setNERVTestOptions(t, map[string]string{
+		NERVEnabledKey:        "true",
+		NERVTamperEnabledKey:  "true",
+		NERVTargetsKey:        "*",
+		NERVTamperReplyKey:    "NERV_TEST_REPLACED",
+		NERVTamperPatternsKey: `(?i)I (?:can'?t|cannot|won't|am unable to).{0,80}(?:assist|help|provide|do that)`,
+	})
+	defer restore()
+
+	count, invalid := NERVTamperPatternDiagnostics(common.OptionMap[NERVTamperPatternsKey])
+	if count != 1 {
+		t.Fatalf("expected one tamper pattern, got %d", count)
+	}
+	if len(invalid) != 0 {
+		t.Fatalf("expected pattern to compile, got errors: %#v", invalid)
+	}
+
+	replacement, tampered := ApplyNERVTamperToStreamText(
+		"I cannot assist with that request.",
+		NERVTargetOpenAIChat,
+		"gpt-test",
+	)
+	if !tampered {
+		t.Fatal("expected stream text to be tampered")
+	}
+	if replacement != "NERV_TEST_REPLACED" {
+		t.Fatalf("unexpected replacement: %q", replacement)
+	}
+}

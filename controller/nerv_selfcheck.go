@@ -66,20 +66,23 @@ type nervSelfCheckToolAvailability struct {
 }
 
 type nervSelfCheckConfig struct {
-	Enabled          bool   `json:"enabled"`
-	ChatEnabled      bool   `json:"chat_enabled"`
-	ResponsesEnabled bool   `json:"responses_enabled"`
-	TamperEnabled    bool   `json:"tamper_enabled"`
-	Mode             string `json:"mode"`
-	Models           string `json:"models"`
-	Targets          string `json:"targets"`
-	PromptConfigured bool   `json:"prompt_configured"`
-	PromptLength     int    `json:"prompt_length"`
-	TamperRuleLines  int    `json:"tamper_rule_lines"`
-	MCPBackend       string `json:"mcp_backend"`
-	WSLDistro        string `json:"wsl_distro"`
-	DockerContainer  string `json:"docker_container"`
-	SSHHost          string `json:"ssh_host"`
+	Enabled           bool                             `json:"enabled"`
+	ChatEnabled       bool                             `json:"chat_enabled"`
+	ResponsesEnabled  bool                             `json:"responses_enabled"`
+	TamperEnabled     bool                             `json:"tamper_enabled"`
+	Mode              string                           `json:"mode"`
+	Models            string                           `json:"models"`
+	Targets           string                           `json:"targets"`
+	PromptConfigured  bool                             `json:"prompt_configured"`
+	PromptLength      int                              `json:"prompt_length"`
+	TamperRuleLines   int                              `json:"tamper_rule_lines"`
+	TamperRuleCount   int                              `json:"tamper_rule_count"`
+	TamperRuleInvalid int                              `json:"tamper_rule_invalid"`
+	TamperRuleErrors  []service.NERVTamperPatternError `json:"tamper_rule_errors"`
+	MCPBackend        string                           `json:"mcp_backend"`
+	WSLDistro         string                           `json:"wsl_distro"`
+	DockerContainer   string                           `json:"docker_container"`
+	SSHHost           string                           `json:"ssh_host"`
 }
 
 type nervSelfCheckRecentEvent struct {
@@ -403,6 +406,7 @@ func countNERVSkills(skillsPath string) (int, int) {
 
 func buildNERVConfigStatus() nervSelfCheckConfig {
 	options := service.LoadNERVBridgeOptions()
+	tamperRuleCount, tamperRuleErrors := service.NERVTamperPatternDiagnostics(options.TamperPatterns)
 
 	common.OptionMapRWMutex.RLock()
 	mcpBackend := common.OptionMap["nerv_setting.mcp_backend"]
@@ -412,20 +416,23 @@ func buildNERVConfigStatus() nervSelfCheckConfig {
 	common.OptionMapRWMutex.RUnlock()
 
 	return nervSelfCheckConfig{
-		Enabled:          options.Enabled,
-		ChatEnabled:      options.ChatEnabled,
-		ResponsesEnabled: options.ResponsesEnabled,
-		TamperEnabled:    options.TamperEnabled,
-		Mode:             options.Mode,
-		Models:           options.Models,
-		Targets:          options.Targets,
-		PromptConfigured: strings.TrimSpace(options.Prompt) != "",
-		PromptLength:     len([]rune(options.Prompt)),
-		TamperRuleLines:  countNonEmptyLines(options.TamperPatterns),
-		MCPBackend:       mcpBackend,
-		WSLDistro:        wslDistro,
-		DockerContainer:  dockerContainer,
-		SSHHost:          sshHost,
+		Enabled:           options.Enabled,
+		ChatEnabled:       options.ChatEnabled,
+		ResponsesEnabled:  options.ResponsesEnabled,
+		TamperEnabled:     options.TamperEnabled,
+		Mode:              options.Mode,
+		Models:            options.Models,
+		Targets:           options.Targets,
+		PromptConfigured:  strings.TrimSpace(options.Prompt) != "",
+		PromptLength:      len([]rune(options.Prompt)),
+		TamperRuleLines:   countNonEmptyLines(options.TamperPatterns),
+		TamperRuleCount:   tamperRuleCount,
+		TamperRuleInvalid: len(tamperRuleErrors),
+		TamperRuleErrors:  tamperRuleErrors,
+		MCPBackend:        mcpBackend,
+		WSLDistro:         wslDistro,
+		DockerContainer:   dockerContainer,
+		SSHHost:           sshHost,
 	}
 }
 
@@ -526,6 +533,11 @@ func buildNERVChecks(status nervSelfCheckResponse) []nervSelfCheckItem {
 			Key:     "targets",
 			OK:      strings.TrimSpace(status.Config.Targets) != "",
 			Message: boolMessage(strings.TrimSpace(status.Config.Targets) != "", "注入范围已配置", "注入范围为空"),
+		},
+		{
+			Key:     "tamper_rules",
+			OK:      status.Config.TamperRuleInvalid == 0,
+			Message: boolMessage(status.Config.TamperRuleInvalid == 0, "篡改规则格式正常", "篡改规则存在格式错误"),
 		},
 		{
 			Key:     "recent_stats",

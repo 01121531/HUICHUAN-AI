@@ -131,3 +131,12 @@ func persistNERVStatsPeriodically(now time.Time, updates map[string]string) {
 		_ = model.UpdateOptionsBulk(values)
 	}()
 }
+
+func recordNERVStreamTamperEvent(target NERVTarget, modelName string) {
+	switch target {
+	case NERVTargetOpenAIResponses, NERVTargetCodexResponses:
+		recordNERVEvent(nervEventTamperResponses, target, modelName)
+	default:
+		recordNERVEvent(nervEventTamperChat, target, modelName)
+	}
+}

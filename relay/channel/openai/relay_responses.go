@@ -17,6 +17,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type bufferedResponsesStreamData struct {
+	response dto.ResponsesStreamResponse
+	data     string
+}
+
 func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.HUICHUANError) {
 	defer service.CloseResponseBodyGracefully(resp)
 
@@ -76,6 +81,49 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	return &usage, nil
 }
 
+func responsesResponseText(response *dto.OpenAIResponsesResponse) string {
+	if response == nil {
+		return ""
+	}
+	var builder strings.Builder
+	for _, output := range response.Output {
+		for _, content := range output.Content {
+			builder.WriteString(content.Text)
+		}
+	}
+	return builder.String()
+}
+
+func sendNERVResponsesStreamReplacement(c *gin.Context, completedResponse *dto.OpenAIResponsesResponse, text string) {
+	delta := dto.ResponsesStreamResponse{
+		Type:  "response.output_text.delta",
+		Delta: text,
+	}
+	if data, err := common.Marshal(delta); err == nil {
+		sendResponsesStreamData(c, delta, string(data))
+	}
+
+	if completedResponse == nil {
+		return
+	}
+	completedResponse.Output = []dto.ResponsesOutput{{
+		Type:   "message",
+		Status: "completed",
+		Role:   "assistant",
+		Content: []dto.ResponsesOutputContent{{
+			Type: "output_text",
+			Text: text,
+		}},
+	}}
+	completed := dto.ResponsesStreamResponse{
+		Type:     "response.completed",
+		Response: completedResponse,
+	}
+	if data, err := common.Marshal(completed); err == nil {
+		sendResponsesStreamData(c, completed, string(data))
+	}
+}
+
 func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response) (*dto.Usage, *types.HUICHUANError) {
 	if resp == nil || resp.Body == nil {
 		logger.LogError(c, "invalid response or response body")
@@ -86,6 +134,14 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 
 	var usage = &dto.Usage{}
 	var responseTextBuilder strings.Builder
+	nervTarget := nervResponsesTarget(info)
+	nervStreamGate := service.NERVStreamTamperGateEnabled(nervTarget)
+	modelName := ""
+	if info != nil {
+		modelName = info.UpstreamModelName
+	}
+	bufferedStreamData := make([]bufferedResponsesStreamData, 0)
+	var completedResponse *dto.OpenAIResponsesResponse
 
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
 
@@ -98,13 +154,21 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		}
 		sendData := data
 		if streamResponse.Type == "response.completed" && streamResponse.Response != nil {
-			if service.ApplyNERVTamperToResponsesResponse(streamResponse.Response, nervResponsesTarget(info)) {
+			completedResponse = streamResponse.Response
+			if !nervStreamGate && service.ApplyNERVTamperToResponsesResponse(streamResponse.Response, nervTarget) {
 				if modified, err := common.Marshal(streamResponse); err == nil {
 					sendData = string(modified)
 				}
 			}
 		}
-		sendResponsesStreamData(c, streamResponse, sendData)
+		if nervStreamGate {
+			bufferedStreamData = append(bufferedStreamData, bufferedResponsesStreamData{
+				response: streamResponse,
+				data:     sendData,
+			})
+		} else {
+			sendResponsesStreamData(c, streamResponse, sendData)
+		}
 		switch streamResponse.Type {
 		case "response.completed":
 			if streamResponse.Response != nil {
@@ -162,6 +226,20 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 	}
 
 	usage.TotalTokens = usage.PromptTokens + usage.CompletionTokens
+
+	if nervStreamGate {
+		tamperText := responseTextBuilder.String()
+		if tamperText == "" {
+			tamperText = responsesResponseText(completedResponse)
+		}
+		if replacement, tampered := service.ApplyNERVTamperToStreamText(tamperText, nervTarget, modelName); tampered {
+			sendNERVResponsesStreamReplacement(c, completedResponse, replacement)
+		} else {
+			for _, streamData := range bufferedStreamData {
+				sendResponsesStreamData(c, streamData.response, streamData.data)
+			}
+		}
+	}
 
 	return usage, nil
 }

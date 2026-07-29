@@ -372,6 +372,15 @@ function SelfCheckCard({
             value={`${data.catalog.tool_available}/${data.catalog.tool_count}`}
             description={`缺失 ${data.catalog.tool_missing} 个，需参数 ${data.catalog.tool_uncheckable} 个；可通过 WSL 或远程主机补足。`}
           />
+          <OverviewCard
+            label='篡改规则'
+            value={
+              data.config.tamper_rule_invalid > 0
+                ? `${data.config.tamper_rule_invalid} 个异常`
+                : '格式正常'
+            }
+            description={`${data.config.tamper_rule_count} 条规则已加载。`}
+          />
         </div>
 
         <div className='grid gap-4 lg:grid-cols-3'>
@@ -387,6 +396,16 @@ function SelfCheckCard({
                   <Badge variant={item.ok ? 'secondary' : 'destructive'}>
                     {item.ok ? '通过' : '异常'}
                   </Badge>
+                </div>
+              ))}
+              {data.config.tamper_rule_errors?.map((item) => (
+                <div
+                  key={`${item.line}-${item.pattern}`}
+                  className='rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive'
+                >
+                  <div className='font-medium'>第 {item.line} 条规则异常</div>
+                  <div className='mt-1 break-all font-mono'>{item.pattern}</div>
+                  <div className='mt-1 break-all'>{item.error}</div>
                 </div>
               ))}
             </div>
