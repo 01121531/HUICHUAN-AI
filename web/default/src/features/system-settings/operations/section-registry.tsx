@@ -133,6 +133,8 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <NERVLabToolsSection
         defaultValues={{
+          'nerv_setting.mcp_backend':
+            settings['nerv_setting.mcp_backend'] ?? 'auto',
           'nerv_setting.wsl_distro':
             settings['nerv_setting.wsl_distro'] ?? 'kali-linux',
           'nerv_setting.docker_container':
