@@ -120,6 +120,18 @@ export type NERVSelfCheckResponse = {
   data: NERVSelfCheckData
 }
 
+export type NERVBridgePromptData = {
+  path: string
+  prompt: string
+  length: number
+}
+
+export type NERVBridgePromptResponse = {
+  success: boolean
+  message: string
+  data?: NERVBridgePromptData
+}
+
 export type DatasetCaptureModelMode = 'all' | 'selected'
 export type DatasetCaptureScopeMode = 'all' | 'selected'
 

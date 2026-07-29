@@ -348,6 +348,7 @@ func SetApiRouter(router *gin.Engine) {
 		nervRoute.Use(middleware.RootAuth())
 		{
 			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
+			nervRoute.GET("/bridge-prompt", controller.GetNERVBridgePrompt)
 		}
 
 		dataRoute := apiRouter.Group("/data")

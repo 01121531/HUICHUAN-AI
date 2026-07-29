@@ -73,8 +73,8 @@ const eventLabels: Record<string, string> = {
 const backendLabels: Record<NERVLabDefaults['nerv_setting.mcp_backend'], string> = {
   auto: '自动选择',
   local: '本机工具',
-  wsl: 'WSL 子系统',
-  docker: '容器后端（原项目兼容）',
+  wsl: 'Windows 子系统（WSL）',
+  docker: '容器后端（原项目兼容，当前服务器不使用）',
   ssh: '远程主机',
 }
 
@@ -122,7 +122,7 @@ const integrationChecklist = [
   {
     source: 'mcp_server.py',
     status: '脚本已内置，配置已接入',
-    entry: 'NERV 连接设置 / MCP 后端',
+    entry: 'NERV 连接设置 / 工具后端（MCP）',
     evidence: 'nerv/5.6-JAILBREAK-NERV/mcp_server.py + auto/local/WSL/远程主机',
   },
 ]
@@ -164,7 +164,7 @@ const workflowCommands = [
   {
     title: '代理模式',
     description: '自动注入、自动连接并提供本地代理与面板。',
-    commands: ['python proxy_relay.py', '重新启动 Codex CLI 后输入 zxwn'],
+    commands: ['python proxy_relay.py', '重启 Codex 命令行（Codex CLI）后输入 zxwn'],
   },
 ]
 
@@ -642,7 +642,7 @@ export function NERVLabToolsSection({
     <SettingsSection title='NERV 工程工具'>
       <Alert>
         <AlertDescription>
-          这里把 NERV 原项目的部署脚本、MCP 后端、工具库和技能库整理成中转站后台目录。
+          这里把 NERV 原项目的部署脚本、模型上下文协议（MCP）后端、工具库和技能库整理成中转站后台目录。
           页面里的英文命令、模型上下文协议标识和工具名都是技术标识，会按原项目保留；容器相关项仅为原项目兼容展示，当前服务器部署不使用 Docker。
         </AlertDescription>
       </Alert>
@@ -686,7 +686,7 @@ export function NERVLabToolsSection({
             <OverviewCard
               label='当前后端'
               value={backendLabels[backend] ?? backend}
-              description='在 NERV 连接设置里切换 MCP 后端。'
+              description='在 NERV 连接设置里切换工具后端（MCP）。'
             />
             <OverviewCard
               label='内置资产'
@@ -749,7 +749,7 @@ export function NERVLabToolsSection({
               ]}
             />
             <CommandCard
-              title='Codex MCP 配置片段'
+              title='Codex 模型上下文协议（MCP）配置片段'
               description='对应原项目 config/mcp_config.txt，可复制到 Codex 配置里的 mcp_servers 区域。'
               commands={[mcpConfigSnippet]}
             />
@@ -762,7 +762,7 @@ export function NERVLabToolsSection({
               />
             ))}
             <CommandCard
-              title='MCP 后端'
+              title='工具后端（MCP）'
               description={`对应工具后端配置：WSL=${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}，容器=${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}（原项目兼容项，当前服务器不使用 Docker）。`}
               commands={mcpCommands}
             />

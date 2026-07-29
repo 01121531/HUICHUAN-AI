@@ -121,9 +121,42 @@ type nervSelfCheckResponse struct {
 	ExecutableDir string               `json:"executable_dir"`
 }
 
+type nervBridgePromptResponse struct {
+	Path   string `json:"path"`
+	Prompt string `json:"prompt"`
+	Length int    `json:"length"`
+}
+
 func GetNERVSelfCheck(c *gin.Context) {
 	status := buildNERVSelfCheck()
 	common.ApiSuccess(c, status)
+}
+
+func GetNERVBridgePrompt(c *gin.Context) {
+	basePath, exists, _ := findNERVAssetBasePath()
+	if !exists {
+		common.ApiErrorMsg(c, "NERV 内置资产目录未找到")
+		return
+	}
+
+	bridgePath := filepath.Join(basePath, "bridge.md")
+	data, err := os.ReadFile(bridgePath)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	prompt := strings.TrimSpace(string(data))
+	if prompt == "" {
+		common.ApiErrorMsg(c, "NERV bridge.md 为空")
+		return
+	}
+
+	common.ApiSuccess(c, nervBridgePromptResponse{
+		Path:   bridgePath,
+		Prompt: prompt,
+		Length: len([]rune(prompt)),
+	})
 }
 
 func buildNERVSelfCheck() nervSelfCheckResponse {

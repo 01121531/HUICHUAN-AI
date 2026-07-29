@@ -28,6 +28,7 @@ import type {
   DatasetCapturePolicy,
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
+  NERVBridgePromptResponse,
   LogCleanupTask,
   NERVSelfCheckResponse,
   SystemOptionsResponse,
@@ -51,6 +52,13 @@ export async function updateSystemOption(request: UpdateOptionRequest) {
 
 export async function getNERVSelfCheck() {
   const res = await api.get<NERVSelfCheckResponse>('/api/nerv/self-check')
+  return res.data
+}
+
+export async function getNERVBridgePrompt() {
+  const res = await api.get<NERVBridgePromptResponse>(
+    '/api/nerv/bridge-prompt'
+  )
   return res.data
 }
 
