@@ -70,7 +70,7 @@ const backendLabels: Record<NERVLabDefaults['nerv_setting.mcp_backend'], string>
   auto: '自动选择',
   local: '本机工具',
   wsl: 'WSL 子系统',
-  docker: '容器后端',
+  docker: '容器后端（原项目兼容）',
   ssh: '远程主机',
 }
 
@@ -317,10 +317,8 @@ function RecentEventsCard({ recentEvents }: { recentEvents: NERVLabRecentEvent[]
 export function NERVLabToolsSection({
   defaultValues,
 }: NERVLabToolsSectionProps) {
-  const recentEvents = useMemo(
-    () => parseRecentEvents(defaultValues['nerv_stats.recent']),
-    [defaultValues['nerv_stats.recent']]
-  )
+  const recentRaw = defaultValues['nerv_stats.recent']
+  const recentEvents = useMemo(() => parseRecentEvents(recentRaw), [recentRaw])
 
   const skillGroups = useMemo(() => {
     const grouped = new Map<string, NERVSkillItem[]>()
@@ -356,7 +354,7 @@ export function NERVLabToolsSection({
       <Alert>
         <AlertDescription>
           这里把 NERV 原项目的部署脚本、MCP 后端、工具库和技能库整理成中转站后台目录。
-          页面里的英文命令、模型上下文协议标识和工具名都是技术标识，会按原项目保留。
+          页面里的英文命令、模型上下文协议标识和工具名都是技术标识，会按原项目保留；容器相关项仅为原项目兼容展示，当前服务器部署不使用 Docker。
         </AlertDescription>
       </Alert>
 
@@ -439,7 +437,7 @@ export function NERVLabToolsSection({
             ))}
             <CommandCard
               title='MCP 后端'
-              description={`对应工具后端配置：WSL=${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}，容器=${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}。`}
+              description={`对应工具后端配置：WSL=${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}，容器=${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}（原项目兼容项，当前服务器不使用 Docker）。`}
               commands={mcpCommands}
             />
           </div>
