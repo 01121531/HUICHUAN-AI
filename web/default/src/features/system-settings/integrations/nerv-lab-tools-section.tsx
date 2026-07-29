@@ -62,6 +62,7 @@ import {
   type NERVSkillItem,
   type NERVToolCategory,
 } from './nerv-catalog'
+import { NERVCodexConfigCard } from './nerv-codex-config-card'
 
 type NERVLabRecentEvent = {
   ts: number
@@ -1241,6 +1242,7 @@ export function NERVLabToolsSection({
               void selfCheckQuery.refetch()
             }}
           />
+          <NERVCodexConfigCard />
 
           <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
             <OverviewCard

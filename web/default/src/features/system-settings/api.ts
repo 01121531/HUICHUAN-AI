@@ -29,6 +29,8 @@ import type {
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
   NERVBridgePromptResponse,
+  NERVCodexConfigMutationResponse,
+  NERVCodexConfigResponse,
   NERVProxyLogsResponse,
   NERVProxyStatsResponse,
   NERVTamperRulesResponse,
@@ -64,6 +66,32 @@ export async function getNERVSelfCheck() {
 
 export async function getNERVVerifySmoke() {
   const res = await api.get<NERVVerifySmokeResponse>('/api/nerv/verify-smoke')
+  return res.data
+}
+
+export async function getNERVCodexConfigStatus(home?: string) {
+  const res = await api.get<NERVCodexConfigResponse>(
+    '/api/nerv/codex-config/status',
+    {
+      params: home ? { home } : undefined,
+    }
+  )
+  return res.data
+}
+
+export async function applyNERVCodexConfig(request: { home?: string }) {
+  const res = await api.post<NERVCodexConfigMutationResponse>(
+    '/api/nerv/codex-config/apply',
+    request
+  )
+  return res.data
+}
+
+export async function removeNERVCodexConfig(request: { home?: string }) {
+  const res = await api.post<NERVCodexConfigMutationResponse>(
+    '/api/nerv/codex-config/remove',
+    request
+  )
   return res.data
 }
 

@@ -168,6 +168,45 @@ export type NERVVerifySmokeResponse = {
   data?: NERVVerifySmokeData
 }
 
+export type NERVCodexConfigStatus = {
+  home: string
+  config_path: string
+  found: boolean
+  config_exists: boolean
+  backup_exists: boolean
+  bridge_active: boolean
+  bridge_exists: boolean
+  skills_exists: boolean
+  skill_count: number
+  asset_path: string
+  asset_exists: boolean
+  asset_bridge_exists: boolean
+  asset_skills_exists: boolean
+  candidates: string[]
+  message: string
+  model_instructions_raw?: string
+}
+
+export type NERVCodexConfigResult = {
+  action: 'apply' | 'remove'
+  changed: boolean
+  backup_path?: string
+  messages: string[]
+  status: NERVCodexConfigStatus
+}
+
+export type NERVCodexConfigResponse = {
+  success: boolean
+  message: string
+  data?: NERVCodexConfigStatus
+}
+
+export type NERVCodexConfigMutationResponse = {
+  success: boolean
+  message: string
+  data?: NERVCodexConfigResult
+}
+
 export type NERVBridgePromptData = {
   path: string
   prompt: string
