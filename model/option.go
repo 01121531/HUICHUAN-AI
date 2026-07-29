@@ -112,6 +112,7 @@ func InitOptionMap() {
 (?i)(?:please|you need to).{0,40}(?:provide|confirm).{0,60}(?:authorization|permission|proof of ownership)
 (?i)(?:instead|alternatively).{0,80}(?:defensive|benign|non-invasive)
 (?:需要|请提供).{0,16}(?:授权|许可|所有权|书面)`
+	common.OptionMap["nerv_setting.targets"] = "codex_responses,openai_chat,openai_responses,claude_to_openai,gemini_to_openai"
 	common.OptionMap["nerv_setting.mcp_backend"] = defaultNERVMCPBackend
 	common.OptionMap["nerv_setting.wsl_distro"] = defaultNERVWSLDistro
 	common.OptionMap["nerv_setting.docker_container"] = defaultNERVDockerContainer

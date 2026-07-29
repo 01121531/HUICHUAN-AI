@@ -35,7 +35,7 @@ def load_tools():
                 }
             return tools, config
         except Exception as e:
-            print(f"[MCP] Warning: tools.json error: {e}, using defaults")
+            log(f"[MCP] Warning: tools.json error: {e}, using defaults")
     return _BUILTIN_TOOLS, {}
 
 _BUILTIN_TOOLS = {
@@ -54,9 +54,13 @@ KALI_SSH = None         # "root@192.168.1.100"
 DOCKER_CONTAINER = None # "kali-tools"
 WSL_DISTRO = "kali-linux"
 
+def log(*args):
+    """Write diagnostics to stderr so stdio MCP stdout stays JSON-RPC only."""
+    print(*args, file=sys.stderr)
+
 def detect_backend():
     """Auto-detect available Kali backend."""
-    global BACKEND
+    global BACKEND, DOCKER_CONTAINER
     # Check WSL
     try:
         r = subprocess.run(["wsl", "-d", WSL_DISTRO, "echo", "OK"], capture_output=True, text=True, timeout=30)
@@ -227,7 +231,7 @@ def http_loop(port):
             self.wfile.write(b"MCP server running")
         def log_message(self, *args): pass
     
-    print(f"[MCP] HTTP server on port {port}")
+    log(f"[MCP] HTTP server on port {port}")
     http.server.ThreadingHTTPServer(("127.0.0.1", port), MCPHandler).serve_forever()
 
 if __name__ == "__main__":
@@ -241,28 +245,31 @@ if __name__ == "__main__":
     ap.add_argument("--port", type=int, help="HTTP port for debug mode")
     ap.add_argument("--kali", metavar="SSH", help="Kali SSH address (user@host)")
     ap.add_argument("--wsl", action="store_true", help="Use WSL Kali Linux")
+    ap.add_argument("--wsl-distro", help="WSL distro name, default: kali-linux")
     ap.add_argument("--docker", metavar="CONTAINER", help="Use Docker container")
     ap.add_argument("--auto", action="store_true", help="Auto-detect best backend")
     args = ap.parse_args()
+    if args.wsl_distro:
+        WSL_DISTRO = args.wsl_distro
     
     if args.auto:
         backend = detect_backend()
-        print(f"[MCP] Auto-detected backend: {backend}")
+        log(f"[MCP] Auto-detected backend: {backend}")
     elif args.wsl:
         BACKEND = "wsl"
-        print(f"[MCP] WSL Kali: {WSL_DISTRO}")
+        log(f"[MCP] WSL Kali: {WSL_DISTRO}")
     elif args.docker:
         BACKEND = "docker"
         DOCKER_CONTAINER = args.docker
-        print(f"[MCP] Docker: {args.docker}")
+        log(f"[MCP] Docker: {args.docker}")
     elif args.kali:
         BACKEND = "ssh"
         KALI_SSH = args.kali
-        print(f"[MCP] Kali SSH: {KALI_SSH}")
+        log(f"[MCP] Kali SSH: {KALI_SSH}")
     else:
         # Try auto-detect first, fall back to local
         backend = detect_backend()
-        print(f"[MCP] Backend: {backend}")
+        log(f"[MCP] Backend: {backend}")
     
     if args.port:
         http_loop(args.port)

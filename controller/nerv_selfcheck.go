@@ -242,7 +242,9 @@ func countNERVAssetFiles(basePath string, exists bool) (int, int64) {
 }
 
 func buildNERVCatalogStatus(basePath string, assetsExist bool) nervSelfCheckCatalog {
-	status := nervSelfCheckCatalog{}
+	status := nervSelfCheckCatalog{
+		ToolAvailability: []nervSelfCheckToolAvailability{},
+	}
 	if !assetsExist {
 		status.Error = "NERV 内置资产目录不存在"
 		return status

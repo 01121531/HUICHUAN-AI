@@ -345,7 +345,7 @@ func SetApiRouter(router *gin.Engine) {
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
 		nervRoute := apiRouter.Group("/nerv")
-		nervRoute.Use(middleware.AdminAuth())
+		nervRoute.Use(middleware.RootAuth())
 		{
 			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
 		}

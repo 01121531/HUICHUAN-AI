@@ -192,16 +192,21 @@ function quoteTomlString(value: string) {
 function buildMCPConfigSnippet({
   assetPath,
   backend,
+  wslDistro,
   dockerContainer,
   sshHost,
 }: {
   assetPath: string
   backend: NERVLabDefaults['nerv_setting.mcp_backend']
+  wslDistro: string
   dockerContainer: string
   sshHost: string
 }) {
   const scriptPath = `${assetPath.replace(/[\\/]+$/, '')}/mcp_server.py`
   const args = [scriptPath]
+  if (wslDistro) {
+    args.push('--wsl-distro', wslDistro)
+  }
   if (backend === 'auto') {
     args.push('--auto')
   } else if (backend === 'wsl') {
@@ -409,7 +414,9 @@ function SelfCheckCard({
           <div className='space-y-2'>
             <div className='text-sm font-semibold'>工具可用性</div>
             <div className='grid gap-2'>
-              {data.catalog.tool_availability.slice(0, 12).map((item) => (
+              {(data.catalog.tool_availability ?? [])
+                .slice(0, 12)
+                .map((item) => (
                 <div
                   key={item.name}
                   className='flex items-center justify-between gap-3 rounded-md border bg-muted/10 px-3 py-2 text-sm'
@@ -618,13 +625,14 @@ export function NERVLabToolsSection({
   const mcpConfigSnippet = buildMCPConfigSnippet({
     assetPath: runtimeAssetPath,
     backend,
+    wslDistro: defaultValues['nerv_setting.wsl_distro'],
     dockerContainer: defaultValues['nerv_setting.docker_container'],
     sshHost: defaultValues['nerv_setting.ssh_host'],
   })
   const mcpCommands = [
     'python mcp_server.py',
     'python mcp_server.py --auto',
-    `python mcp_server.py --wsl ${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}`,
+    `python mcp_server.py --wsl --wsl-distro ${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}`,
     `python mcp_server.py --docker ${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}`,
     `python mcp_server.py --kali ${defaultValues['nerv_setting.ssh_host'] || 'root@192.168.1.100'}`,
     'python mcp_server.py --port 9000',
@@ -683,7 +691,7 @@ export function NERVLabToolsSection({
             <OverviewCard
               label='内置资产'
               value='已随源码部署'
-              description={bundledNERVAssetPath}
+              description={runtimeAssetPath}
             />
           </div>
 
