@@ -102,6 +102,7 @@ func recordNERVEventWithLearning(event string, target NERVTarget, modelName stri
 	updates[NERVStatsLastModelKey] = modelName
 	updates[NERVStatsRecentKey] = appendNERVRecentEventLocked(now.Unix(), event, target, modelName)
 	updates[NERVMemoryKernelKey] = appendNERVMemoryLocked(now, event, target, modelName, userPreview, resultPreview, technique)
+	updates[NERVProxyRecentKey] = appendNERVProxyEventLocked(now, event, target, modelName, userPreview, resultPreview, technique)
 	for key, value := range updates {
 		common.OptionMap[key] = value
 	}

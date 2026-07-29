@@ -229,6 +229,57 @@ export type RunNERVToolResponse = {
   data?: NERVToolRunResult
 }
 
+export type NERVProxyEvent = {
+  ts: number
+  request_id: string
+  event: string
+  target: string
+  model: string
+  path: string
+  method: string
+  status_code: number
+  injected: boolean
+  tampered: boolean
+  stream: boolean
+  request_bytes: number
+  response_bytes: number
+  user_preview: string
+  reply_preview: string
+  technique: string
+}
+
+export type NERVProxyStats = {
+  total: number
+  inject: number
+  tamper: number
+  stream: number
+  chat_inject: number
+  responses_inject: number
+  chat_tamper: number
+  responses_tamper: number
+}
+
+export type NERVProxyLogsData = {
+  events: NERVProxyEvent[]
+  stats: NERVProxyStats
+  limit: number
+  target?: string
+}
+
+export type NERVProxyLogsResponse = {
+  success: boolean
+  message: string
+  data?: NERVProxyLogsData
+}
+
+export type NERVProxyStatsResponse = {
+  success: boolean
+  message: string
+  data?: {
+    stats: NERVProxyStats
+  }
+}
+
 export type DatasetCaptureModelMode = 'all' | 'selected'
 export type DatasetCaptureScopeMode = 'all' | 'selected'
 

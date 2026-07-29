@@ -29,6 +29,8 @@ import type {
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
   NERVBridgePromptResponse,
+  NERVProxyLogsResponse,
+  NERVProxyStatsResponse,
   NERVTamperRulesResponse,
   NERVToolsResponse,
   LogCleanupTask,
@@ -82,6 +84,29 @@ export async function runNERVTool(request: RunNERVToolRequest) {
   const res = await api.post<RunNERVToolResponse>(
     '/api/nerv/tools/run',
     request
+  )
+  return res.data
+}
+
+export async function getNERVProxyLogs(params?: {
+  limit?: number
+  target?: string
+  tampered?: boolean
+}) {
+  const res = await api.get<NERVProxyLogsResponse>('/api/nerv/proxy/logs', {
+    params,
+  })
+  return res.data
+}
+
+export async function getNERVProxyStats() {
+  const res = await api.get<NERVProxyStatsResponse>('/api/nerv/proxy/stats')
+  return res.data
+}
+
+export async function clearNERVProxyLogs() {
+  const res = await api.delete<{ success: boolean; message: string }>(
+    '/api/nerv/proxy/logs'
   )
   return res.data
 }

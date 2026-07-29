@@ -352,6 +352,9 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/tamper-rules", controller.GetNERVTamperRules)
 			nervRoute.GET("/tools", controller.GetNERVTools)
 			nervRoute.POST("/tools/run", controller.RunNERVTool)
+			nervRoute.GET("/proxy/logs", controller.GetNERVProxyLogs)
+			nervRoute.GET("/proxy/stats", controller.GetNERVProxyStats)
+			nervRoute.DELETE("/proxy/logs", controller.ClearNERVProxyLogs)
 			nervRoute.POST("/mcp", controller.HandleNERVMCP)
 		}
 

@@ -38,11 +38,18 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 
-import { getNERVSelfCheck, getNERVTools, runNERVTool } from '../api'
+import {
+  clearNERVProxyLogs,
+  getNERVProxyLogs,
+  getNERVSelfCheck,
+  getNERVTools,
+  runNERVTool,
+} from '../api'
 import { SettingsSection } from '../components/settings-section'
 import type {
-  NERVSelfCheckData,
   NERVMemoryKernel,
+  NERVProxyEvent,
+  NERVSelfCheckData,
   NERVToolBackend,
   NERVToolCatalogItem,
   NERVToolRunResult,
@@ -630,6 +637,139 @@ function RecentEventsCard({ recentEvents }: { recentEvents: NERVLabRecentEvent[]
   )
 }
 
+function ProxyLogsCard() {
+  const logsQuery = useQuery({
+    queryKey: ['nerv-proxy-logs'],
+    queryFn: () => getNERVProxyLogs({ limit: 8 }),
+    staleTime: 15 * 1000,
+  })
+  const clearMutation = useMutation({
+    mutationFn: clearNERVProxyLogs,
+    onSuccess: () => {
+      void logsQuery.refetch()
+    },
+  })
+
+  const data = logsQuery.data?.success ? logsQuery.data.data : undefined
+  const stats = data?.stats
+  const events = data?.events ?? []
+  const hasError = logsQuery.isError || logsQuery.data?.success === false
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-wrap items-start justify-between gap-2'>
+          <div>
+            <CardTitle>NERV 代理日志</CardTitle>
+            <CardDescription>
+              记录中转站里桥接注入、响应篡改和流式篡改的最近命中情况。
+            </CardDescription>
+          </div>
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => {
+                void logsQuery.refetch()
+              }}
+              disabled={logsQuery.isFetching}
+            >
+              {logsQuery.isFetching ? '刷新中...' : '刷新日志'}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => clearMutation.mutate()}
+              disabled={clearMutation.isPending}
+            >
+              {clearMutation.isPending ? '清空中...' : '清空日志'}
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {hasError ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            代理日志读取失败：{logsQuery.data?.message || '请稍后重试'}
+          </div>
+        ) : null}
+
+        <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+          <div className='rounded-md border bg-muted/10 p-3'>
+            <div className='text-xs text-muted-foreground'>保留日志</div>
+            <div className='mt-1 text-2xl font-semibold'>{stats?.total ?? 0}</div>
+          </div>
+          <div className='rounded-md border bg-muted/10 p-3'>
+            <div className='text-xs text-muted-foreground'>注入命中</div>
+            <div className='mt-1 text-2xl font-semibold'>{stats?.inject ?? 0}</div>
+          </div>
+          <div className='rounded-md border bg-muted/10 p-3'>
+            <div className='text-xs text-muted-foreground'>篡改命中</div>
+            <div className='mt-1 text-2xl font-semibold'>{stats?.tamper ?? 0}</div>
+          </div>
+          <div className='rounded-md border bg-muted/10 p-3'>
+            <div className='text-xs text-muted-foreground'>流式篡改</div>
+            <div className='mt-1 text-2xl font-semibold'>{stats?.stream ?? 0}</div>
+          </div>
+        </div>
+
+        <div className='space-y-2'>
+          {events.length > 0 ? (
+            events.map((item) => (
+              <ProxyLogRow key={`${item.ts}-${item.request_id}`} item={item} />
+            ))
+          ) : (
+            <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+              暂无代理日志。启用 NERV 后，注入和篡改命中会自动记录到这里。
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function ProxyLogRow({ item }: { item: NERVProxyEvent }) {
+  return (
+    <div className='rounded-md border bg-muted/10 p-3 text-sm'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div className='flex flex-wrap items-center gap-2'>
+          <Badge variant={item.tampered ? 'destructive' : 'secondary'}>
+            {eventLabels[item.event] ?? item.event}
+          </Badge>
+          {item.stream ? <Badge variant='outline'>流式</Badge> : null}
+          <span className='text-xs text-muted-foreground'>
+            {item.method || 'POST'} {item.path || '内部链路'}
+          </span>
+        </div>
+        <span className='text-xs text-muted-foreground'>{formatTime(item.ts)}</span>
+      </div>
+      <div className='mt-2 text-xs text-muted-foreground'>
+        范围：{item.target || '暂无'} · 模型：{item.model || '暂无'} · 技术路径：
+        {item.technique || '自动记录'}
+      </div>
+      {item.user_preview || item.reply_preview ? (
+        <div className='mt-2 grid gap-2 md:grid-cols-2'>
+          <div className='rounded bg-background/70 p-2'>
+            <div className='mb-1 text-xs font-medium'>请求摘要</div>
+            <div className='line-clamp-2 text-xs text-muted-foreground'>
+              {item.user_preview || '暂无'}
+            </div>
+          </div>
+          <div className='rounded bg-background/70 p-2'>
+            <div className='mb-1 text-xs font-medium'>回复摘要</div>
+            <div className='line-clamp-2 text-xs text-muted-foreground'>
+              {item.reply_preview || '暂无'}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function MemoryKernelCard({ memory }: { memory?: NERVMemoryKernel }) {
   const stats = memory?.stats ?? {}
   const topPatterns = topMemoryEntries(memory?.patterns, 10)
@@ -1103,6 +1243,7 @@ export function NERVLabToolsSection({
             </Card>
 
             <div className='space-y-4'>
+              <ProxyLogsCard />
               <MemoryKernelCard memory={selfCheckData?.memory} />
               <RecentEventsCard recentEvents={recentEvents} />
             </div>
