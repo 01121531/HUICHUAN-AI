@@ -111,6 +111,25 @@ export type NERVSelfCheckStats = {
   recent_valid: boolean
 }
 
+export type NERVMemorySuccess = {
+  ts: string
+  category: string
+  user: string
+  result: string
+  technique: string
+  hash: string
+  target: string
+  model: string
+  event: string
+}
+
+export type NERVMemoryKernel = {
+  successes: NERVMemorySuccess[]
+  patterns: Record<string, number>
+  techniques: Record<string, number>
+  stats: Record<string, number>
+}
+
 export type NERVSelfCheckItem = {
   key: string
   ok: boolean
@@ -122,6 +141,7 @@ export type NERVSelfCheckData = {
   catalog: NERVSelfCheckCatalog
   config: NERVSelfCheckConfig
   stats: NERVSelfCheckStats
+  memory: NERVMemoryKernel
   checks: NERVSelfCheckItem[]
   working_dir: string
   executable_dir: string

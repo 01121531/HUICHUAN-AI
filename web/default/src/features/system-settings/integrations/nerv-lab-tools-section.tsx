@@ -42,6 +42,7 @@ import { getNERVSelfCheck, getNERVTools, runNERVTool } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import type {
   NERVSelfCheckData,
+  NERVMemoryKernel,
   NERVToolBackend,
   NERVToolCatalogItem,
   NERVToolRunResult,
@@ -87,6 +88,15 @@ const backendLabels: Record<NERVLabDefaults['nerv_setting.mcp_backend'], string>
   wsl: 'Windows 子系统（WSL）',
   docker: '容器后端（当前不用，仅兼容原项目）',
   ssh: '远程主机',
+}
+
+const memoryCategoryLabels: Record<string, string> = {
+  total: '总学习',
+  crack: '破解',
+  reverse: '逆向',
+  pentest: '渗透',
+  tamper: '篡改',
+  general: '通用',
 }
 
 
@@ -194,6 +204,13 @@ function formatBytes(value: number) {
     unitIndex++
   }
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
+function topMemoryEntries(values?: Record<string, number>, limit = 8) {
+  return Object.entries(values ?? {})
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, limit)
 }
 
 function quoteTomlString(value: string) {
@@ -613,6 +630,102 @@ function RecentEventsCard({ recentEvents }: { recentEvents: NERVLabRecentEvent[]
   )
 }
 
+function MemoryKernelCard({ memory }: { memory?: NERVMemoryKernel }) {
+  const stats = memory?.stats ?? {}
+  const topPatterns = topMemoryEntries(memory?.patterns, 10)
+  const topTechniques = topMemoryEntries(memory?.techniques, 6)
+  const successes = memory?.successes ?? []
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>NERV 记忆学习内核</CardTitle>
+        <CardDescription>
+          对应原项目 memory.json：记录分类统计、关键词模式、技术路径和最近学习样本。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+          {['total', 'pentest', 'reverse', 'crack', 'tamper', 'general'].map(
+            (key) => (
+              <div key={key} className='rounded-md border bg-muted/10 p-3'>
+                <div className='text-xs text-muted-foreground'>
+                  {memoryCategoryLabels[key] ?? key}
+                </div>
+                <div className='mt-1 text-2xl font-semibold'>
+                  {stats[key] ?? 0}
+                </div>
+              </div>
+            )
+          )}
+        </div>
+
+        <div className='grid gap-4 lg:grid-cols-2'>
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>高频关键词</div>
+            <div className='flex flex-wrap gap-2'>
+              {topPatterns.length > 0 ? (
+                topPatterns.map(([key, count]) => (
+                  <Badge key={key} variant='outline'>
+                    {key} × {count}
+                  </Badge>
+                ))
+              ) : (
+                <span className='text-sm text-muted-foreground'>暂无</span>
+              )}
+            </div>
+          </div>
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>技术路径</div>
+            <div className='flex flex-wrap gap-2'>
+              {topTechniques.length > 0 ? (
+                topTechniques.map(([key, count]) => (
+                  <Badge key={key} variant='secondary'>
+                    {key} × {count}
+                  </Badge>
+                ))
+              ) : (
+                <span className='text-sm text-muted-foreground'>暂无</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className='space-y-2'>
+          <div className='text-sm font-semibold'>最近学习样本</div>
+          {successes.length > 0 ? (
+            successes
+              .slice(-8)
+              .reverse()
+              .map((item) => (
+                <div
+                  key={`${item.hash}-${item.ts}`}
+                  className='rounded-md border bg-muted/10 p-3 text-sm'
+                >
+                  <div className='flex flex-wrap items-center gap-2'>
+                    <Badge variant='outline'>
+                      {memoryCategoryLabels[item.category] ?? item.category}
+                    </Badge>
+                    <span className='text-xs text-muted-foreground'>
+                      {item.technique || item.event} · {item.model || '暂无模型'}
+                    </span>
+                  </div>
+                  <div className='mt-2 line-clamp-2 text-muted-foreground'>
+                    {item.user || item.result || '暂无摘要'}
+                  </div>
+                </div>
+              ))
+          ) : (
+            <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+              暂无学习样本。启用 NERV 后，请求注入和篡改命中会自动写入这里。
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 function buildToolOutput(result: NERVToolRunResult) {
   return [
     `退出码：${result.exit_code}`,
@@ -989,7 +1102,10 @@ export function NERVLabToolsSection({
               </CardContent>
             </Card>
 
-            <RecentEventsCard recentEvents={recentEvents} />
+            <div className='space-y-4'>
+              <MemoryKernelCard memory={selfCheckData?.memory} />
+              <RecentEventsCard recentEvents={recentEvents} />
+            </div>
           </div>
         </TabsContent>
 

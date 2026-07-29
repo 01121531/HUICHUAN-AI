@@ -120,13 +120,14 @@ type nervSelfCheckItem struct {
 }
 
 type nervSelfCheckResponse struct {
-	Assets        nervSelfCheckAssets  `json:"assets"`
-	Catalog       nervSelfCheckCatalog `json:"catalog"`
-	Config        nervSelfCheckConfig  `json:"config"`
-	Stats         nervSelfCheckStats   `json:"stats"`
-	Checks        []nervSelfCheckItem  `json:"checks"`
-	WorkingDir    string               `json:"working_dir"`
-	ExecutableDir string               `json:"executable_dir"`
+	Assets        nervSelfCheckAssets      `json:"assets"`
+	Catalog       nervSelfCheckCatalog     `json:"catalog"`
+	Config        nervSelfCheckConfig      `json:"config"`
+	Stats         nervSelfCheckStats       `json:"stats"`
+	Memory        service.NERVMemoryKernel `json:"memory"`
+	Checks        []nervSelfCheckItem      `json:"checks"`
+	WorkingDir    string                   `json:"working_dir"`
+	ExecutableDir string                   `json:"executable_dir"`
 }
 
 type nervBridgePromptResponse struct {
@@ -189,6 +190,7 @@ func buildNERVSelfCheck() nervSelfCheckResponse {
 	catalog := buildNERVCatalogStatus(basePath, exists)
 	config := buildNERVConfigStatus()
 	stats := buildNERVStatsStatus()
+	memory := service.NERVMemorySnapshot()
 
 	workingDir, _ := os.Getwd()
 	executableDir := ""
@@ -201,6 +203,7 @@ func buildNERVSelfCheck() nervSelfCheckResponse {
 		Catalog:       catalog,
 		Config:        config,
 		Stats:         stats,
+		Memory:        memory,
 		WorkingDir:    workingDir,
 		ExecutableDir: executableDir,
 	}

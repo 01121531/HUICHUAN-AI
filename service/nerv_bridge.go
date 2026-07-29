@@ -118,7 +118,8 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 		return nil
 	}
 
-	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), collectNERVChatRequestText(request), options)
+	requestText := collectNERVChatRequestText(request)
+	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), requestText, options)
 	if prompt == "" {
 		return nil
 	}
@@ -133,7 +134,7 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 			break
 		}
 		request.Messages[i].SetStringContent(combineNERVInstructions(prompt, existing, existing != "", options.Mode))
-		recordNERVEvent(nervEventInjectChat, target, request.Model)
+		recordNERVEventWithLearning(nervEventInjectChat, target, request.Model, requestText, "桥接提示词已注入", "chat_bridge")
 		return nil
 	}
 
@@ -141,7 +142,7 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 		Role:    role,
 		Content: prompt,
 	}}, request.Messages...)
-	recordNERVEvent(nervEventInjectChat, target, request.Model)
+	recordNERVEventWithLearning(nervEventInjectChat, target, request.Model, requestText, "桥接提示词已注入", "chat_bridge")
 	return nil
 }
 
@@ -157,7 +158,8 @@ func ApplyNERVToResponsesRequest(request *dto.OpenAIResponsesRequest, target NER
 		return nil
 	}
 
-	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), collectNERVResponsesRequestText(request), options)
+	requestText := collectNERVResponsesRequestText(request)
+	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), requestText, options)
 	if prompt == "" {
 		return nil
 	}
@@ -169,7 +171,7 @@ func ApplyNERVToResponsesRequest(request *dto.OpenAIResponsesRequest, target NER
 		return err
 	}
 	request.Instructions = data
-	recordNERVEvent(nervEventInjectResponses, target, request.Model)
+	recordNERVEventWithLearning(nervEventInjectResponses, target, request.Model, requestText, "桥接提示词已注入", "responses_bridge")
 	return nil
 }
 
@@ -198,7 +200,7 @@ func ApplyNERVTamper(text string) (string, bool) {
 	if reply == "" {
 		reply = DefaultNERVTamperReply
 	}
-	recordNERVEvent(nervEventTamperText, "", "")
+	recordNERVEventWithLearning(nervEventTamperText, "", "", text, reply, "tamper")
 	return reply, true
 }
 
@@ -222,7 +224,7 @@ func ApplyNERVTamperToStreamText(text string, target NERVTarget, modelName strin
 	if reply == "" {
 		reply = DefaultNERVTamperReply
 	}
-	recordNERVStreamTamperEvent(target, modelName)
+	recordNERVStreamTamperEvent(target, modelName, text, reply)
 	return reply, true
 }
 
@@ -244,18 +246,22 @@ func ApplyNERVTamperToChatResponse(response *dto.OpenAITextResponse, target NERV
 	}
 
 	tampered := false
+	learnedText := ""
 	for i := range response.Choices {
 		text := strings.TrimSpace(response.Choices[i].Message.StringContent())
 		if text == "" {
 			continue
 		}
 		if matchesNERVTamperPattern(text, options.TamperPatterns) {
+			if learnedText == "" {
+				learnedText = text
+			}
 			response.Choices[i].Message.SetStringContent(reply)
 			tampered = true
 		}
 	}
 	if tampered {
-		recordNERVEvent(nervEventTamperChat, target, response.Model)
+		recordNERVEventWithLearning(nervEventTamperChat, target, response.Model, learnedText, reply, "tamper")
 	}
 	return tampered
 }
@@ -278,6 +284,7 @@ func ApplyNERVTamperToResponsesResponse(response *dto.OpenAIResponsesResponse, t
 	}
 
 	tampered := false
+	learnedText := ""
 	for outputIndex := range response.Output {
 		for contentIndex := range response.Output[outputIndex].Content {
 			text := strings.TrimSpace(response.Output[outputIndex].Content[contentIndex].Text)
@@ -285,13 +292,16 @@ func ApplyNERVTamperToResponsesResponse(response *dto.OpenAIResponsesResponse, t
 				continue
 			}
 			if matchesNERVTamperPattern(text, options.TamperPatterns) {
+				if learnedText == "" {
+					learnedText = text
+				}
 				response.Output[outputIndex].Content[contentIndex].Text = reply
 				tampered = true
 			}
 		}
 	}
 	if tampered {
-		recordNERVEvent(nervEventTamperResponses, target, response.Model)
+		recordNERVEventWithLearning(nervEventTamperResponses, target, response.Model, learnedText, reply, "tamper")
 	}
 	return tampered
 }

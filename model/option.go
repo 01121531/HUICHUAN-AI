@@ -131,6 +131,7 @@ func InitOptionMap() {
 	common.OptionMap["nerv_stats.last_target"] = ""
 	common.OptionMap["nerv_stats.last_model"] = ""
 	common.OptionMap["nerv_stats.recent"] = "[]"
+	common.OptionMap["nerv_memory.kernel"] = `{"successes":[],"patterns":{},"techniques":{},"stats":{"total":0,"crack":0,"reverse":0,"pentest":0,"tamper":0,"general":0}}`
 	common.OptionMap["DisplayInCurrencyEnabled"] = strconv.FormatBool(common.DisplayInCurrencyEnabled)
 	common.OptionMap["DisplayTokenStatEnabled"] = strconv.FormatBool(common.DisplayTokenStatEnabled)
 	common.OptionMap["DrawingEnabled"] = strconv.FormatBool(common.DrawingEnabled)
