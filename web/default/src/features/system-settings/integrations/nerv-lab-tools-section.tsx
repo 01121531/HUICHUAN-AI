@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMemo, useState } from 'react'
 
 import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -30,11 +30,22 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
-import { getNERVSelfCheck } from '../api'
+import { getNERVSelfCheck, getNERVTools, runNERVTool } from '../api'
 import { SettingsSection } from '../components/settings-section'
-import type { NERVSelfCheckData } from '../types'
+import type {
+  NERVSelfCheckData,
+  NERVToolBackend,
+  NERVToolCatalogItem,
+  NERVToolRunResult,
+} from '../types'
 import {
   nervSkillGroupOrder,
   nervSkills,
@@ -602,6 +613,244 @@ function RecentEventsCard({ recentEvents }: { recentEvents: NERVLabRecentEvent[]
   )
 }
 
+function buildToolOutput(result: NERVToolRunResult) {
+  return [
+    `退出码：${result.exit_code}`,
+    `耗时：${result.duration_ms} ms`,
+    `超时：${result.timed_out ? '是' : '否'}`,
+    '',
+    '--- 标准输出 ---',
+    result.stdout || '（空）',
+    '',
+    '--- 错误输出 ---',
+    result.stderr || '（空）',
+  ].join('\n')
+}
+
+function ToolExecutionPanel({
+  defaultBackend,
+}: {
+  defaultBackend: NERVToolBackend
+}) {
+  const [selectedName, setSelectedName] = useState('')
+  const [args, setArgs] = useState<Record<string, string>>({})
+  const [backend, setBackend] = useState<NERVToolBackend>(defaultBackend)
+  const [timeoutSeconds, setTimeoutSeconds] = useState('30')
+  const [lastResult, setLastResult] = useState<NERVToolRunResult | null>(null)
+
+  const toolsQuery = useQuery({
+    queryKey: ['nerv-tools'],
+    queryFn: getNERVTools,
+    staleTime: 30 * 1000,
+  })
+
+  const tools = useMemo(
+    () => (toolsQuery.data?.success ? toolsQuery.data.data?.tools ?? [] : []),
+    [toolsQuery.data]
+  )
+  const selectedTool = useMemo<NERVToolCatalogItem | undefined>(() => {
+    if (selectedName) {
+      return tools.find((tool) => tool.name === selectedName)
+    }
+    return tools[0]
+  }, [selectedName, tools])
+
+  const runMutation = useMutation({
+    mutationFn: runNERVTool,
+    onSuccess: (response) => {
+      if (response.success && response.data) {
+        setLastResult(response.data)
+      }
+    },
+  })
+
+  const runSelectedTool = () => {
+    if (!selectedTool) return
+    const normalizedArgs = Object.fromEntries(
+      selectedTool.params.map((param) => [param, args[param] ?? ''])
+    )
+    const parsedTimeout = Number.parseInt(timeoutSeconds, 10)
+    runMutation.mutate({
+      name: selectedTool.name,
+      args: normalizedArgs,
+      backend,
+      timeout_seconds: Number.isFinite(parsedTimeout) ? parsedTimeout : 30,
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <CardTitle>NERV 工具执行</CardTitle>
+            <CardDescription>
+              只允许执行原项目工具目录里的命令模板；后台接口仅 Root 可用，并限制超时和输出长度。
+            </CardDescription>
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={() => {
+              void toolsQuery.refetch()
+            }}
+            disabled={toolsQuery.isFetching}
+          >
+            {toolsQuery.isFetching ? '刷新中...' : '刷新工具'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {toolsQuery.isError || toolsQuery.data?.success === false ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            工具目录读取失败：{toolsQuery.data?.message || '请稍后重试'}
+          </div>
+        ) : null}
+
+        <div className='grid gap-4 lg:grid-cols-3'>
+          <div className='space-y-2'>
+            <div className='text-sm font-medium'>选择工具</div>
+            <NativeSelect
+              value={selectedTool?.name ?? ''}
+              disabled={tools.length === 0}
+              onChange={(event) => {
+                setSelectedName(event.target.value)
+                setArgs({})
+                setLastResult(null)
+              }}
+            >
+              {tools.map((tool) => (
+                <NativeSelectOption key={tool.name} value={tool.name}>
+                  {tool.name}（{tool.category}）
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+          </div>
+
+          <div className='space-y-2'>
+            <div className='text-sm font-medium'>执行后端</div>
+            <NativeSelect
+              value={backend}
+              onChange={(event) =>
+                setBackend(event.target.value as NERVToolBackend)
+              }
+            >
+              <NativeSelectOption value='auto'>自动选择</NativeSelectOption>
+              <NativeSelectOption value='local'>本机工具</NativeSelectOption>
+              <NativeSelectOption value='wsl'>
+                Windows 子系统（WSL）
+              </NativeSelectOption>
+              <NativeSelectOption value='ssh'>远程主机</NativeSelectOption>
+              <NativeSelectOption value='docker'>
+                容器后端（当前服务器不使用）
+              </NativeSelectOption>
+            </NativeSelect>
+          </div>
+
+          <div className='space-y-2'>
+            <div className='text-sm font-medium'>超时秒数</div>
+            <Input
+              value={timeoutSeconds}
+              inputMode='numeric'
+              onChange={(event) => setTimeoutSeconds(event.target.value)}
+              placeholder='30'
+            />
+          </div>
+        </div>
+
+        {selectedTool ? (
+          <div className='space-y-3 rounded-md border bg-muted/10 p-3'>
+            <div className='flex flex-wrap items-center gap-2'>
+              <Badge variant={selectedTool.available ? 'outline' : 'secondary'}>
+                {selectedTool.available ? '本机可用' : '可能需后端环境'}
+              </Badge>
+              <Badge variant='outline'>{selectedTool.category}</Badge>
+              <span className='text-sm text-muted-foreground'>
+                {selectedTool.description}
+              </span>
+            </div>
+            <div className='flex items-center justify-between gap-3 rounded bg-background px-3 py-2 font-mono text-xs'>
+              <span className='break-all'>{selectedTool.command}</span>
+              <CopyButton
+                value={selectedTool.command}
+                tooltip='复制模板'
+                successTooltip='已复制模板'
+                className='shrink-0'
+              />
+            </div>
+
+            <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+              {selectedTool.params.map((param) => (
+                <div key={param} className='space-y-1.5'>
+                  <div className='text-xs font-medium'>{param}</div>
+                  <Input
+                    value={args[param] ?? ''}
+                    onChange={(event) =>
+                      setArgs((current) => ({
+                        ...current,
+                        [param]: event.target.value,
+                      }))
+                    }
+                    placeholder='可留空'
+                    autoComplete='off'
+                  />
+                </div>
+              ))}
+            </div>
+
+            <Button
+              type='button'
+              onClick={runSelectedTool}
+              disabled={runMutation.isPending}
+            >
+              {runMutation.isPending ? '执行中...' : '执行工具模板'}
+            </Button>
+          </div>
+        ) : (
+          <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+            正在读取工具目录...
+          </div>
+        )}
+
+        {runMutation.data?.success === false ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            执行失败：{runMutation.data.message || '请检查参数和后端环境'}
+          </div>
+        ) : null}
+
+        {lastResult ? (
+          <div className='space-y-2 rounded-md border p-3'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div className='text-sm font-semibold'>执行结果</div>
+              <div className='flex gap-2'>
+                <CopyButton
+                  value={lastResult.command}
+                  tooltip='复制实际命令'
+                  successTooltip='已复制命令'
+                />
+                <CopyButton
+                  value={buildToolOutput(lastResult)}
+                  tooltip='复制输出'
+                  successTooltip='已复制输出'
+                />
+              </div>
+            </div>
+            <div className='rounded bg-muted/20 px-3 py-2 font-mono text-xs'>
+              {lastResult.command}
+            </div>
+            <Textarea
+              readOnly
+              className='min-h-64 font-mono text-xs'
+              value={buildToolOutput(lastResult)}
+            />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function NERVLabToolsSection({
   defaultValues,
 }: NERVLabToolsSectionProps) {
@@ -745,6 +994,7 @@ export function NERVLabToolsSection({
         </TabsContent>
 
         <TabsContent value='tools' className='mt-4 space-y-4'>
+          <ToolExecutionPanel defaultBackend={backend} />
           <div className='grid gap-4 xl:grid-cols-2'>
             {nervToolCategories.map((category) => (
               <ToolCategoryCard key={category.key} category={category} />

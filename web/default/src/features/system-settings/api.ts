@@ -30,7 +30,10 @@ import type {
   FetchUpstreamRatiosRequest,
   NERVBridgePromptResponse,
   NERVTamperRulesResponse,
+  NERVToolsResponse,
   LogCleanupTask,
+  RunNERVToolRequest,
+  RunNERVToolResponse,
   NERVSelfCheckResponse,
   SystemOptionsResponse,
   SystemTaskListResponse,
@@ -66,6 +69,19 @@ export async function getNERVBridgePrompt() {
 export async function getNERVTamperRules() {
   const res = await api.get<NERVTamperRulesResponse>(
     '/api/nerv/tamper-rules'
+  )
+  return res.data
+}
+
+export async function getNERVTools() {
+  const res = await api.get<NERVToolsResponse>('/api/nerv/tools')
+  return res.data
+}
+
+export async function runNERVTool(request: RunNERVToolRequest) {
+  const res = await api.post<RunNERVToolResponse>(
+    '/api/nerv/tools/run',
+    request
   )
   return res.data
 }

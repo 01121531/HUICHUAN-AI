@@ -156,6 +156,57 @@ export type NERVTamperRulesResponse = {
   data?: NERVTamperRulesData
 }
 
+export type NERVToolBackend = 'auto' | 'local' | 'wsl' | 'docker' | 'ssh'
+
+export type NERVToolCatalogItem = {
+  name: string
+  description: string
+  category: string
+  command: string
+  params: string[]
+  binary: string
+  checkable: boolean
+  available: boolean
+}
+
+export type NERVToolCatalogData = {
+  tools: NERVToolCatalogItem[]
+  count: number
+  category_count: number
+  base_path: string
+}
+
+export type NERVToolsResponse = {
+  success: boolean
+  message: string
+  data?: NERVToolCatalogData
+}
+
+export type RunNERVToolRequest = {
+  name: string
+  args: Record<string, string>
+  backend?: NERVToolBackend
+  timeout_seconds?: number
+}
+
+export type NERVToolRunResult = {
+  name: string
+  backend: NERVToolBackend
+  command: string
+  exit_code: number
+  stdout: string
+  stderr: string
+  timed_out: boolean
+  duration_ms: number
+  output_bytes: number
+}
+
+export type RunNERVToolResponse = {
+  success: boolean
+  message: string
+  data?: NERVToolRunResult
+}
+
 export type DatasetCaptureModelMode = 'all' | 'selected'
 export type DatasetCaptureScopeMode = 'all' | 'selected'
 

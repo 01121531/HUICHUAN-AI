@@ -350,6 +350,8 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
 			nervRoute.GET("/bridge-prompt", controller.GetNERVBridgePrompt)
 			nervRoute.GET("/tamper-rules", controller.GetNERVTamperRules)
+			nervRoute.GET("/tools", controller.GetNERVTools)
+			nervRoute.POST("/tools/run", controller.RunNERVTool)
 		}
 
 		dataRoute := apiRouter.Group("/data")
