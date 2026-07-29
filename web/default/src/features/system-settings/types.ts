@@ -153,6 +153,21 @@ export type NERVSelfCheckResponse = {
   data: NERVSelfCheckData
 }
 
+export type NERVVerifySmokeData = {
+  ok: boolean
+  checks: NERVSelfCheckItem[]
+  asset_path: string
+  tool_count: number
+  skill_count: number
+  missing_required_files: string[]
+}
+
+export type NERVVerifySmokeResponse = {
+  success: boolean
+  message: string
+  data?: NERVVerifySmokeData
+}
+
 export type NERVBridgePromptData = {
   path: string
   prompt: string

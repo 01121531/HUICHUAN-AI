@@ -43,6 +43,7 @@ import {
   getNERVProxyLogs,
   getNERVSelfCheck,
   getNERVTools,
+  getNERVVerifySmoke,
   runNERVTool,
 } from '../api'
 import { SettingsSection } from '../components/settings-section'
@@ -358,8 +359,15 @@ function SelfCheckCard({
   isRefreshing: boolean
   onRefresh: () => void
 }) {
+  const verifyMutation = useMutation({
+    mutationFn: getNERVVerifySmoke,
+  })
   const okCount = data?.checks.filter((item) => item.ok).length ?? 0
   const totalCount = data?.checks.length ?? 0
+  const verifyData = verifyMutation.data?.success
+    ? verifyMutation.data.data
+    : undefined
+  const verifyFailed = verifyMutation.data?.success === false
   let content = (
     <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
       暂无自检数据。
@@ -505,18 +513,64 @@ function SelfCheckCard({
               直接读取服务器运行环境，检查 NERV 资产、工具目录、技能目录和中转站配置。
             </CardDescription>
           </div>
-          <Button
-            type='button'
-            variant='outline'
-            size='sm'
-            disabled={isLoading || isRefreshing}
-            onClick={onRefresh}
-          >
-            {isRefreshing ? '检测中...' : '重新检测'}
-          </Button>
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={verifyMutation.isPending}
+              onClick={() => verifyMutation.mutate()}
+            >
+              {verifyMutation.isPending ? '验证中...' : '快速验证'}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={isLoading || isRefreshing}
+              onClick={onRefresh}
+            >
+              {isRefreshing ? '检测中...' : '重新检测'}
+            </Button>
+          </div>
         </div>
       </CardHeader>
-      <CardContent className='space-y-4'>{content}</CardContent>
+      <CardContent className='space-y-4'>
+        {verifyData ? (
+          <div
+            className={`rounded-md border p-3 text-sm ${
+              verifyData.ok
+                ? 'border-emerald-500/30 bg-emerald-500/10'
+                : 'border-destructive/50 bg-destructive/10 text-destructive'
+            }`}
+          >
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div className='font-medium'>
+                {verifyData.ok ? '快速验证通过' : '快速验证发现异常'}
+              </div>
+              <Badge variant={verifyData.ok ? 'secondary' : 'destructive'}>
+                {verifyData.checks.filter((item) => item.ok).length}/
+                {verifyData.checks.length}
+              </Badge>
+            </div>
+            <div className='mt-1 text-xs text-muted-foreground'>
+              资产目录：{verifyData.asset_path || '暂无'}；工具：
+              {verifyData.tool_count}；技能：{verifyData.skill_count}
+            </div>
+            {verifyData.missing_required_files.length > 0 ? (
+              <div className='mt-2 text-xs'>
+                缺失文件：{verifyData.missing_required_files.join('、')}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {verifyFailed ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            快速验证接口读取失败：{verifyMutation.data?.message || '请稍后重试'}
+          </div>
+        ) : null}
+        {content}
+      </CardContent>
     </Card>
   )
 }

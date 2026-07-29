@@ -348,6 +348,7 @@ func SetApiRouter(router *gin.Engine) {
 		nervRoute.Use(middleware.RootAuth())
 		{
 			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
+			nervRoute.GET("/verify-smoke", controller.GetNERVVerifySmoke)
 			nervRoute.GET("/bridge-prompt", controller.GetNERVBridgePrompt)
 			nervRoute.GET("/tamper-rules", controller.GetNERVTamperRules)
 			nervRoute.GET("/tools", controller.GetNERVTools)

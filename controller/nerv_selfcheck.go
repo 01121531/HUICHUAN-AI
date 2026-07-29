@@ -143,9 +143,23 @@ type nervTamperRulesResponse struct {
 	Count    int    `json:"count"`
 }
 
+type nervVerifySmokeResponse struct {
+	OK                   bool                `json:"ok"`
+	Checks               []nervSelfCheckItem `json:"checks"`
+	AssetPath            string              `json:"asset_path"`
+	ToolCount            int                 `json:"tool_count"`
+	SkillCount           int                 `json:"skill_count"`
+	MissingRequiredFiles []string            `json:"missing_required_files"`
+}
+
 func GetNERVSelfCheck(c *gin.Context) {
 	status := buildNERVSelfCheck()
 	common.ApiSuccess(c, status)
+}
+
+func GetNERVVerifySmoke(c *gin.Context) {
+	status := buildNERVSelfCheck()
+	common.ApiSuccess(c, buildNERVVerifySmoke(status))
 }
 
 func GetNERVBridgePrompt(c *gin.Context) {
@@ -209,6 +223,44 @@ func buildNERVSelfCheck() nervSelfCheckResponse {
 	}
 	status.Checks = buildNERVChecks(status)
 	return status
+}
+
+func buildNERVVerifySmoke(status nervSelfCheckResponse) nervVerifySmokeResponse {
+	requiredKeys := map[string]bool{
+		"assets":         true,
+		"required_files": true,
+		"tools_catalog":  true,
+		"skills_catalog": true,
+		"tamper_rules":   true,
+		"recent_stats":   true,
+	}
+	checks := make([]nervSelfCheckItem, 0, len(requiredKeys))
+	ok := true
+	for _, check := range status.Checks {
+		if !requiredKeys[check.Key] {
+			continue
+		}
+		checks = append(checks, check)
+		if !check.OK {
+			ok = false
+		}
+	}
+
+	missingRequiredFiles := make([]string, 0)
+	for _, requiredFile := range status.Assets.RequiredFiles {
+		if !requiredFile.Exists {
+			missingRequiredFiles = append(missingRequiredFiles, requiredFile.Path)
+		}
+	}
+
+	return nervVerifySmokeResponse{
+		OK:                   ok && len(checks) == len(requiredKeys),
+		Checks:               checks,
+		AssetPath:            status.Assets.BasePath,
+		ToolCount:            status.Catalog.ToolCount,
+		SkillCount:           status.Catalog.SkillCount,
+		MissingRequiredFiles: missingRequiredFiles,
+	}
 }
 
 func findNERVAssetBasePath() (string, bool, []string) {

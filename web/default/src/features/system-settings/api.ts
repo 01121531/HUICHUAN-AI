@@ -33,6 +33,7 @@ import type {
   NERVProxyStatsResponse,
   NERVTamperRulesResponse,
   NERVToolsResponse,
+  NERVVerifySmokeResponse,
   LogCleanupTask,
   RunNERVToolRequest,
   RunNERVToolResponse,
@@ -58,6 +59,11 @@ export async function updateSystemOption(request: UpdateOptionRequest) {
 
 export async function getNERVSelfCheck() {
   const res = await api.get<NERVSelfCheckResponse>('/api/nerv/self-check')
+  return res.data
+}
+
+export async function getNERVVerifySmoke() {
+  const res = await api.get<NERVVerifySmokeResponse>('/api/nerv/verify-smoke')
   return res.data
 }
 
