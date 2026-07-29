@@ -185,6 +185,46 @@ function formatBytes(value: number) {
   return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
 }
 
+function quoteTomlString(value: string) {
+  return `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"`
+}
+
+function buildMCPConfigSnippet({
+  assetPath,
+  backend,
+  dockerContainer,
+  sshHost,
+}: {
+  assetPath: string
+  backend: NERVLabDefaults['nerv_setting.mcp_backend']
+  dockerContainer: string
+  sshHost: string
+}) {
+  const scriptPath = `${assetPath.replace(/[\\/]+$/, '')}/mcp_server.py`
+  const args = [scriptPath]
+  if (backend === 'auto') {
+    args.push('--auto')
+  } else if (backend === 'wsl') {
+    args.push('--wsl')
+  } else if (backend === 'docker') {
+    args.push('--docker', dockerContainer || 'kali-tools')
+  } else if (backend === 'ssh') {
+    args.push('--kali', sshHost || 'root@192.168.1.100')
+  }
+
+  return [
+    '[mcp_servers.nerv_break]',
+    'command = "python"',
+    `args = [${args.map(quoteTomlString).join(', ')}]`,
+  ].join('\n')
+}
+
+function toolAvailabilityLabel(item: { checkable: boolean; available: boolean }) {
+  if (item.available) return '可用'
+  if (item.checkable) return '缺失'
+  return '需参数'
+}
+
 function parseRecentEvents(raw: string): NERVLabRecentEvent[] {
   if (!raw) return []
   try {
@@ -322,9 +362,14 @@ function SelfCheckCard({
             value={`${data.catalog.tool_count}/${data.catalog.skill_count}`}
             description={`${data.catalog.category_count} 个工具类别，${data.catalog.skill_dir_count} 个技能目录。`}
           />
+          <OverviewCard
+            label='本机可用工具'
+            value={`${data.catalog.tool_available}/${data.catalog.tool_count}`}
+            description={`缺失 ${data.catalog.tool_missing} 个，需参数 ${data.catalog.tool_uncheckable} 个；可通过 WSL 或远程主机补足。`}
+          />
         </div>
 
-        <div className='grid gap-4 lg:grid-cols-2'>
+        <div className='grid gap-4 lg:grid-cols-3'>
           <div className='space-y-2'>
             <div className='text-sm font-semibold'>检查项</div>
             <div className='grid gap-2'>
@@ -355,6 +400,30 @@ function SelfCheckCard({
                   </span>
                   <Badge variant={item.exists ? 'outline' : 'destructive'}>
                     {item.exists ? formatBytes(item.size) : '缺失'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>工具可用性</div>
+            <div className='grid gap-2'>
+              {data.catalog.tool_availability.slice(0, 12).map((item) => (
+                <div
+                  key={item.name}
+                  className='flex items-center justify-between gap-3 rounded-md border bg-muted/10 px-3 py-2 text-sm'
+                >
+                  <span className='min-w-0'>
+                    <span className='block truncate font-medium'>
+                      {item.name}
+                    </span>
+                    <span className='font-mono text-xs text-muted-foreground'>
+                      {item.binary || item.category}
+                    </span>
+                  </span>
+                  <Badge variant={item.available ? 'outline' : 'destructive'}>
+                    {toolAvailabilityLabel(item)}
                   </Badge>
                 </div>
               ))}
@@ -543,6 +612,15 @@ export function NERVLabToolsSection({
   const selfCheckError =
     selfCheckQuery.isError || selfCheckQuery.data?.success === false
   const backend = defaultValues['nerv_setting.mcp_backend'] ?? 'auto'
+  const runtimeAssetPath = selfCheckData?.assets.exists
+    ? selfCheckData.assets.base_path
+    : bundledNERVAssetPath
+  const mcpConfigSnippet = buildMCPConfigSnippet({
+    assetPath: runtimeAssetPath,
+    backend,
+    dockerContainer: defaultValues['nerv_setting.docker_container'],
+    sshHost: defaultValues['nerv_setting.ssh_host'],
+  })
   const mcpCommands = [
     'python mcp_server.py',
     'python mcp_server.py --auto',
@@ -657,10 +735,15 @@ export function NERVLabToolsSection({
               title='内置资产路径'
               description='原 NERV 项目文件已随 HUICHUAN 源码部署到服务器构建目录。'
               commands={[
-                `cd ${bundledNERVAssetPath}`,
-                `ls ${bundledNERVAssetPath}`,
+                `cd ${runtimeAssetPath}`,
+                `ls ${runtimeAssetPath}`,
                 `cd ${sourceNERVAssetPath}`,
               ]}
+            />
+            <CommandCard
+              title='Codex MCP 配置片段'
+              description='对应原项目 config/mcp_config.txt，可复制到 Codex 配置里的 mcp_servers 区域。'
+              commands={[mcpConfigSnippet]}
             />
             {workflowCommands.map((item) => (
               <CommandCard

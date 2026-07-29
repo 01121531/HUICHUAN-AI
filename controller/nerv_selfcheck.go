@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -43,13 +44,25 @@ type nervSelfCheckAssets struct {
 }
 
 type nervSelfCheckCatalog struct {
-	ToolsJSONExists bool   `json:"tools_json_exists"`
-	ToolsParsed     bool   `json:"tools_parsed"`
-	ToolCount       int    `json:"tool_count"`
-	CategoryCount   int    `json:"category_count"`
-	SkillCount      int    `json:"skill_count"`
-	SkillDirCount   int    `json:"skill_dir_count"`
-	Error           string `json:"error,omitempty"`
+	ToolsJSONExists  bool                            `json:"tools_json_exists"`
+	ToolsParsed      bool                            `json:"tools_parsed"`
+	ToolCount        int                             `json:"tool_count"`
+	CategoryCount    int                             `json:"category_count"`
+	ToolAvailable    int                             `json:"tool_available"`
+	ToolMissing      int                             `json:"tool_missing"`
+	ToolUncheckable  int                             `json:"tool_uncheckable"`
+	ToolAvailability []nervSelfCheckToolAvailability `json:"tool_availability"`
+	SkillCount       int                             `json:"skill_count"`
+	SkillDirCount    int                             `json:"skill_dir_count"`
+	Error            string                          `json:"error,omitempty"`
+}
+
+type nervSelfCheckToolAvailability struct {
+	Name      string `json:"name"`
+	Category  string `json:"category"`
+	Binary    string `json:"binary"`
+	Checkable bool   `json:"checkable"`
+	Available bool   `json:"available"`
 }
 
 type nervSelfCheckConfig struct {
@@ -240,13 +253,23 @@ func buildNERVCatalogStatus(basePath string, assetsExist bool) nervSelfCheckCata
 		status.ToolsJSONExists = true
 	}
 	if status.ToolsJSONExists {
-		toolCount, categoryCount, err := parseNERVToolsJSON(toolsPath)
+		toolCount, categoryCount, availability, err := parseNERVToolsJSON(toolsPath)
 		if err != nil {
 			status.Error = err.Error()
 		} else {
 			status.ToolsParsed = true
 			status.ToolCount = toolCount
 			status.CategoryCount = categoryCount
+			status.ToolAvailability = availability
+			for _, item := range availability {
+				if item.Available {
+					status.ToolAvailable++
+				} else if item.Checkable {
+					status.ToolMissing++
+				} else {
+					status.ToolUncheckable++
+				}
+			}
 		}
 	}
 
@@ -254,29 +277,73 @@ func buildNERVCatalogStatus(basePath string, assetsExist bool) nervSelfCheckCata
 	return status
 }
 
-func parseNERVToolsJSON(path string) (int, int, error) {
+func parseNERVToolsJSON(path string) (int, int, []nervSelfCheckToolAvailability, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 
 	var payload struct {
 		Tools []struct {
+			Name     string `json:"name"`
 			Category string `json:"category"`
+			Command  string `json:"cmd"`
 		} `json:"tools"`
 	}
 	if err := json.Unmarshal(data, &payload); err != nil {
-		return 0, 0, err
+		return 0, 0, nil, err
 	}
 
 	categories := map[string]bool{}
+	availability := make([]nervSelfCheckToolAvailability, 0, len(payload.Tools))
 	for _, tool := range payload.Tools {
 		category := strings.TrimSpace(tool.Category)
 		if category != "" {
 			categories[category] = true
 		}
+		binary := extractNERVToolBinary(tool.Command)
+		checkable := binary != "" && !strings.Contains(binary, "{")
+		availability = append(availability, nervSelfCheckToolAvailability{
+			Name:      strings.TrimSpace(tool.Name),
+			Category:  category,
+			Binary:    binary,
+			Checkable: checkable,
+			Available: checkable && nervBinaryAvailable(binary),
+		})
 	}
-	return len(payload.Tools), len(categories), nil
+	sort.SliceStable(availability, func(i, j int) bool {
+		if availability[i].Category == availability[j].Category {
+			return availability[i].Name < availability[j].Name
+		}
+		return availability[i].Category < availability[j].Category
+	})
+	return len(payload.Tools), len(categories), availability, nil
+}
+
+func extractNERVToolBinary(command string) string {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return ""
+	}
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return ""
+	}
+	binary := strings.Trim(fields[0], `"'`)
+	binary = filepath.Base(binary)
+	return binary
+}
+
+func nervBinaryAvailable(binary string) bool {
+	if _, err := osexec.LookPath(binary); err == nil {
+		return true
+	}
+	if filepath.Ext(binary) == "" {
+		if _, err := osexec.LookPath(binary + ".exe"); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func countNERVSkills(skillsPath string) (int, int) {

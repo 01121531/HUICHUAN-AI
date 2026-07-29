@@ -41,9 +41,21 @@ export type NERVSelfCheckCatalog = {
   tools_parsed: boolean
   tool_count: number
   category_count: number
+  tool_available: number
+  tool_missing: number
+  tool_uncheckable: number
+  tool_availability: NERVSelfCheckToolAvailability[]
   skill_count: number
   skill_dir_count: number
   error?: string
+}
+
+export type NERVSelfCheckToolAvailability = {
+  name: string
+  category: string
+  binary: string
+  checkable: boolean
+  available: boolean
 }
 
 export type NERVSelfCheckConfig = {
