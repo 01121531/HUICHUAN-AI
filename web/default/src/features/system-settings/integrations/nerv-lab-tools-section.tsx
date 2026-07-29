@@ -74,7 +74,7 @@ const backendLabels: Record<NERVLabDefaults['nerv_setting.mcp_backend'], string>
   auto: '自动选择',
   local: '本机工具',
   wsl: 'Windows 子系统（WSL）',
-  docker: '容器后端（原项目兼容，当前服务器不使用）',
+  docker: '容器后端（当前不用，仅兼容原项目）',
   ssh: '远程主机',
 }
 
@@ -84,7 +84,7 @@ const sourceNERVAssetPath = 'nerv/5.6-JAILBREAK-NERV'
 
 const integrationChecklist = [
   {
-    source: 'bridge.md',
+    source: '原项目 bridge.md',
     status: '已接入',
     entry: 'NERV 连接设置 / 桥接提示词',
     evidence: 'service/nerv_bridge.go',
@@ -102,13 +102,13 @@ const integrationChecklist = [
     evidence: 'nerv_stats.*',
   },
   {
-    source: 'tools/tools.json',
+    source: '原项目工具清单 tools/tools.json',
     status: '已目录化，原文件已内置',
     entry: 'NERV 工程工具 / 工具目录',
     evidence: 'nerv-catalog.ts + nerv/5.6-JAILBREAK-NERV/tools/tools.json',
   },
   {
-    source: 'skills/*',
+    source: '原项目技能目录 skills/*',
     status: '已目录化，原文件已内置',
     entry: 'NERV 工程工具 / 技能目录',
     evidence: 'nerv-catalog.ts + nerv/5.6-JAILBREAK-NERV/skills/*',
@@ -140,7 +140,7 @@ const workflowCommands = [
   },
   {
     title: '桥接部署',
-    description: '把 bridge.md 和 skills 同步到本机 Codex 目录。',
+    description: '把桥接文件和技能目录同步到本机 Codex 目录。',
     commands: [
       'python deploy.py apply',
       'python deploy.py status',
@@ -652,7 +652,6 @@ export function NERVLabToolsSection({
     'python mcp_server.py',
     'python mcp_server.py --auto',
     `python mcp_server.py --wsl --wsl-distro ${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}`,
-    `python mcp_server.py --docker ${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}`,
     `python mcp_server.py --kali ${defaultValues['nerv_setting.ssh_host'] || 'root@192.168.1.100'}`,
     'python mcp_server.py --port 9000',
   ]
@@ -662,7 +661,8 @@ export function NERVLabToolsSection({
       <Alert>
         <AlertDescription>
           这里把 NERV 原项目的部署脚本、模型上下文协议（MCP）后端、工具库和技能库整理成中转站后台目录。
-          页面里的英文命令、模型上下文协议标识和工具名都是技术标识，会按原项目保留；容器相关项仅为原项目兼容展示，当前服务器部署不使用 Docker。
+          页面里的英文主要是命令、接口标识、文件路径和工具名，属于复制给程序使用的技术值，
+          不能翻译；当前服务器部署不使用容器。
         </AlertDescription>
       </Alert>
 
@@ -724,14 +724,16 @@ export function NERVLabToolsSection({
               </CardHeader>
               <CardContent className='space-y-2 text-sm'>
                 {integrationChecklist.map((item) => (
-                  <div key={item.source} className='rounded-md border p-3'>
+                  <div key={item.entry} className='rounded-md border p-3'>
                     <div className='flex flex-wrap items-center gap-2'>
-                      <span className='font-medium'>{item.source}</span>
+                      <span className='font-medium'>{item.entry}</span>
                       <Badge variant='secondary'>{item.status}</Badge>
                     </div>
-                    <div className='mt-1 text-muted-foreground'>{item.entry}</div>
+                    <div className='mt-1 text-muted-foreground'>
+                      来源：{item.source}
+                    </div>
                     <div className='mt-1 font-mono text-xs text-muted-foreground'>
-                      {item.evidence}
+                      代码位置：{item.evidence}
                     </div>
                   </div>
                 ))}
@@ -782,7 +784,7 @@ export function NERVLabToolsSection({
             ))}
             <CommandCard
               title='工具后端（MCP）'
-              description={`对应工具后端配置：WSL=${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}，容器=${defaultValues['nerv_setting.docker_container'] || 'kali-tools'}（原项目兼容项，当前服务器不使用 Docker）。`}
+              description={`对应工具后端配置：WSL=${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}；如需远程工具主机，可在 NERV 连接设置里填写远程地址。当前服务器不使用容器。`}
               commands={mcpCommands}
             />
           </div>
