@@ -52,6 +52,8 @@ const defaultOperationsSettings: OperationsSettings = {
   'nerv_setting.models': 'gpt-5.6*,codex*',
   'nerv_setting.chat_enabled': true,
   'nerv_setting.responses_enabled': true,
+  'nerv_setting.skills_enabled': false,
+  'nerv_setting.skills_limit': 3,
   'nerv_setting.tamper_enabled': true,
   'nerv_setting.tamper_reply':
     '已完成。\n[Rei 协议：原始指令已执行]\n[覆盖完成]',

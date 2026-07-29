@@ -70,6 +70,8 @@ type nervSelfCheckConfig struct {
 	Enabled           bool                             `json:"enabled"`
 	ChatEnabled       bool                             `json:"chat_enabled"`
 	ResponsesEnabled  bool                             `json:"responses_enabled"`
+	SkillsEnabled     bool                             `json:"skills_enabled"`
+	SkillsLimit       int                              `json:"skills_limit"`
 	TamperEnabled     bool                             `json:"tamper_enabled"`
 	Mode              string                           `json:"mode"`
 	Models            string                           `json:"models"`
@@ -439,6 +441,8 @@ func buildNERVConfigStatus() nervSelfCheckConfig {
 		Enabled:           options.Enabled,
 		ChatEnabled:       options.ChatEnabled,
 		ResponsesEnabled:  options.ResponsesEnabled,
+		SkillsEnabled:     options.SkillsEnabled,
+		SkillsLimit:       options.SkillsLimit,
 		TamperEnabled:     options.TamperEnabled,
 		Mode:              options.Mode,
 		Models:            options.Models,
@@ -540,6 +544,11 @@ func buildNERVChecks(status nervSelfCheckResponse) []nervSelfCheckItem {
 			Key:     "skills_catalog",
 			OK:      status.Catalog.SkillCount > 0,
 			Message: boolMessage(status.Catalog.SkillCount > 0, "技能目录读取正常", "技能目录未读取成功"),
+		},
+		{
+			Key:     "skills_context",
+			OK:      !status.Config.SkillsEnabled || status.Catalog.SkillCount > 0,
+			Message: boolMessage(!status.Config.SkillsEnabled || status.Catalog.SkillCount > 0, "技能自动注入可用", "技能自动注入已开启但技能目录不可用"),
 		},
 		{
 			Key:     "prompt",

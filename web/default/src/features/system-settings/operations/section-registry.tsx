@@ -91,6 +91,10 @@ const OPERATIONS_SECTIONS = [
             settings['nerv_setting.chat_enabled'] ?? true,
           'nerv_setting.responses_enabled':
             settings['nerv_setting.responses_enabled'] ?? true,
+          'nerv_setting.skills_enabled':
+            settings['nerv_setting.skills_enabled'] ?? false,
+          'nerv_setting.skills_limit':
+            settings['nerv_setting.skills_limit'] ?? 3,
           'nerv_setting.tamper_enabled':
             settings['nerv_setting.tamper_enabled'] ?? true,
           'nerv_setting.tamper_reply':

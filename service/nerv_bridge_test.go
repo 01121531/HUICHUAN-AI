@@ -1,6 +1,8 @@
 package service
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -96,6 +98,66 @@ func TestNERVBridgeInjectsAndTampers(t *testing.T) {
 	}
 	if lastTarget != string(NERVTargetOpenAIResponses) || lastModel != "gpt-5.6-pro" {
 		t.Fatalf("unexpected last NERV event metadata: target=%q model=%q", lastTarget, lastModel)
+	}
+}
+
+func TestNERVSkillsContextInjectedFromRequestText(t *testing.T) {
+	tempDir := t.TempDir()
+	skillDir := filepath.Join(tempDir, "skills", "web-pentest")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("create skill dir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(`---
+name: web-pentest
+description: Web application penetration testing. Trigger: sqli, xss, web pentest.
+---
+
+# Web Pentest
+
+Use the web testing workflow for SQL injection and XSS checks.
+`), 0o644); err != nil {
+		t.Fatalf("write skill failed: %v", err)
+	}
+
+	t.Setenv("NERV_ASSET_PATH", tempDir)
+	resetNERVSkillsCacheForTest()
+	t.Cleanup(resetNERVSkillsCacheForTest)
+
+	restore := setNERVTestOptions(t, map[string]string{
+		NERVEnabledKey:          "true",
+		NERVChatEnabledKey:      "true",
+		NERVSkillsEnabledKey:    "true",
+		NERVSkillsLimitKey:      "1",
+		NERVPromptKey:           "桥接提示词",
+		NERVModeKey:             "prepend",
+		NERVModelsKey:           "*",
+		NERVTargetsKey:          "*",
+		NERVTamperEnabledKey:    "false",
+		NERVTamperReplyKey:      "",
+		NERVTamperPatternsKey:   "",
+		NERVResponsesEnabledKey: "true",
+	})
+	defer restore()
+
+	chatReq := &dto.GeneralOpenAIRequest{
+		Model: "codex-test",
+		Messages: []dto.Message{
+			{Role: "system", Content: "原系统指令"},
+			{Role: "user", Content: "请做一次 web pentest，重点检查 sqli 和 xss。"},
+		},
+	}
+	if err := ApplyNERVToChatRequest(chatReq, NERVTargetOpenAIChat); err != nil {
+		t.Fatalf("ApplyNERVToChatRequest failed: %v", err)
+	}
+	content := chatReq.Messages[0].StringContent()
+	if !strings.Contains(content, "桥接提示词") {
+		t.Fatalf("bridge prompt missing: %q", content)
+	}
+	if !strings.Contains(content, "[NERV 技能模块]") || !strings.Contains(content, "web-pentest") {
+		t.Fatalf("skill context missing: %q", content)
+	}
+	if !strings.Contains(content, "原系统指令") {
+		t.Fatalf("existing instructions missing: %q", content)
 	}
 }
 

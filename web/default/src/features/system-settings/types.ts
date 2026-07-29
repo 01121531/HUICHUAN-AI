@@ -68,6 +68,8 @@ export type NERVSelfCheckConfig = {
   enabled: boolean
   chat_enabled: boolean
   responses_enabled: boolean
+  skills_enabled: boolean
+  skills_limit: number
   tamper_enabled: boolean
   mode: string
   models: string
@@ -751,6 +753,8 @@ export type OperationsSettings = {
   'nerv_setting.models': string
   'nerv_setting.chat_enabled': boolean
   'nerv_setting.responses_enabled': boolean
+  'nerv_setting.skills_enabled': boolean
+  'nerv_setting.skills_limit': number
   'nerv_setting.tamper_enabled': boolean
   'nerv_setting.tamper_reply': string
   'nerv_setting.tamper_patterns': string

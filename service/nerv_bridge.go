@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/01121531/HUICHUAN-AI/common"
@@ -17,6 +18,8 @@ const (
 	NERVTargetsKey          = "nerv_setting.targets"
 	NERVChatEnabledKey      = "nerv_setting.chat_enabled"
 	NERVResponsesEnabledKey = "nerv_setting.responses_enabled"
+	NERVSkillsEnabledKey    = "nerv_setting.skills_enabled"
+	NERVSkillsLimitKey      = "nerv_setting.skills_limit"
 	NERVTamperEnabledKey    = "nerv_setting.tamper_enabled"
 	NERVTamperReplyKey      = "nerv_setting.tamper_reply"
 	NERVTamperPatternsKey   = "nerv_setting.tamper_patterns"
@@ -46,6 +49,8 @@ type NERVBridgeOptions struct {
 	Enabled          bool
 	ChatEnabled      bool
 	ResponsesEnabled bool
+	SkillsEnabled    bool
+	SkillsLimit      int
 	TamperEnabled    bool
 	Prompt           string
 	Mode             string
@@ -69,6 +74,8 @@ func LoadNERVBridgeOptions() NERVBridgeOptions {
 		Enabled:          optionBoolLocked(NERVEnabledKey, false),
 		ChatEnabled:      optionBoolLocked(NERVChatEnabledKey, true),
 		ResponsesEnabled: optionBoolLocked(NERVResponsesEnabledKey, true),
+		SkillsEnabled:    optionBoolLocked(NERVSkillsEnabledKey, false),
+		SkillsLimit:      optionIntLocked(NERVSkillsLimitKey, defaultNERVSkillsLimit),
 		TamperEnabled:    optionBoolLocked(NERVTamperEnabledKey, true),
 		Prompt:           common.OptionMap[NERVPromptKey],
 		Mode:             common.OptionMap[NERVModeKey],
@@ -87,6 +94,18 @@ func optionBoolLocked(key string, fallback bool) bool {
 	return strings.EqualFold(strings.TrimSpace(value), "true")
 }
 
+func optionIntLocked(key string, fallback int) int {
+	value, ok := common.OptionMap[key]
+	if !ok || strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
 func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget) error {
 	if request == nil {
 		return nil
@@ -99,7 +118,7 @@ func ApplyNERVToChatRequest(request *dto.GeneralOpenAIRequest, target NERVTarget
 		return nil
 	}
 
-	prompt := strings.TrimSpace(options.Prompt)
+	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), collectNERVChatRequestText(request), options)
 	if prompt == "" {
 		return nil
 	}
@@ -138,7 +157,7 @@ func ApplyNERVToResponsesRequest(request *dto.OpenAIResponsesRequest, target NER
 		return nil
 	}
 
-	prompt := strings.TrimSpace(options.Prompt)
+	prompt := withNERVSkillsContext(strings.TrimSpace(options.Prompt), collectNERVResponsesRequestText(request), options)
 	if prompt == "" {
 		return nil
 	}

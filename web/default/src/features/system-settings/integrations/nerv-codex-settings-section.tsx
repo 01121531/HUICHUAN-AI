@@ -136,6 +136,8 @@ const nervCodexSchema = z
       models: z.string(),
       chat_enabled: z.boolean(),
       responses_enabled: z.boolean(),
+      skills_enabled: z.boolean(),
+      skills_limit: z.coerce.number().int().min(1).max(5),
       tamper_enabled: z.boolean(),
       tamper_reply: z.string().max(4000),
       tamper_patterns: z.string().max(20000),
@@ -166,6 +168,8 @@ type FlatNERVCodexDefaults = {
   'nerv_setting.models': string
   'nerv_setting.chat_enabled': boolean
   'nerv_setting.responses_enabled': boolean
+  'nerv_setting.skills_enabled': boolean
+  'nerv_setting.skills_limit': number
   'nerv_setting.tamper_enabled': boolean
   'nerv_setting.tamper_reply': string
   'nerv_setting.tamper_patterns': string
@@ -202,6 +206,8 @@ const buildFormDefaults = (
     models: defaults['nerv_setting.models'] ?? defaultNERVModels,
     chat_enabled: defaults['nerv_setting.chat_enabled'] ?? true,
     responses_enabled: defaults['nerv_setting.responses_enabled'] ?? true,
+    skills_enabled: defaults['nerv_setting.skills_enabled'] ?? false,
+    skills_limit: defaults['nerv_setting.skills_limit'] ?? 3,
     tamper_enabled: defaults['nerv_setting.tamper_enabled'] ?? true,
     tamper_reply: defaults['nerv_setting.tamper_reply'] ?? defaultNERVTamperReply,
     tamper_patterns:
@@ -223,6 +229,8 @@ const normalizeFormValues = (
   'nerv_setting.models': values.nerv_setting.models.trim(),
   'nerv_setting.chat_enabled': values.nerv_setting.chat_enabled,
   'nerv_setting.responses_enabled': values.nerv_setting.responses_enabled,
+  'nerv_setting.skills_enabled': values.nerv_setting.skills_enabled,
+  'nerv_setting.skills_limit': values.nerv_setting.skills_limit,
   'nerv_setting.tamper_enabled': values.nerv_setting.tamper_enabled,
   'nerv_setting.tamper_reply': values.nerv_setting.tamper_reply.trim(),
   'nerv_setting.tamper_patterns': values.nerv_setting.tamper_patterns.trim(),
@@ -483,6 +491,52 @@ export function NERVCodexSettingsSection({
                   />
                 </FormControl>
               </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='nerv_setting.skills_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>技能自动注入</FormLabel>
+                  <FormDescription>
+                    开启后会根据用户请求，从原项目 skills 目录自动挑选相关技能摘要，并追加到桥接提示词。
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='nerv_setting.skills_limit'
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>每次最多注入技能数</FormLabel>
+                <FormControl>
+                  <Input
+                    type='number'
+                    min={1}
+                    max={5}
+                    placeholder='3'
+                    autoComplete='off'
+                    value={String(field.value ?? 3)}
+                    onChange={(event) => field.onChange(event.target.value)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  建议 1-3 个；数量越多，上下文越长。
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
             )}
           />
 
