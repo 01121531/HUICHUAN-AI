@@ -344,6 +344,11 @@ func SetApiRouter(router *gin.Engine) {
 			systemInfoRoute.DELETE("/stale-instances", controller.DeleteStaleSystemInstances)
 			systemInfoRoute.DELETE("/instances/:node_name", controller.DeleteStaleSystemInstance)
 		}
+		nervRoute := apiRouter.Group("/nerv")
+		nervRoute.Use(middleware.AdminAuth())
+		{
+			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
+		}
 
 		dataRoute := apiRouter.Group("/data")
 		dataRoute.GET("", middleware.AdminAuth(), controller.GetAllQuotaDates)

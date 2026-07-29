@@ -16,11 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
 import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -30,7 +32,9 @@ import {
 } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+import { getNERVSelfCheck } from '../api'
 import { SettingsSection } from '../components/settings-section'
+import type { NERVSelfCheckData } from '../types'
 import {
   nervSkillGroupOrder,
   nervSkills,
@@ -169,6 +173,18 @@ function formatTime(value?: number) {
   return new Date(value * 1000).toLocaleString()
 }
 
+function formatBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let size = value
+  let unitIndex = 0
+  while (size >= 1024 && unitIndex < units.length - 1) {
+    size /= 1024
+    unitIndex++
+  }
+  return `${size.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`
+}
+
 function parseRecentEvents(raw: string): NERVLabRecentEvent[] {
   if (!raw) return []
   try {
@@ -243,6 +259,134 @@ function OverviewCard({
       <CardContent className='text-sm text-muted-foreground'>
         {description}
       </CardContent>
+    </Card>
+  )
+}
+
+function SelfCheckCard({
+  data,
+  isLoading,
+  isError,
+  errorMessage,
+  isRefreshing,
+  onRefresh,
+}: {
+  data?: NERVSelfCheckData
+  isLoading: boolean
+  isError: boolean
+  errorMessage?: string
+  isRefreshing: boolean
+  onRefresh: () => void
+}) {
+  const okCount = data?.checks.filter((item) => item.ok).length ?? 0
+  const totalCount = data?.checks.length ?? 0
+  let content = (
+    <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+      暂无自检数据。
+    </div>
+  )
+
+  if (isLoading) {
+    content = (
+      <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+        正在读取服务器自检结果...
+      </div>
+    )
+  } else if (isError) {
+    content = (
+      <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+        自检接口读取失败：{errorMessage || '请稍后重试'}
+      </div>
+    )
+  } else if (data) {
+    content = (
+      <>
+        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-4'>
+          <OverviewCard
+            label='自检通过'
+            value={`${okCount}/${totalCount}`}
+            description='通过项越多，说明融合状态越完整。'
+          />
+          <OverviewCard
+            label='服务器资产'
+            value={data.assets.exists ? '已找到' : '未找到'}
+            description={data.assets.base_path || '暂无路径'}
+          />
+          <OverviewCard
+            label='资产文件'
+            value={data.assets.file_count}
+            description={`总大小 ${formatBytes(data.assets.total_size_bytes)}`}
+          />
+          <OverviewCard
+            label='工具 / 技能'
+            value={`${data.catalog.tool_count}/${data.catalog.skill_count}`}
+            description={`${data.catalog.category_count} 个工具类别，${data.catalog.skill_dir_count} 个技能目录。`}
+          />
+        </div>
+
+        <div className='grid gap-4 lg:grid-cols-2'>
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>检查项</div>
+            <div className='grid gap-2'>
+              {data.checks.map((item) => (
+                <div
+                  key={item.key}
+                  className='flex items-center justify-between gap-3 rounded-md border bg-muted/10 px-3 py-2 text-sm'
+                >
+                  <span>{item.message}</span>
+                  <Badge variant={item.ok ? 'secondary' : 'destructive'}>
+                    {item.ok ? '通过' : '异常'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className='space-y-2'>
+            <div className='text-sm font-semibold'>核心文件</div>
+            <div className='grid gap-2'>
+              {data.assets.required_files.map((item) => (
+                <div
+                  key={item.path}
+                  className='flex items-center justify-between gap-3 rounded-md border bg-muted/10 px-3 py-2 text-sm'
+                >
+                  <span className='break-all font-mono text-xs'>
+                    {item.path}
+                  </span>
+                  <Badge variant={item.exists ? 'outline' : 'destructive'}>
+                    {item.exists ? formatBytes(item.size) : '缺失'}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </>
+    )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <CardTitle>服务器自检</CardTitle>
+            <CardDescription>
+              直接读取服务器运行环境，检查 NERV 资产、工具目录、技能目录和中转站配置。
+            </CardDescription>
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={isLoading || isRefreshing}
+            onClick={onRefresh}
+          >
+            {isRefreshing ? '检测中...' : '重新检测'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>{content}</CardContent>
     </Card>
   )
 }
@@ -366,6 +510,11 @@ function RecentEventsCard({ recentEvents }: { recentEvents: NERVLabRecentEvent[]
 export function NERVLabToolsSection({
   defaultValues,
 }: NERVLabToolsSectionProps) {
+  const selfCheckQuery = useQuery({
+    queryKey: ['nerv-self-check'],
+    queryFn: getNERVSelfCheck,
+    staleTime: 30 * 1000,
+  })
   const recentRaw = defaultValues['nerv_stats.recent']
   const recentEvents = useMemo(() => parseRecentEvents(recentRaw), [recentRaw])
 
@@ -388,6 +537,11 @@ export function NERVLabToolsSection({
     (total, category) => total + category.tools.length,
     0
   )
+  const selfCheckData = selfCheckQuery.data?.success
+    ? selfCheckQuery.data.data
+    : undefined
+  const selfCheckError =
+    selfCheckQuery.isError || selfCheckQuery.data?.success === false
   const backend = defaultValues['nerv_setting.mcp_backend'] ?? 'auto'
   const mcpCommands = [
     'python mcp_server.py',
@@ -416,6 +570,17 @@ export function NERVLabToolsSection({
         </TabsList>
 
         <TabsContent value='overview' className='mt-4 space-y-4'>
+          <SelfCheckCard
+            data={selfCheckData}
+            isLoading={selfCheckQuery.isLoading}
+            isError={selfCheckError}
+            errorMessage={selfCheckQuery.data?.message}
+            isRefreshing={selfCheckQuery.isFetching}
+            onRefresh={() => {
+              void selfCheckQuery.refetch()
+            }}
+          />
+
           <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
             <OverviewCard
               label='工具类别'

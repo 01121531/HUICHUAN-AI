@@ -21,6 +21,93 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type NERVSelfCheckRequiredFile = {
+  path: string
+  exists: boolean
+  size: number
+}
+
+export type NERVSelfCheckAssets = {
+  base_path: string
+  exists: boolean
+  file_count: number
+  total_size_bytes: number
+  required_files: NERVSelfCheckRequiredFile[]
+  candidates: string[]
+}
+
+export type NERVSelfCheckCatalog = {
+  tools_json_exists: boolean
+  tools_parsed: boolean
+  tool_count: number
+  category_count: number
+  skill_count: number
+  skill_dir_count: number
+  error?: string
+}
+
+export type NERVSelfCheckConfig = {
+  enabled: boolean
+  chat_enabled: boolean
+  responses_enabled: boolean
+  tamper_enabled: boolean
+  mode: string
+  models: string
+  targets: string
+  prompt_configured: boolean
+  prompt_length: number
+  tamper_rule_lines: number
+  mcp_backend: string
+  wsl_distro: string
+  docker_container: string
+  ssh_host: string
+}
+
+export type NERVSelfCheckRecentEvent = {
+  ts: number
+  event: string
+  target: string
+  model: string
+}
+
+export type NERVSelfCheckStats = {
+  total: number
+  inject: number
+  tamper: number
+  chat_inject: number
+  responses_inject: number
+  chat_tamper: number
+  responses_tamper: number
+  last_event_at: number
+  last_event: string
+  last_target: string
+  last_model: string
+  recent: NERVSelfCheckRecentEvent[]
+  recent_valid: boolean
+}
+
+export type NERVSelfCheckItem = {
+  key: string
+  ok: boolean
+  message: string
+}
+
+export type NERVSelfCheckData = {
+  assets: NERVSelfCheckAssets
+  catalog: NERVSelfCheckCatalog
+  config: NERVSelfCheckConfig
+  stats: NERVSelfCheckStats
+  checks: NERVSelfCheckItem[]
+  working_dir: string
+  executable_dir: string
+}
+
+export type NERVSelfCheckResponse = {
+  success: boolean
+  message: string
+  data: NERVSelfCheckData
+}
+
 export type DatasetCaptureModelMode = 'all' | 'selected'
 export type DatasetCaptureScopeMode = 'all' | 'selected'
 
