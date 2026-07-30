@@ -32,6 +32,10 @@ import type {
   NERVCodexConfigMutationResponse,
   NERVCodexConfigResponse,
   NERVCodexVerifyResponse,
+  NERVDirectProxyMutationResponse,
+  NERVDirectProxyStatusResponse,
+  NERVLabActionRequest,
+  NERVLabActionResponse,
   NERVProxyDashboardResponse,
   NERVProxyLogsResponse,
   NERVProxyProcessMutationResponse,
@@ -159,6 +163,14 @@ export async function runNERVTool(request: RunNERVToolRequest) {
   return res.data
 }
 
+export async function runNERVLabAction(request: NERVLabActionRequest) {
+  const res = await api.post<NERVLabActionResponse>(
+    '/api/nerv/lab/action',
+    request
+  )
+  return res.data
+}
+
 export async function getNERVProxyLogs(params?: {
   limit?: number
   target?: string
@@ -210,6 +222,28 @@ export async function stopNERVProxyProcess(request: {
   const res = await api.post<NERVProxyProcessMutationResponse>(
     '/api/nerv/proxy-process/stop',
     request
+  )
+  return res.data
+}
+
+export async function getNERVDirectProxyStatus() {
+  const res = await api.get<NERVDirectProxyStatusResponse>(
+    '/api/nerv/direct-proxy/status'
+  )
+  return res.data
+}
+
+export async function startNERVDirectProxy(request: { home?: string }) {
+  const res = await api.post<NERVDirectProxyMutationResponse>(
+    '/api/nerv/direct-proxy/start',
+    request
+  )
+  return res.data
+}
+
+export async function stopNERVDirectProxy() {
+  const res = await api.post<NERVDirectProxyMutationResponse>(
+    '/api/nerv/direct-proxy/stop'
   )
   return res.data
 }

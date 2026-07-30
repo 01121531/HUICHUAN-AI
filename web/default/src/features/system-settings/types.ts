@@ -321,6 +321,38 @@ export type RunNERVToolResponse = {
   data?: NERVToolRunResult
 }
 
+export type NERVLabActionName =
+  | 'tools-check'
+  | 'tools-install'
+  | 'kali-wsl'
+  | 'kali-ssh'
+  | 'ssh-test'
+
+export type NERVLabActionRequest = {
+  action: NERVLabActionName
+  backend?: NERVToolBackend
+  timeout_seconds?: number
+}
+
+export type NERVLabActionResult = {
+  action: NERVLabActionName
+  backend: NERVToolBackend
+  command: string
+  exit_code: number
+  stdout: string
+  stderr: string
+  timed_out: boolean
+  duration_ms: number
+  output_bytes: number
+  message: string
+}
+
+export type NERVLabActionResponse = {
+  success: boolean
+  message: string
+  data?: NERVLabActionResult
+}
+
 export type NERVProxyEvent = {
   ts: number
   request_id: string
@@ -424,6 +456,42 @@ export type NERVProxyProcessMutationResponse = {
   success: boolean
   message: string
   data?: NERVProxyProcessResult
+}
+
+export type NERVDirectProxyStatus = {
+  running: boolean
+  pid: number
+  asset_path: string
+  script_path: string
+  codex_home: string
+  pid_path: string
+  log_path: string
+  listen_url: string
+  listen_open: boolean
+  started_at: number
+  message: string
+  log_tail: string
+  python_command: string
+  candidates: string[]
+}
+
+export type NERVDirectProxyResult = {
+  action: 'start' | 'stop'
+  changed: boolean
+  message: string
+  status: NERVDirectProxyStatus
+}
+
+export type NERVDirectProxyStatusResponse = {
+  success: boolean
+  message: string
+  data?: NERVDirectProxyStatus
+}
+
+export type NERVDirectProxyMutationResponse = {
+  success: boolean
+  message: string
+  data?: NERVDirectProxyResult
 }
 
 export type DatasetCaptureModelMode = 'all' | 'selected'

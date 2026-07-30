@@ -40,14 +40,21 @@ import { Textarea } from '@/components/ui/textarea'
 
 import {
   clearNERVProxyLogs,
+  getNERVDirectProxyStatus,
   getNERVProxyLogs,
   getNERVSelfCheck,
   getNERVTools,
   getNERVVerifySmoke,
+  runNERVLabAction,
   runNERVTool,
+  startNERVDirectProxy,
+  stopNERVDirectProxy,
 } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import type {
+  NERVDirectProxyStatus,
+  NERVLabActionName,
+  NERVLabActionResult,
   NERVMemoryKernel,
   NERVProxyEvent,
   NERVSelfCheckData,
@@ -936,6 +943,25 @@ function buildToolOutput(result: NERVToolRunResult) {
   ].join('\n')
 }
 
+function buildLabActionOutput(result: NERVLabActionResult) {
+  return [
+    `动作：${result.action}`,
+    `后端：${result.backend}`,
+    `退出码：${result.exit_code}`,
+    `耗时：${result.duration_ms} ms`,
+    `超时：${result.timed_out ? '是' : '否'}`,
+    '',
+    '--- 命令 ---',
+    result.command || '（向导动作，无需直接执行）',
+    '',
+    '--- 标准输出 ---',
+    result.stdout || '（空）',
+    '',
+    '--- 错误输出 ---',
+    result.stderr || '（空）',
+  ].join('\n')
+}
+
 function ToolExecutionPanel({
   defaultBackend,
 }: {
@@ -1160,6 +1186,288 @@ function ToolExecutionPanel({
   )
 }
 
+function DirectSetupProxyCard() {
+  const [home, setHome] = useState('')
+  const normalizedHome = home.trim()
+  const statusQuery = useQuery({
+    queryKey: ['nerv-direct-proxy-status'],
+    queryFn: getNERVDirectProxyStatus,
+    staleTime: 10 * 1000,
+  })
+  const startMutation = useMutation({
+    mutationFn: () =>
+      startNERVDirectProxy({ home: normalizedHome || undefined }),
+    onSuccess: () => {
+      void statusQuery.refetch()
+    },
+  })
+  const stopMutation = useMutation({
+    mutationFn: stopNERVDirectProxy,
+    onSuccess: () => {
+      void statusQuery.refetch()
+    },
+  })
+
+  const status = statusQuery.data?.success ? statusQuery.data.data : undefined
+  const mutationError =
+    startMutation.data?.success === false || stopMutation.data?.success === false
+  const mutationMessage =
+    startMutation.data?.message || stopMutation.data?.message || ''
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <CardTitle>直连代理按钮</CardTitle>
+            <CardDescription>
+              对应原项目 direct_setup.py proxy。它使用 8080 端口，和外置代理不能同时运行。
+            </CardDescription>
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={statusQuery.isFetching}
+            onClick={() => {
+              void statusQuery.refetch()
+            }}
+          >
+            {statusQuery.isFetching ? '刷新中...' : '刷新状态'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='grid gap-3 lg:grid-cols-[1fr_auto]'>
+          <Input
+            value={home}
+            onChange={(event) => setHome(event.target.value)}
+            placeholder='可选：Codex Home 路径，不填则自动查找'
+          />
+          <div className='flex flex-wrap gap-2'>
+            <Button
+              type='button'
+              size='sm'
+              disabled={startMutation.isPending || status?.running}
+              onClick={() => startMutation.mutate()}
+            >
+              {startMutation.isPending ? '启动中...' : '启动直连代理'}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={stopMutation.isPending || !status?.pid}
+              onClick={() => stopMutation.mutate()}
+            >
+              {stopMutation.isPending ? '停止中...' : '停止直连代理'}
+            </Button>
+          </div>
+        </div>
+
+        {mutationError ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            操作失败：{mutationMessage || '请检查 8080 端口是否已被占用'}
+          </div>
+        ) : null}
+
+        {status ? <DirectProxyStatusView status={status} /> : null}
+      </CardContent>
+    </Card>
+  )
+}
+
+function DirectProxyStatusView({ status }: { status: NERVDirectProxyStatus }) {
+  return (
+    <div className='space-y-3 rounded-md border bg-muted/10 p-3 text-sm'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <Badge variant={status.running ? 'secondary' : 'outline'}>
+          {status.running ? '运行中' : '未运行'}
+        </Badge>
+        <Badge variant={status.listen_open ? 'outline' : 'secondary'}>
+          8080 {status.listen_open ? '已打开' : '未打开'}
+        </Badge>
+        <span className='text-muted-foreground'>{status.message}</span>
+      </div>
+      <div className='grid gap-2 md:grid-cols-2'>
+        <div className='rounded bg-background px-3 py-2'>
+          <div className='text-xs text-muted-foreground'>访问地址</div>
+          <div className='break-all font-mono text-xs'>{status.listen_url}</div>
+        </div>
+        <div className='rounded bg-background px-3 py-2'>
+          <div className='text-xs text-muted-foreground'>脚本路径</div>
+          <div className='break-all font-mono text-xs'>{status.script_path}</div>
+        </div>
+        <div className='rounded bg-background px-3 py-2'>
+          <div className='text-xs text-muted-foreground'>进程编号</div>
+          <div className='font-mono text-xs'>{status.pid || '暂无'}</div>
+        </div>
+        <div className='rounded bg-background px-3 py-2'>
+          <div className='text-xs text-muted-foreground'>启动时间</div>
+          <div className='text-xs'>{formatTime(status.started_at)}</div>
+        </div>
+      </div>
+      {status.log_tail ? (
+        <Textarea
+          readOnly
+          className='min-h-32 font-mono text-xs'
+          value={status.log_tail}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+const labActionButtons: {
+  action: NERVLabActionName
+  label: string
+  description: string
+}[] = [
+  {
+    action: 'tools-check',
+    label: '检查工具',
+    description: '对应 scripts/lab.bat tools-check。',
+  },
+  {
+    action: 'tools-install',
+    label: '安装 Python 工具',
+    description: '对应 scripts/lab.bat tools-install。',
+  },
+  {
+    action: 'kali-wsl',
+    label: 'WSL/Kali 向导',
+    description: '生成原 Kali WSL 安装命令。',
+  },
+  {
+    action: 'kali-ssh',
+    label: '远程主机向导',
+    description: '生成远程 Kali 主机配置命令。',
+  },
+  {
+    action: 'ssh-test',
+    label: '测试远程主机',
+    description: '使用已配置的远程主机做连通测试。',
+  },
+]
+
+function LabScriptActionPanel({
+  defaultBackend,
+}: {
+  defaultBackend: NERVToolBackend
+}) {
+  const [backend, setBackend] = useState<NERVToolBackend>(defaultBackend)
+  const [timeoutSeconds, setTimeoutSeconds] = useState('60')
+  const [lastResult, setLastResult] = useState<NERVLabActionResult | null>(null)
+  const mutation = useMutation({
+    mutationFn: runNERVLabAction,
+    onSuccess: (response) => {
+      if (response.success && response.data) {
+        setLastResult(response.data)
+      }
+    },
+  })
+
+  const runAction = (action: NERVLabActionName) => {
+    const parsedTimeout = Number.parseInt(timeoutSeconds, 10)
+    mutation.mutate({
+      action,
+      backend,
+      timeout_seconds: Number.isFinite(parsedTimeout) ? parsedTimeout : 60,
+    })
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>原脚本按钮化</CardTitle>
+        <CardDescription>
+          对应原项目 scripts/lab.bat 和 kali_setup.bat。当前服务器不使用容器，容器项只保留兼容显示。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        <div className='grid gap-4 md:grid-cols-2'>
+          <div className='space-y-2'>
+            <div className='text-sm font-medium'>执行后端</div>
+            <NativeSelect
+              value={backend}
+              onChange={(event) =>
+                setBackend(event.target.value as NERVToolBackend)
+              }
+            >
+              <NativeSelectOption value='auto'>自动选择</NativeSelectOption>
+              <NativeSelectOption value='local'>本机工具</NativeSelectOption>
+              <NativeSelectOption value='wsl'>WSL 工具</NativeSelectOption>
+              <NativeSelectOption value='ssh'>远程主机</NativeSelectOption>
+              <NativeSelectOption value='docker'>
+                容器兼容项（当前不用）
+              </NativeSelectOption>
+            </NativeSelect>
+          </div>
+          <div className='space-y-2'>
+            <div className='text-sm font-medium'>超时秒数</div>
+            <Input
+              value={timeoutSeconds}
+              inputMode='numeric'
+              onChange={(event) => setTimeoutSeconds(event.target.value)}
+              placeholder='60'
+            />
+          </div>
+        </div>
+
+        <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
+          {labActionButtons.map((item) => (
+            <button
+              key={item.action}
+              type='button'
+              className='rounded-md border bg-muted/10 p-3 text-left transition hover:bg-muted/30 disabled:cursor-not-allowed disabled:opacity-60'
+              disabled={mutation.isPending}
+              onClick={() => runAction(item.action)}
+            >
+              <div className='font-medium'>
+                {mutation.isPending ? '执行中...' : item.label}
+              </div>
+              <div className='mt-1 text-xs text-muted-foreground'>
+                {item.description}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {mutation.data?.success === false ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            执行失败：{mutation.data.message || '请检查后端环境'}
+          </div>
+        ) : null}
+
+        {lastResult ? (
+          <div className='space-y-2 rounded-md border p-3'>
+            <div className='flex flex-wrap items-center justify-between gap-2'>
+              <div>
+                <div className='text-sm font-semibold'>
+                  {lastResult.message || '执行结果'}
+                </div>
+                <div className='text-xs text-muted-foreground'>
+                  {lastResult.action} · {lastResult.backend}
+                </div>
+              </div>
+              <CopyButton
+                value={buildLabActionOutput(lastResult)}
+                tooltip='复制结果'
+                successTooltip='已复制结果'
+              />
+            </div>
+            <Textarea
+              readOnly
+              className='min-h-64 font-mono text-xs'
+              value={buildLabActionOutput(lastResult)}
+            />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 export function NERVLabToolsSection({
   defaultValues,
 }: NERVLabToolsSectionProps) {
@@ -1228,10 +1536,11 @@ export function NERVLabToolsSection({
       </Alert>
 
       <Tabs defaultValue='overview' className='mt-4'>
-        <TabsList className='grid w-full grid-cols-4'>
+        <TabsList className='grid w-full grid-cols-5'>
           <TabsTrigger value='overview'>总览</TabsTrigger>
           <TabsTrigger value='tools'>工具目录</TabsTrigger>
           <TabsTrigger value='skills'>技能目录</TabsTrigger>
+          <TabsTrigger value='script-actions'>脚本按钮</TabsTrigger>
           <TabsTrigger value='commands'>快捷命令</TabsTrigger>
         </TabsList>
 
@@ -1253,6 +1562,7 @@ export function NERVLabToolsSection({
             sshHost={sshHost}
           />
           <NERVProxyProcessCard />
+          <DirectSetupProxyCard />
 
           <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
             <OverviewCard
@@ -1329,6 +1639,11 @@ export function NERVLabToolsSection({
           {skillGroups.map(([group, skills]) => (
             <SkillGroupCard key={group} group={group} skills={skills} />
           ))}
+        </TabsContent>
+
+        <TabsContent value='script-actions' className='mt-4 space-y-4'>
+          <LabScriptActionPanel defaultBackend={backend} />
+          <DirectSetupProxyCard />
         </TabsContent>
 
         <TabsContent value='commands' className='mt-4 space-y-4'>

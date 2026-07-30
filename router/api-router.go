@@ -353,6 +353,7 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/tamper-rules", controller.GetNERVTamperRules)
 			nervRoute.GET("/tools", controller.GetNERVTools)
 			nervRoute.POST("/tools/run", controller.RunNERVTool)
+			nervRoute.POST("/lab/action", controller.RunNERVLabAction)
 			nervRoute.GET("/codex-config/status", controller.GetNERVCodexConfigStatus)
 			nervRoute.POST("/codex-config/apply", controller.ApplyNERVCodexConfig)
 			nervRoute.POST("/codex-config/remove", controller.RemoveNERVCodexConfig)
@@ -366,6 +367,9 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/proxy-process/dashboard", controller.GetNERVProxyDashboard)
 			nervRoute.POST("/proxy-process/start", controller.StartNERVProxyProcess)
 			nervRoute.POST("/proxy-process/stop", controller.StopNERVProxyProcess)
+			nervRoute.GET("/direct-proxy/status", controller.GetNERVDirectProxyStatus)
+			nervRoute.POST("/direct-proxy/start", controller.StartNERVDirectProxy)
+			nervRoute.POST("/direct-proxy/stop", controller.StopNERVDirectProxy)
 			nervRoute.POST("/mcp", controller.HandleNERVMCP)
 		}
 
