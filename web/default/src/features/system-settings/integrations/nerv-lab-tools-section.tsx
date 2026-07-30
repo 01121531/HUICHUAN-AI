@@ -1349,6 +1349,11 @@ const labActionButtons: {
     description: '生成原 Kali WSL 安装命令。',
   },
   {
+    action: 'kali-docker',
+    label: '容器兼容说明',
+    description: '只展示原 Docker 菜单命令，不在服务器执行。',
+  },
+  {
     action: 'kali-ssh',
     label: '远程主机向导',
     description: '生成远程 Kali 主机配置命令。',

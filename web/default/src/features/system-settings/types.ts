@@ -363,6 +363,7 @@ export type NERVLabActionName =
   | 'tools-check'
   | 'tools-install'
   | 'kali-wsl'
+  | 'kali-docker'
   | 'kali-ssh'
   | 'ssh-test'
 

@@ -59,6 +59,8 @@ func RunNERVLabAction(c *gin.Context) {
 		result = runNERVToolsInstallAction(backend, timeout)
 	case "kali-wsl":
 		result = buildNERVGuideAction(action, backend, buildNERVKaliWSLGuide())
+	case "kali-docker":
+		result = buildNERVGuideAction(action, backend, buildNERVKaliDockerGuide())
 	case "kali-ssh":
 		result = buildNERVGuideAction(action, backend, buildNERVKaliSSHGuide())
 	case "ssh-test":
@@ -189,6 +191,21 @@ func buildNERVKaliWSLGuide() string {
 		"",
 		"然后回到 Codex 配置里使用：",
 		"python mcp_server.py --wsl --wsl-distro kali-linux",
+	}, "\n")
+}
+
+func buildNERVKaliDockerGuide() string {
+	return strings.Join([]string{
+		"当前服务器部署按你的要求不使用 Docker。",
+		"这里仅保留原项目 Docker/Kali 菜单的兼容说明，不会自动执行。",
+		"",
+		"原项目对应命令：",
+		"docker pull kalilinux/kali-rolling",
+		"docker run -d --name kali-tools kalilinux/kali-rolling sleep infinity",
+		"docker exec kali-tools apt update",
+		"docker exec kali-tools apt install -y kali-linux-headless",
+		"",
+		"如果以后只在独立测试机使用容器工具后端，可在 NERV 连接设置中选择容器兼容项。",
 	}, "\n")
 }
 
