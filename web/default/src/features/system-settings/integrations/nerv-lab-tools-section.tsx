@@ -1196,21 +1196,24 @@ export function NERVLabToolsSection({
   const selfCheckError =
     selfCheckQuery.isError || selfCheckQuery.data?.success === false
   const backend = defaultValues['nerv_setting.mcp_backend'] ?? 'auto'
+  const wslDistro = defaultValues['nerv_setting.wsl_distro']
+  const dockerContainer = defaultValues['nerv_setting.docker_container']
+  const sshHost = defaultValues['nerv_setting.ssh_host']
   const runtimeAssetPath = selfCheckData?.assets.exists
     ? selfCheckData.assets.base_path
     : bundledNERVAssetPath
   const mcpConfigSnippet = buildMCPConfigSnippet({
     assetPath: runtimeAssetPath,
     backend,
-    wslDistro: defaultValues['nerv_setting.wsl_distro'],
-    dockerContainer: defaultValues['nerv_setting.docker_container'],
-    sshHost: defaultValues['nerv_setting.ssh_host'],
+    wslDistro,
+    dockerContainer,
+    sshHost,
   })
   const mcpCommands = [
     'python mcp_server.py',
     'python mcp_server.py --auto',
-    `python mcp_server.py --wsl --wsl-distro ${defaultValues['nerv_setting.wsl_distro'] || 'kali-linux'}`,
-    `python mcp_server.py --kali ${defaultValues['nerv_setting.ssh_host'] || 'root@192.168.1.100'}`,
+    `python mcp_server.py --wsl --wsl-distro ${wslDistro || 'kali-linux'}`,
+    `python mcp_server.py --kali ${sshHost || 'root@192.168.1.100'}`,
     'python mcp_server.py --port 9000',
   ]
 
@@ -1243,7 +1246,12 @@ export function NERVLabToolsSection({
               void selfCheckQuery.refetch()
             }}
           />
-          <NERVCodexConfigCard />
+          <NERVCodexConfigCard
+            mcpBackend={backend}
+            wslDistro={wslDistro}
+            dockerContainer={dockerContainer}
+            sshHost={sshHost}
+          />
           <NERVProxyProcessCard />
 
           <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>

@@ -182,13 +182,18 @@ export type NERVCodexConfigStatus = {
   asset_exists: boolean
   asset_bridge_exists: boolean
   asset_skills_exists: boolean
+  asset_mcp_server_exists: boolean
+  mcp_server_script_path: string
+  mcp_active: boolean
+  mcp_backup_exists: boolean
+  mcp_config_raw?: string
   candidates: string[]
   message: string
   model_instructions_raw?: string
 }
 
 export type NERVCodexConfigResult = {
-  action: 'apply' | 'remove'
+  action: 'apply' | 'remove' | 'apply_mcp' | 'remove_mcp'
   changed: boolean
   backup_path?: string
   messages: string[]

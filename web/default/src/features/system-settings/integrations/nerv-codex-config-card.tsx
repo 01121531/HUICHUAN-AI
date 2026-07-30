@@ -32,12 +32,26 @@ import { Input } from '@/components/ui/input'
 
 import {
   applyNERVCodexConfig,
+  applyNERVMCPConfig,
   getNERVCodexConfigStatus,
   removeNERVCodexConfig,
+  removeNERVMCPConfig,
 } from '../api'
-import type { NERVCodexConfigStatus } from '../types'
+import type { NERVCodexConfigStatus, NERVToolBackend } from '../types'
 
-export function NERVCodexConfigCard() {
+type NERVCodexConfigCardProps = {
+  mcpBackend?: NERVToolBackend
+  wslDistro?: string
+  dockerContainer?: string
+  sshHost?: string
+}
+
+export function NERVCodexConfigCard({
+  mcpBackend = 'auto',
+  wslDistro = '',
+  dockerContainer = '',
+  sshHost = '',
+}: NERVCodexConfigCardProps) {
   const [home, setHome] = useState('')
   const normalizedHome = home.trim()
   const statusQuery = useQuery({
@@ -57,13 +71,49 @@ export function NERVCodexConfigCard() {
       void statusQuery.refetch()
     },
   })
+  const applyMCPMutation = useMutation({
+    mutationFn: () =>
+      applyNERVMCPConfig({
+        home: normalizedHome || undefined,
+        backend: mcpBackend,
+        wsl_distro: wslDistro || undefined,
+        docker_container: dockerContainer || undefined,
+        ssh_host: sshHost || undefined,
+      }),
+    onSuccess: () => {
+      void statusQuery.refetch()
+    },
+  })
+  const removeMCPMutation = useMutation({
+    mutationFn: () => removeNERVMCPConfig({ home: normalizedHome || undefined }),
+    onSuccess: () => {
+      void statusQuery.refetch()
+    },
+  })
 
   const status = statusQuery.data?.success ? statusQuery.data.data : undefined
-  const actionData = applyMutation.data?.data ?? removeMutation.data?.data
+  const actionData =
+    applyMutation.data?.data ??
+    removeMutation.data?.data ??
+    applyMCPMutation.data?.data ??
+    removeMCPMutation.data?.data
   const actionFailed =
-    applyMutation.data?.success === false || removeMutation.data?.success === false
+    applyMutation.data?.success === false ||
+    removeMutation.data?.success === false ||
+    applyMCPMutation.data?.success === false ||
+    removeMCPMutation.data?.success === false
   const actionMessage =
-    applyMutation.data?.message || removeMutation.data?.message || ''
+    applyMutation.data?.message ||
+    removeMutation.data?.message ||
+    applyMCPMutation.data?.message ||
+    removeMCPMutation.data?.message ||
+    ''
+  const resetActionMessages = () => {
+    applyMutation.reset()
+    removeMutation.reset()
+    applyMCPMutation.reset()
+    removeMCPMutation.reset()
+  }
 
   return (
     <Card>
@@ -73,7 +123,7 @@ export function NERVCodexConfigCard() {
             <CardTitle>Codex 一键部署</CardTitle>
             <CardDescription>
               对应原项目 deploy.py / direct_setup.py：备份 config.toml，写入桥接文件配置，
-              复制 bridge.md 和 skills，并支持一键还原。
+              复制 bridge.md、skills，并可一键写入 MCP 工具服务器配置。
             </CardDescription>
           </div>
           <div className='flex flex-wrap gap-2'>
@@ -94,11 +144,11 @@ export function NERVCodexConfigCard() {
               size='sm'
               disabled={applyMutation.isPending}
               onClick={() => {
-                removeMutation.reset()
+                resetActionMessages()
                 applyMutation.mutate()
               }}
             >
-              {applyMutation.isPending ? '部署中...' : '一键部署'}
+              {applyMutation.isPending ? '部署中...' : '部署桥接'}
             </Button>
             <Button
               type='button'
@@ -106,11 +156,35 @@ export function NERVCodexConfigCard() {
               size='sm'
               disabled={removeMutation.isPending}
               onClick={() => {
-                applyMutation.reset()
+                resetActionMessages()
                 removeMutation.mutate()
               }}
             >
-              {removeMutation.isPending ? '还原中...' : '一键还原'}
+              {removeMutation.isPending ? '还原中...' : '还原桥接'}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={applyMCPMutation.isPending}
+              onClick={() => {
+                resetActionMessages()
+                applyMCPMutation.mutate()
+              }}
+            >
+              {applyMCPMutation.isPending ? '写入中...' : '写入 MCP'}
+            </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={removeMCPMutation.isPending}
+              onClick={() => {
+                resetActionMessages()
+                removeMCPMutation.mutate()
+              }}
+            >
+              {removeMCPMutation.isPending ? '还原中...' : '还原 MCP'}
             </Button>
           </div>
         </div>
@@ -140,7 +214,13 @@ export function NERVCodexConfigCard() {
         {actionData ? (
           <div className='rounded-md border bg-muted/10 p-3 text-sm'>
             <div className='font-medium'>
-              {actionData.action === 'apply' ? '部署结果' : '还原结果'}
+              {actionData.action === 'apply'
+                ? '桥接部署结果'
+                : actionData.action === 'remove'
+                  ? '桥接还原结果'
+                  : actionData.action === 'apply_mcp'
+                    ? 'MCP 写入结果'
+                    : 'MCP 还原结果'}
             </div>
             <div className='mt-2 flex flex-wrap gap-2'>
               {actionData.messages.map((message) => (
@@ -170,6 +250,9 @@ function CodexConfigStatusView({ status }: { status: NERVCodexConfigStatus }) {
     ['桥接文件', status.bridge_exists ? '存在' : '缺失', 'bridge.md'],
     ['技能目录', status.skills_exists ? `${status.skill_count} 个技能` : '缺失', 'skills/'],
     ['备份文件', status.backup_exists ? '存在' : '暂无', 'config.toml.lab-bak'],
+    ['MCP 配置', status.mcp_active ? '已写入' : '未写入', status.mcp_config_raw || '[mcp_servers.nerv_break]'],
+    ['MCP 备份', status.mcp_backup_exists ? '存在' : '暂无', 'config.toml.mcp-bak'],
+    ['MCP 脚本', status.asset_mcp_server_exists ? '可用' : '缺失', status.mcp_server_script_path || '暂无'],
     ['内置资产', status.asset_bridge_exists ? '可用' : '异常', status.asset_path || '暂无'],
   ] as const
 
@@ -179,6 +262,7 @@ function CodexConfigStatusView({ status }: { status: NERVCodexConfigStatus }) {
         <Badge variant={status.bridge_active ? 'secondary' : 'outline'}>
           {status.message}
         </Badge>
+        {status.mcp_active ? <Badge variant='secondary'>MCP 已写入</Badge> : null}
         {status.asset_skills_exists ? <Badge variant='outline'>内置 skills 可用</Badge> : null}
       </div>
       <div className='grid gap-2 md:grid-cols-2'>

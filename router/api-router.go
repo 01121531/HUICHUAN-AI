@@ -356,6 +356,8 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/codex-config/status", controller.GetNERVCodexConfigStatus)
 			nervRoute.POST("/codex-config/apply", controller.ApplyNERVCodexConfig)
 			nervRoute.POST("/codex-config/remove", controller.RemoveNERVCodexConfig)
+			nervRoute.POST("/codex-config/mcp/apply", controller.ApplyNERVMCPConfig)
+			nervRoute.POST("/codex-config/mcp/remove", controller.RemoveNERVMCPConfig)
 			nervRoute.GET("/proxy/logs", controller.GetNERVProxyLogs)
 			nervRoute.GET("/proxy/stats", controller.GetNERVProxyStats)
 			nervRoute.DELETE("/proxy/logs", controller.ClearNERVProxyLogs)

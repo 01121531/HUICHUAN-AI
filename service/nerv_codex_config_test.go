@@ -89,6 +89,88 @@ model_instructions_file = "./bridge.md"
 	}
 }
 
+func TestApplyAndRemoveNERVMCPConfig(t *testing.T) {
+	home, assetPath := newNERVCodexConfigFixture(t, `model = "gpt-5"
+model_instructions_file = "./bridge.md"
+
+[mcp_servers.other]
+command = "node"
+args = ["server.js"]
+`)
+
+	result, err := ApplyNERVMCPConfig(home, assetPath, NERVMCPConfigOptions{
+		Backend:   "ssh",
+		SSHHost:   "root@kali",
+		WSLDistro: "kali-linux",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || !result.Status.MCPActive || !result.Status.MCPBackupExists {
+		t.Fatalf("unexpected apply result: %+v", result)
+	}
+	config := readTestFile(t, filepath.Join(home, "config.toml"))
+	for _, want := range []string{
+		"[mcp_servers.nerv_break]",
+		`command = "python"`,
+		`"--kali", "root@kali"`,
+		`model_instructions_file = "./bridge.md"`,
+		"[mcp_servers.other]",
+	} {
+		if !strings.Contains(config, want) {
+			t.Fatalf("config missing %q: %s", want, config)
+		}
+	}
+
+	removeResult, err := RemoveNERVMCPConfig(home, assetPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removeResult.Changed || removeResult.Status.MCPActive {
+		t.Fatalf("unexpected remove result: %+v", removeResult)
+	}
+	removed := readTestFile(t, filepath.Join(home, "config.toml"))
+	if strings.Contains(removed, "nerv_break") || strings.Contains(removed, nervCodexMCPManagedComment) {
+		t.Fatalf("mcp block not removed: %s", removed)
+	}
+	for _, want := range []string{
+		`model_instructions_file = "./bridge.md"`,
+		"[mcp_servers.other]",
+	} {
+		if !strings.Contains(removed, want) {
+			t.Fatalf("config should preserve %q: %s", want, removed)
+		}
+	}
+}
+
+func TestApplyNERVMCPConfigReplacesExistingBlock(t *testing.T) {
+	home, assetPath := newNERVCodexConfigFixture(t, `model = "gpt-5"
+
+[mcp_servers.nerv_break]
+command = "python"
+args = ["old.py"]
+startup_timeout_sec = 5
+
+[mcp_servers.keep]
+command = "node"
+`)
+
+	_, err := ApplyNERVMCPConfig(home, assetPath, NERVMCPConfigOptions{Backend: "docker", DockerContainer: "kali"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := readTestFile(t, filepath.Join(home, "config.toml"))
+	if strings.Contains(config, "old.py") {
+		t.Fatalf("old mcp block not replaced: %s", config)
+	}
+	if count := strings.Count(config, "[mcp_servers.nerv_break]"); count != 1 {
+		t.Fatalf("expected exactly one mcp block, got %d: %s", count, config)
+	}
+	if !strings.Contains(config, `--docker", "kali`) || !strings.Contains(config, "[mcp_servers.keep]") {
+		t.Fatalf("new mcp block or preserved block missing: %s", config)
+	}
+}
+
 func newNERVCodexConfigFixture(t *testing.T, config string) (string, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -107,6 +189,9 @@ func newNERVCodexConfigFixture(t *testing.T, config string) (string, string) {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(assetPath, "skills", "demo", "SKILL.md"), []byte("skill"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetPath, "mcp_server.py"), []byte("print('mcp')"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	return home, assetPath

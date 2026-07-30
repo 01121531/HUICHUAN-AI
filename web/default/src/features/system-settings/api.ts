@@ -97,6 +97,28 @@ export async function removeNERVCodexConfig(request: { home?: string }) {
   return res.data
 }
 
+export async function applyNERVMCPConfig(request: {
+  home?: string
+  backend?: string
+  wsl_distro?: string
+  docker_container?: string
+  ssh_host?: string
+}) {
+  const res = await api.post<NERVCodexConfigMutationResponse>(
+    '/api/nerv/codex-config/mcp/apply',
+    request
+  )
+  return res.data
+}
+
+export async function removeNERVMCPConfig(request: { home?: string }) {
+  const res = await api.post<NERVCodexConfigMutationResponse>(
+    '/api/nerv/codex-config/mcp/remove',
+    request
+  )
+  return res.data
+}
+
 export async function getNERVBridgePrompt() {
   const res = await api.get<NERVBridgePromptResponse>(
     '/api/nerv/bridge-prompt'
