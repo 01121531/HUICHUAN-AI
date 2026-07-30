@@ -31,6 +31,7 @@ import type {
   NERVBridgePromptResponse,
   NERVCodexConfigMutationResponse,
   NERVCodexConfigResponse,
+  NERVCodexVerifyResponse,
   NERVProxyLogsResponse,
   NERVProxyProcessMutationResponse,
   NERVProxyProcessStatusResponse,
@@ -114,6 +115,17 @@ export async function applyNERVMCPConfig(request: {
 export async function removeNERVMCPConfig(request: { home?: string }) {
   const res = await api.post<NERVCodexConfigMutationResponse>(
     '/api/nerv/codex-config/mcp/remove',
+    request
+  )
+  return res.data
+}
+
+export async function runNERVCodexVerify(request: {
+  home?: string
+  timeout_seconds?: number
+}) {
+  const res = await api.post<NERVCodexVerifyResponse>(
+    '/api/nerv/codex-config/verify/run',
     request
   )
   return res.data

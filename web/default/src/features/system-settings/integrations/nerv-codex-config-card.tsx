@@ -36,8 +36,10 @@ import {
   getNERVCodexConfigStatus,
   removeNERVCodexConfig,
   removeNERVMCPConfig,
+  runNERVCodexVerify,
 } from '../api'
 import type { NERVCodexConfigStatus, NERVToolBackend } from '../types'
+import { Textarea } from '@/components/ui/textarea'
 
 type NERVCodexConfigCardProps = {
   mcpBackend?: NERVToolBackend
@@ -90,6 +92,13 @@ export function NERVCodexConfigCard({
       void statusQuery.refetch()
     },
   })
+  const verifyMutation = useMutation({
+    mutationFn: () =>
+      runNERVCodexVerify({
+        home: normalizedHome || undefined,
+        timeout_seconds: 60,
+      }),
+  })
 
   const status = statusQuery.data?.success ? statusQuery.data.data : undefined
   const actionData =
@@ -113,6 +122,7 @@ export function NERVCodexConfigCard({
     removeMutation.reset()
     applyMCPMutation.reset()
     removeMCPMutation.reset()
+    verifyMutation.reset()
   }
 
   return (
@@ -186,6 +196,18 @@ export function NERVCodexConfigCard({
             >
               {removeMCPMutation.isPending ? '还原中...' : '还原 MCP'}
             </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={verifyMutation.isPending}
+              onClick={() => {
+                resetActionMessages()
+                verifyMutation.mutate()
+              }}
+            >
+              {verifyMutation.isPending ? '验证中...' : '运行验证'}
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -237,8 +259,83 @@ export function NERVCodexConfigCard({
             操作失败：{actionMessage || '请检查 Codex Home 和服务器权限'}
           </div>
         ) : null}
+
+        {verifyMutation.data ? (
+          <CodexVerifyResultView
+            success={verifyMutation.data.success}
+            message={verifyMutation.data.message}
+            result={verifyMutation.data.data}
+          />
+        ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+function CodexVerifyResultView({
+  success,
+  message,
+  result,
+}: {
+  success: boolean
+  message: string
+  result?: {
+    ok: boolean
+    message: string
+    checks: Array<{ key: string; ok: boolean; level: string; message: string }>
+    output: string
+    duration_ms: number
+    codex_cli_available: boolean
+    bridge_verified: boolean
+    skills_verified: boolean
+    smoke_ok: boolean
+  }
+}) {
+  if (!success || !result) {
+    return (
+      <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+        验证失败：{message || 'verify.py 未能运行'}
+      </div>
+    )
+  }
+
+  return (
+    <div className='space-y-3 rounded-md border bg-muted/10 p-3 text-sm'>
+      <div className='flex flex-wrap items-center gap-2'>
+        <span className='font-medium'>原 verify.py 验证结果</span>
+        <Badge variant={result.ok ? 'secondary' : 'outline'}>
+          {result.message}
+        </Badge>
+        <Badge variant='outline'>耗时 {result.duration_ms} ms</Badge>
+      </div>
+      <div className='grid gap-2 md:grid-cols-4'>
+        {[
+          ['桥接', result.bridge_verified],
+          ['技能', result.skills_verified],
+          ['Codex CLI', result.codex_cli_available],
+          ['写入测试', result.smoke_ok],
+        ].map(([label, ok]) => (
+          <div key={String(label)} className='rounded border bg-background/40 px-3 py-2'>
+            <div className='text-xs text-muted-foreground'>{label}</div>
+            <div className='font-medium'>{ok ? '通过' : '未通过'}</div>
+          </div>
+        ))}
+      </div>
+      {result.checks.length > 0 ? (
+        <div className='flex flex-wrap gap-2'>
+          {result.checks.map((check) => (
+            <Badge key={check.key} variant={check.ok ? 'secondary' : 'outline'}>
+              {check.level.toUpperCase()}：{check.message}
+            </Badge>
+          ))}
+        </div>
+      ) : null}
+      <Textarea
+        className='min-h-48 font-mono text-xs'
+        value={result.output || '暂无输出'}
+        readOnly
+      />
+    </div>
   )
 }
 

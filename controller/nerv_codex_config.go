@@ -14,6 +14,7 @@ type nervCodexConfigRequest struct {
 	WSLDistro       string `json:"wsl_distro"`
 	DockerContainer string `json:"docker_container"`
 	SSHHost         string `json:"ssh_host"`
+	TimeoutSeconds  int    `json:"timeout_seconds"`
 }
 
 func GetNERVCodexConfigStatus(c *gin.Context) {
@@ -76,6 +77,22 @@ func RemoveNERVMCPConfig(c *gin.Context) {
 	_ = c.ShouldBindJSON(&request)
 	basePath, _, _ := findNERVAssetBasePath()
 	result, err := service.RemoveNERVMCPConfig(strings.TrimSpace(request.Home), basePath)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func RunNERVCodexVerify(c *gin.Context) {
+	var request nervCodexConfigRequest
+	_ = c.ShouldBindJSON(&request)
+	basePath, exists, _ := findNERVAssetBasePath()
+	if !exists {
+		common.ApiErrorMsg(c, "NERV 内置资产目录未找到")
+		return
+	}
+	result, err := service.RunNERVCodexVerify(strings.TrimSpace(request.Home), basePath, request.TimeoutSeconds)
 	if err != nil {
 		common.ApiError(c, err)
 		return

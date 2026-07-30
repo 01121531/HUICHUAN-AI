@@ -212,6 +212,39 @@ export type NERVCodexConfigMutationResponse = {
   data?: NERVCodexConfigResult
 }
 
+export type NERVCodexVerifyCheck = {
+  key: string
+  ok: boolean
+  level: 'pass' | 'fail' | 'warn'
+  message: string
+}
+
+export type NERVCodexVerifyResult = {
+  ok: boolean
+  home: string
+  found: boolean
+  config_path: string
+  script_path: string
+  python_command: string
+  exit_code: number
+  timed_out: boolean
+  duration_ms: number
+  output: string
+  checks: NERVCodexVerifyCheck[]
+  candidates: string[]
+  bridge_verified: boolean
+  skills_verified: boolean
+  codex_cli_available: boolean
+  smoke_ok: boolean
+  message: string
+}
+
+export type NERVCodexVerifyResponse = {
+  success: boolean
+  message: string
+  data?: NERVCodexVerifyResult
+}
+
 export type NERVBridgePromptData = {
   path: string
   prompt: string
