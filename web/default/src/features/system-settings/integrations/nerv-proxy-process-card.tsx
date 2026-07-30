@@ -33,11 +33,12 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 
 import {
+  getNERVProxyDashboard,
   getNERVProxyProcessStatus,
   startNERVProxyProcess,
   stopNERVProxyProcess,
 } from '../api'
-import type { NERVProxyProcessStatus } from '../types'
+import type { NERVProxyDashboardSnapshot, NERVProxyProcessStatus } from '../types'
 
 export function NERVProxyProcessCard() {
   const [home, setHome] = useState('')
@@ -48,6 +49,11 @@ export function NERVProxyProcessCard() {
     queryKey: ['nerv-proxy-process-status'],
     queryFn: getNERVProxyProcessStatus,
     staleTime: 10 * 1000,
+  })
+  const dashboardQuery = useQuery({
+    queryKey: ['nerv-proxy-dashboard'],
+    queryFn: getNERVProxyDashboard,
+    enabled: false,
   })
   const startMutation = useMutation({
     mutationFn: () => startNERVProxyProcess({ home: normalizedHome || undefined }),
@@ -116,6 +122,17 @@ export function NERVProxyProcessCard() {
             >
               {stopMutation.isPending ? '停止中...' : '停止代理'}
             </Button>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              disabled={!status?.dashboard_open || dashboardQuery.isFetching}
+              onClick={() => {
+                void dashboardQuery.refetch()
+              }}
+            >
+              {dashboardQuery.isFetching ? '读取中...' : '读取面板'}
+            </Button>
           </div>
         </div>
       </CardHeader>
@@ -153,8 +170,67 @@ export function NERVProxyProcessCard() {
         ) : null}
 
         {status ? <ProxyProcessStatusView status={status} /> : null}
+        {dashboardQuery.data ? (
+          <ProxyDashboardPreview
+            success={dashboardQuery.data.success}
+            message={dashboardQuery.data.message}
+            snapshot={dashboardQuery.data.data}
+          />
+        ) : null}
       </CardContent>
     </Card>
+  )
+}
+
+function ProxyDashboardPreview({
+  success,
+  message,
+  snapshot,
+}: {
+  success: boolean
+  message: string
+  snapshot?: NERVProxyDashboardSnapshot
+}) {
+  if (!success || !snapshot) {
+    return (
+      <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+        面板读取失败：{message || '请确认代理面板已启动'}
+      </div>
+    )
+  }
+
+  if (!snapshot.available) {
+    return (
+      <div className='rounded-md border bg-muted/10 p-3 text-sm text-muted-foreground'>
+        {snapshot.message || 'NERV 8090 面板未打开'}
+      </div>
+    )
+  }
+
+  return (
+    <div className='space-y-3 rounded-md border bg-muted/10 p-3 text-sm'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div>
+          <div className='font-medium'>NERV 8090 原生面板</div>
+          <div className='break-all text-xs text-muted-foreground'>
+            {snapshot.message} · {snapshot.url}
+          </div>
+        </div>
+        <Badge variant='outline'>HTTP {snapshot.status_code || '未知'}</Badge>
+      </div>
+      {snapshot.html ? (
+        <iframe
+          title='NERV proxy dashboard'
+          className='h-[520px] w-full rounded-md border bg-background'
+          srcDoc={snapshot.html}
+          sandbox='allow-scripts allow-same-origin'
+        />
+      ) : (
+        <div className='rounded-md border bg-background p-3 text-muted-foreground'>
+          面板没有返回可预览内容。
+        </div>
+      )}
+    </div>
   )
 }
 

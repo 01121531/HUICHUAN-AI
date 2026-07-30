@@ -391,6 +391,16 @@ export type NERVProxyProcessStatus = {
   candidates: string[]
 }
 
+export type NERVProxyDashboardSnapshot = {
+  available: boolean
+  status_code: number
+  content_type: string
+  url: string
+  html: string
+  message: string
+  fetched_at: number
+}
+
 export type NERVProxyProcessResult = {
   action: 'start' | 'stop'
   changed: boolean
@@ -402,6 +412,12 @@ export type NERVProxyProcessStatusResponse = {
   success: boolean
   message: string
   data?: NERVProxyProcessStatus
+}
+
+export type NERVProxyDashboardResponse = {
+  success: boolean
+  message: string
+  data?: NERVProxyDashboardSnapshot
 }
 
 export type NERVProxyProcessMutationResponse = {

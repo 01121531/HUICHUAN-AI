@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,6 +49,16 @@ type NERVProxyProcessResult struct {
 	Changed bool                   `json:"changed"`
 	Message string                 `json:"message"`
 	Status  NERVProxyProcessStatus `json:"status"`
+}
+
+type NERVProxyDashboardSnapshot struct {
+	Available   bool   `json:"available"`
+	StatusCode  int    `json:"status_code"`
+	ContentType string `json:"content_type"`
+	URL         string `json:"url"`
+	HTML        string `json:"html"`
+	Message     string `json:"message"`
+	FetchedAt   int64  `json:"fetched_at"`
 }
 
 type nervProxyProcessState struct {
@@ -182,6 +194,42 @@ func StopNERVProxyProcess(assetPath string, restoreConfig bool) (NERVProxyProces
 	}
 	result.Status = NERVProxyProcessStatusFor(assetPath)
 	return result, nil
+}
+
+func NERVProxyDashboardSnapshotFor() (NERVProxyDashboardSnapshot, error) {
+	url := "http://" + nervProxyDashboardAddress + "/"
+	snapshot := NERVProxyDashboardSnapshot{
+		URL:       url,
+		Available: tcpOpen(nervProxyDashboardAddress),
+		FetchedAt: time.Now().Unix(),
+	}
+	if !snapshot.Available {
+		snapshot.Message = "NERV 8090 面板未打开"
+		return snapshot, nil
+	}
+
+	client := http.Client{Timeout: 3 * time.Second}
+	response, err := client.Get(url)
+	if err != nil {
+		snapshot.Message = "读取 NERV 8090 面板失败"
+		return snapshot, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(response.Body, 512*1024))
+	if err != nil {
+		snapshot.Message = "读取 NERV 8090 面板内容失败"
+		return snapshot, err
+	}
+	snapshot.StatusCode = response.StatusCode
+	snapshot.ContentType = response.Header.Get("Content-Type")
+	snapshot.HTML = string(body)
+	if response.StatusCode >= 200 && response.StatusCode < 300 {
+		snapshot.Message = "NERV 8090 面板读取成功"
+	} else {
+		snapshot.Message = fmt.Sprintf("NERV 8090 面板返回 HTTP %d", response.StatusCode)
+	}
+	return snapshot, nil
 }
 
 func RestoreNERVProxyAutoConfig(codexHome string) error {

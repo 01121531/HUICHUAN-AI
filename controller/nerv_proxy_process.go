@@ -49,3 +49,12 @@ func StopNERVProxyProcess(c *gin.Context) {
 	}
 	common.ApiSuccess(c, result)
 }
+
+func GetNERVProxyDashboard(c *gin.Context) {
+	snapshot, err := service.NERVProxyDashboardSnapshotFor()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, snapshot)
+}
