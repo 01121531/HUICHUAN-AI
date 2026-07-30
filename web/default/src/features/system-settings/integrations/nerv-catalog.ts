@@ -426,6 +426,75 @@ export const nervToolCategories = [
   }
 ] satisfies NERVToolCategory[]
 
+export const nervToolCategoryLabels = Object.fromEntries(
+  nervToolCategories.map((category) => [category.key, category.label])
+) as Record<string, string>
+
+export const nervToolDisplayNames = Object.fromEntries(
+  nervToolCategories.flatMap((category) =>
+    category.tools.map((tool) => [tool.name, tool.description])
+  )
+) as Record<string, string>
+
+export const nervToolParamLabels: Record<string, string> = {
+  class_name: '类名',
+  code: '代码',
+  command: '命令',
+  commands: '分析命令',
+  count: '数量',
+  exploit: '模块',
+  file: '文件',
+  filter: '过滤条件',
+  flags: '附加参数',
+  hashfile: '哈希文件',
+  host: '主机',
+  interface: '网卡',
+  key: '注册表键',
+  keyword: '关键词',
+  lhost: '本机地址',
+  lport: '本机端口',
+  mask: '掩码',
+  min_len: '最小长度',
+  output_dir: '输出目录',
+  passlist: '密码字典',
+  payload: '载荷',
+  plugin: '插件',
+  port: '端口',
+  ports: '端口范围',
+  project_dir: '项目目录',
+  properties: '属性',
+  script: '脚本',
+  service: '服务',
+  target: '目标',
+  url: '网址',
+  userlist: '用户字典',
+  wordlist: '字典文件',
+}
+
+export function getNERVToolCategoryLabel(category?: string) {
+  if (!category) return '未分类'
+  return nervToolCategoryLabels[category] ?? category
+}
+
+export function getNERVToolDisplayName(name?: string) {
+  if (!name) return '未选择工具'
+  return nervToolDisplayNames[name] ?? name
+}
+
+export function getNERVToolDescription(tool: {
+  name?: string
+  description?: string
+}) {
+  if (tool.name && nervToolDisplayNames[tool.name]) {
+    return nervToolDisplayNames[tool.name]
+  }
+  return tool.description || '暂无中文说明'
+}
+
+export function getNERVToolParamLabel(param: string) {
+  return nervToolParamLabels[param] ?? param
+}
+
 export const nervSkills = [
   {
     "id": "anti-debug",

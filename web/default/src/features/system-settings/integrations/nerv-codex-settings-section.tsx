@@ -679,7 +679,7 @@ export function NERVCodexSettingsSection({
                     >
                       {importBridgePrompt.isPending
                         ? '正在导入'
-                        : '导入原项目英文桥接文件'}
+                        : '导入原项目桥接原文'}
                     </Button>
                   </div>
                 </div>

@@ -139,11 +139,11 @@ export function NERVProxyProcessCard() {
       <CardContent className='space-y-4'>
         <div className='grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end'>
           <div className='space-y-2'>
-            <div className='text-sm font-medium'>Codex Home</div>
+              <div className='text-sm font-medium'>Codex 配置目录</div>
             <Input
               value={home}
               onChange={(event) => setHome(event.target.value)}
-              placeholder='留空自动查找；启动时会传给原 proxy_relay.py'
+              placeholder='留空自动查找；启动时会传给原外置代理脚本'
               autoComplete='off'
             />
           </div>
@@ -165,7 +165,7 @@ export function NERVProxyProcessCard() {
         ) : null}
         {actionFailed ? (
           <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
-            操作失败：{actionMessage || '请检查 Python、端口占用和 Codex Home'}
+            操作失败：{actionMessage || '请检查 Python 环境、端口占用和 Codex 配置目录'}
           </div>
         ) : null}
 
@@ -220,10 +220,10 @@ function ProxyDashboardPreview({
       </div>
       {snapshot.html ? (
         <iframe
-          title='NERV proxy dashboard'
+          title='NERV 代理面板'
           className='h-[520px] w-full rounded-md border bg-background'
           srcDoc={snapshot.html}
-          sandbox='allow-scripts allow-same-origin'
+          sandbox=''
         />
       ) : (
         <div className='rounded-md border bg-background p-3 text-muted-foreground'>
@@ -249,7 +249,7 @@ function ProxyProcessStatusView({
     ],
     ['Python', status.python_command || '未找到', status.script_path || '暂无'],
     ['日志文件', status.log_path ? '可读取' : '暂无', status.log_path || '暂无'],
-    ['Codex Home', status.codex_home || '自动查找', status.codex_home || '暂无'],
+    ['Codex 配置目录', status.codex_home || '自动查找', status.codex_home || '暂无'],
   ] as const
 
   return (

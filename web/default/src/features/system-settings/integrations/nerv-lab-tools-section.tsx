@@ -67,6 +67,10 @@ import type {
   NERVToolRunResult,
 } from '../types'
 import {
+  getNERVToolCategoryLabel,
+  getNERVToolDescription,
+  getNERVToolDisplayName,
+  getNERVToolParamLabel,
   nervSkillGroupOrder,
   nervSkills,
   nervToolCategories,
@@ -206,7 +210,7 @@ const workflowCommands = [
   {
     title: '代理模式',
     description: '自动注入、自动连接并提供本地代理与面板。',
-    commands: ['python proxy_relay.py', '重启 Codex 命令行（Codex CLI）后输入 zxwn'],
+    commands: ['python proxy_relay.py', '重启 Codex 命令行工具后输入 zxwn'],
   },
 ]
 
@@ -339,6 +343,62 @@ function assetKindBadgeVariant(kind: string) {
   if (kind === '图片') return 'outline' as const
   if (kind === '脚本') return 'secondary' as const
   return 'outline' as const
+}
+
+function describeNERVAssetPath(path: string) {
+  if (path === 'README.md') return '原项目说明'
+  if (path === 'README_EN.md') return '英文原版说明'
+  if (path === 'bridge.md') return '桥接提示词'
+  if (path === 'deploy.py') return '部署脚本'
+  if (path === 'verify.py') return '验证脚本'
+  if (path === 'proxy_relay.py') return '外置代理脚本'
+  if (path === 'direct_setup.py') return '直连配置脚本'
+  if (path === 'mcp_server.py') return '工具后端服务脚本'
+  if (path === 'requirements.txt') return 'Python 依赖清单'
+  if (path.startsWith('docs/')) return '文档资料'
+  if (path.startsWith('images/')) return '图片资产'
+  if (path.startsWith('scripts/')) return '快捷脚本'
+  if (path.startsWith('config/')) return '配置模板'
+  if (path.startsWith('skills/')) return '技能文件'
+  if (path.startsWith('tools/')) return '工具清单'
+  return '内置资产'
+}
+
+function explainNERVAssetPath(path: string) {
+  if (path === 'README.md') {
+    return '这是原项目说明的中文化入口。文件内保留少量英文链接、命令和日志示例，方便复制使用。'
+  }
+  if (path === 'README_EN.md') {
+    return '这是英文原文说明，已作为原始资料保留；日常配置建议优先查看中文说明和后台表单。'
+  }
+  if (path === 'bridge.md') {
+    return '这是桥接提示词原文。为保持验证兼容，里面的协议名、触发词和锁定标识会保留原文。'
+  }
+  if (path.endsWith('/SKILL.md') || path.startsWith('skills/')) {
+    return '这是原项目技能原文。上方“技能目录”已提供中文标题和中文摘要，原文仅用于兼容 Codex 技能识别。'
+  }
+  if (path === 'tools/tools.json' || path.startsWith('tools/')) {
+    return '这是原项目工具清单。后台工具页已优先显示中文名称、中文分类和中文参数说明，原始命令模板保持不翻译。'
+  }
+  if (path.startsWith('config/')) {
+    return '这是原项目配置模板。配置键名和代码片段必须保持原样，中文说明请看“快捷命令”和“NERV 连接设置”。'
+  }
+  if (path.startsWith('scripts/') || path.endsWith('.py') || path.endsWith('.bat')) {
+    return '这是原项目脚本文件。后台已经把常用脚本做成按钮；脚本内部命令、参数和日志原文会保留，避免影响执行。'
+  }
+  if (path.startsWith('docs/')) {
+    return '这是原项目文档资料。页面保留原文以便核对，中文化配置入口在上方各个设置卡片中。'
+  }
+  if (path.startsWith('images/')) {
+    return '这是原项目图片资产，保留原始文件用于完整兼容。'
+  }
+  return '这是随源码内置的原项目资产；技术标识、命令和文件名会按原样保留。'
+}
+
+function labActionLabel(action: NERVLabActionName) {
+  return (
+    labActionButtons.find((item) => item.action === action)?.label ?? action
+  )
 }
 
 function OverviewCard({
@@ -502,14 +562,14 @@ function SelfCheckCard({
                   key={item.name}
                   className='flex items-center justify-between gap-3 rounded-md border bg-muted/10 px-3 py-2 text-sm'
                 >
-                  <span className='min-w-0'>
-                    <span className='block truncate font-medium'>
-                      {item.name}
+                    <span className='min-w-0'>
+                      <span className='block truncate font-medium'>
+                        {getNERVToolDisplayName(item.name)}
+                      </span>
+                      <span className='font-mono text-xs text-muted-foreground'>
+                        {item.name} · {item.binary || getNERVToolCategoryLabel(item.category)}
+                      </span>
                     </span>
-                    <span className='font-mono text-xs text-muted-foreground'>
-                      {item.binary || item.category}
-                    </span>
-                  </span>
                   <Badge variant={item.available ? 'outline' : 'destructive'}>
                     {toolAvailabilityLabel(item)}
                   </Badge>
@@ -601,7 +661,7 @@ function ToolCategoryCard({ category }: { category: NERVToolCategory }) {
         <div className='flex flex-wrap items-center gap-2'>
           <CardTitle>{category.label}</CardTitle>
           <Badge variant='secondary'>{category.tools.length} 个工具</Badge>
-          <Badge variant='outline'>{category.key}</Badge>
+          <Badge variant='outline'>原分类：{category.key}</Badge>
         </div>
         <CardDescription>{category.description}</CardDescription>
       </CardHeader>
@@ -619,7 +679,7 @@ function ToolCategoryCard({ category }: { category: NERVToolCategory }) {
                 <div className='flex flex-wrap gap-1'>
                   {tool.params.map((param) => (
                     <Badge key={param} variant='outline'>
-                      {param}
+                      {getNERVToolParamLabel(param)} / {param}
                     </Badge>
                   ))}
                 </div>
@@ -661,7 +721,6 @@ function SkillGroupCard({
           <div key={skill.id} className='rounded-md border bg-muted/10 p-3'>
             <div className='flex flex-wrap items-center gap-2'>
               <div className='font-medium'>{skill.title}</div>
-              <Badge variant='outline'>{skill.id}</Badge>
             </div>
             <div className='mt-1 text-sm text-muted-foreground'>
               {skill.summary}
@@ -1030,7 +1089,7 @@ function ToolExecutionPanel({
           <div>
             <CardTitle>NERV 工具执行</CardTitle>
             <CardDescription>
-              只允许执行原项目工具目录里的命令模板；后台接口仅 Root 可用，并限制超时和输出长度。
+              只允许执行原项目工具目录里的命令模板；后台接口仅超级管理员可用，并限制超时和输出长度。
             </CardDescription>
           </div>
           <Button
@@ -1067,7 +1126,8 @@ function ToolExecutionPanel({
             >
               {tools.map((tool) => (
                 <NativeSelectOption key={tool.name} value={tool.name}>
-                  {tool.name}（{tool.category}）
+                  {getNERVToolDisplayName(tool.name)}（
+                  {getNERVToolCategoryLabel(tool.category)}｜{tool.name}）
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -1110,9 +1170,12 @@ function ToolExecutionPanel({
               <Badge variant={selectedTool.available ? 'outline' : 'secondary'}>
                 {selectedTool.available ? '本机可用' : '可能需后端环境'}
               </Badge>
-              <Badge variant='outline'>{selectedTool.category}</Badge>
+              <Badge variant='outline'>
+                {getNERVToolCategoryLabel(selectedTool.category)}
+              </Badge>
+              <Badge variant='outline'>工具标识：{selectedTool.name}</Badge>
               <span className='text-sm text-muted-foreground'>
-                {selectedTool.description}
+                {getNERVToolDescription(selectedTool)}
               </span>
             </div>
             <div className='flex items-center justify-between gap-3 rounded bg-background px-3 py-2 font-mono text-xs'>
@@ -1128,7 +1191,12 @@ function ToolExecutionPanel({
             <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
               {selectedTool.params.map((param) => (
                 <div key={param} className='space-y-1.5'>
-                  <div className='text-xs font-medium'>{param}</div>
+                  <div className='text-xs font-medium'>
+                    {getNERVToolParamLabel(param)}
+                    <span className='ml-1 font-mono text-muted-foreground'>
+                      {param}
+                    </span>
+                  </div>
                   <Input
                     value={args[param] ?? ''}
                     onChange={(event) =>
@@ -1462,7 +1530,8 @@ function LabScriptActionPanel({
                   {lastResult.message || '执行结果'}
                 </div>
                 <div className='text-xs text-muted-foreground'>
-                  {lastResult.action} · {lastResult.backend}
+                  {labActionLabel(lastResult.action)} ·{' '}
+                  {backendLabels[lastResult.backend] ?? lastResult.backend}
                 </div>
               </div>
               <CopyButton
@@ -1517,7 +1586,7 @@ function AssetBrowserPanel() {
           <div>
             <CardTitle>文档与资产浏览</CardTitle>
             <CardDescription>
-              对应原项目 README、docs、images、scripts、config、skills 和 tools 目录。
+              对应原项目说明文档、图片、脚本、配置、技能和工具目录；括号里的目录名保留原始技术值。
             </CardDescription>
           </div>
           <Button
@@ -1565,7 +1634,12 @@ function AssetBrowserPanel() {
                       disabled={!item.previewable}
                       onClick={() => setSelectedPath(item.path)}
                     >
-                      <div className='break-all font-mono'>{item.path}</div>
+                      <div className='break-all font-medium'>
+                        {describeNERVAssetPath(item.path)}
+                      </div>
+                      <div className='break-all font-mono text-[11px] text-muted-foreground'>
+                        {item.path}
+                      </div>
                       <div className='mt-0.5 text-muted-foreground'>
                         {formatBytes(item.size)} · {formatTime(item.modified_at)}
                         {!item.previewable ? ' · 不支持预览' : ''}
@@ -1627,12 +1701,21 @@ function AssetPreviewCard({
 
   const isImage =
     file.content_type.startsWith('image/') && file.content_base64
+  const note = explainNERVAssetPath(file.path)
 
   return (
     <div className='space-y-3 rounded-md border bg-muted/10 p-3'>
+      <Alert>
+        <AlertDescription>{note}</AlertDescription>
+      </Alert>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div>
-          <div className='break-all font-medium'>{file.path}</div>
+          <div className='break-all font-medium'>
+            {describeNERVAssetPath(file.path)}
+          </div>
+          <div className='break-all font-mono text-xs text-muted-foreground'>
+            {file.path}
+          </div>
           <div className='text-xs text-muted-foreground'>
             {file.kind} · {formatBytes(file.size)} · {file.content_type}
             {file.truncated ? ' · 已截断预览' : ''}

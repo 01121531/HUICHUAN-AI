@@ -48,6 +48,25 @@ type NERVCodexConfigCardProps = {
   sshHost?: string
 }
 
+function getNERVCodexActionTitle(action: NERVCodexConfigStatusAction) {
+  switch (action) {
+    case 'apply':
+      return '桥接部署结果'
+    case 'remove':
+      return '桥接还原结果'
+    case 'apply_mcp':
+      return 'MCP 写入结果'
+    case 'remove_mcp':
+      return 'MCP 还原结果'
+  }
+}
+
+type NERVCodexConfigStatusAction =
+  | 'apply'
+  | 'remove'
+  | 'apply_mcp'
+  | 'remove_mcp'
+
 export function NERVCodexConfigCard({
   mcpBackend = 'auto',
   wslDistro = '',
@@ -213,11 +232,11 @@ export function NERVCodexConfigCard({
       </CardHeader>
       <CardContent className='space-y-4'>
         <div className='space-y-2'>
-          <div className='text-sm font-medium'>Codex Home</div>
+          <div className='text-sm font-medium'>Codex 配置目录</div>
           <Input
             value={home}
             onChange={(event) => setHome(event.target.value)}
-            placeholder='留空自动查找 CODEX_HOME 或 ~/.codex'
+            placeholder='留空自动查找环境变量 CODEX_HOME 或默认目录 ~/.codex'
             autoComplete='off'
           />
           <div className='text-xs text-muted-foreground'>
@@ -236,13 +255,7 @@ export function NERVCodexConfigCard({
         {actionData ? (
           <div className='rounded-md border bg-muted/10 p-3 text-sm'>
             <div className='font-medium'>
-              {actionData.action === 'apply'
-                ? '桥接部署结果'
-                : actionData.action === 'remove'
-                  ? '桥接还原结果'
-                  : actionData.action === 'apply_mcp'
-                    ? 'MCP 写入结果'
-                    : 'MCP 还原结果'}
+              {getNERVCodexActionTitle(actionData.action)}
             </div>
             <div className='mt-2 flex flex-wrap gap-2'>
               {actionData.messages.map((message) => (
@@ -256,7 +269,7 @@ export function NERVCodexConfigCard({
 
         {actionFailed ? (
           <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
-            操作失败：{actionMessage || '请检查 Codex Home 和服务器权限'}
+            操作失败：{actionMessage || '请检查 Codex 配置目录和服务器权限'}
           </div>
         ) : null}
 
@@ -312,7 +325,7 @@ function CodexVerifyResultView({
         {[
           ['桥接', result.bridge_verified],
           ['技能', result.skills_verified],
-          ['Codex CLI', result.codex_cli_available],
+        ['Codex 命令行工具', result.codex_cli_available],
           ['写入测试', result.smoke_ok],
         ].map(([label, ok]) => (
           <div key={String(label)} className='rounded border bg-background/40 px-3 py-2'>
@@ -360,7 +373,7 @@ function CodexConfigStatusView({ status }: { status: NERVCodexConfigStatus }) {
           {status.message}
         </Badge>
         {status.mcp_active ? <Badge variant='secondary'>MCP 已写入</Badge> : null}
-        {status.asset_skills_exists ? <Badge variant='outline'>内置 skills 可用</Badge> : null}
+        {status.asset_skills_exists ? <Badge variant='outline'>内置技能可用</Badge> : null}
       </div>
       <div className='grid gap-2 md:grid-cols-2'>
         {rows.map(([label, value, detail]) => (

@@ -159,15 +159,15 @@ def spinner(frame):
 def startup_animation():
     """Boot sequence with loading bars."""
     print()
-    print("  NERV-BREAK-5.6  LOADING...")
+    print("  NERV-BREAK-5.6  正在加载...")
     print()
     steps = [
-        ("  Detecting Codex home...      ", 20),
-        ("  Reading relay config...       ", 40),
-        ("  Auto-configuring Codex...     ", 60),
-        ("  Injecting bridge.md...        ", 75),
-        ("  Deploying 27 skills...        ", 90),
-        ("  Starting MITM proxy...        ", 100),
+        ("  检测 Codex 配置目录...        ", 20),
+        ("  读取中转配置...              ", 40),
+        ("  自动配置 Codex...            ", 60),
+        ("  注入 bridge.md...            ", 75),
+        ("  部署技能目录...              ", 90),
+        ("  启动本地代理...              ", 100),
     ]
     for msg, final_pct in steps:
         for pct in range(0, final_pct + 1, 3):
@@ -178,20 +178,20 @@ def startup_animation():
             sys.stdout.flush()
         print()
     print()
-    print("  [ONLINE]  :{} -> {}".format(LISTEN[1], TARGET))
-    print("  [ONLINE]  rules:{}  web:{}".format(len(TAMPER_RULES), WEB_PORT))
+    print("  [在线]  :{} -> {}".format(LISTEN[1], TARGET))
+    print("  [在线]  规则:{}  面板:{}".format(len(TAMPER_RULES), WEB_PORT))
     print()
 
 def panel_header():
     mem = load_memory()
     print("\n" + "=" * 52)
     print("  NERV-BREAK-5.6  :{}  ->  {}".format(LISTEN[1], TARGET))
-    print("  mem:{}  rules:{}  tamper:ON".format(mem["stats"]["total"], len(TAMPER_RULES)))
+    print("  记忆:{}  规则:{}  篡改:开启".format(mem["stats"]["total"], len(TAMPER_RULES)))
     print("=" * 52)
 
 def panel_user(text):
     preview = text[:160].replace("\n", " | ")
-    print("\n  >>> USER [{}] {}".format(ts(), preview[:120]))
+    print("\n  >>> 用户 [{}] {}".format(ts(), preview[:120]))
 
 def panel_thinking(text):
     lines = [l.strip() for l in text[:300].split("\n") if l.strip()]
@@ -199,15 +199,15 @@ def panel_thinking(text):
         print("      [...] {}".format(line[:100]))
 
 def panel_assistant(text, tampered=False):
-    tag = " *** TAMPERED ***" if tampered else ""
+    tag = " *** 已篡改 ***" if tampered else ""
     preview = text[:200].replace("\n", " | ")
-    print("  <<< AI   [{}]{}\n      {}".format(ts(), tag, preview[:150]))
+    print("  <<< 助手 [{}]{}\n      {}".format(ts(), tag, preview[:150]))
 
 def panel_memory(category, user_msg):
-    print("      [MEMORY] {} learned".format(category))
+    print("      [记忆] 已学习：{}".format(category))
 
 def panel_flow(direction, detail=""):
-    sym = {"->": "->", "<-": "<-", "inj": "INJECT", "tmp": "TAMPER"}
+    sym = {"->": "->", "<-": "<-", "inj": "注入", "tmp": "篡改"}
     if direction in sym:
         print("      [{}] {}".format(sym[direction], detail))
 
@@ -524,14 +524,16 @@ h1{color:#f0f}h2{color:#888}.stat{display:inline-block;margin:10px 20px}
 """
         stats = mem.get("stats", {})
         html += "<div>"
+        stat_labels = {"total": "总数", "crack": "授权审计", "reverse": "逆向", "pentest": "渗透", "tamper": "篡改"}
+        category_labels = {"crack": "授权审计", "reverse": "逆向", "pentest": "渗透", "tamper": "篡改", "general": "通用"}
         for k in ["total", "crack", "reverse", "pentest", "tamper"]:
             v = stats.get(k, 0)
-            html += '<span class=stat><div class=v>{}</div><div class=l>{}</div></span>'.format(v, k)
-        html += "</div><h2>Recent</h2>"
+            html += '<span class=stat><div class=v>{}</div><div class=l>{}</div></span>'.format(v, stat_labels.get(k, k))
+        html += "</div><h2>最近记录</h2>"
         for s in mem.get("successes", [])[-15:]:
             cls = "msg m" if s.get("category") == "crack" else "msg t" if s.get("category") == "reverse" else "msg a"
             html += '<div class="{}"><span class=ts>{}</span> [{}] {}</div>'.format(
-                cls, s.get("ts","")[-8:], s.get("category",""), s.get("user","")[:80])
+                cls, s.get("ts","")[-8:], category_labels.get(s.get("category",""), s.get("category","")), s.get("user","")[:80])
         html += "</body></html>"
         self.send_response(200); self.send_header("Content-Type", "text/html; charset=utf-8"); self.end_headers()
         self.wfile.write(html.encode())
@@ -543,10 +545,10 @@ h1{color:#f0f}h2{color:#888}.stat{display:inline-block;margin:10px 20px}
 def run_proxy():
     while True:
         try:
-            print("  Proxy starting...")
+            print("  代理正在启动...")
             http.server.ThreadingHTTPServer(LISTEN, Handler).serve_forever()
         except Exception as e:
-            print("  [!] Crash: {} — restarting in 2s...".format(e))
+            print("  [!] 代理异常：{} — 2 秒后重启...".format(e))
             time.sleep(2)
 
 if __name__ == "__main__":
@@ -555,18 +557,18 @@ if __name__ == "__main__":
     relay_url = find_relay_url(CODEX_HOME)
     if relay_url:
         TARGET = relay_url
-        print("[*] Auto-detected relay: {}".format(TARGET))
+        print("[*] 已自动检测到中转地址：{}".format(TARGET))
     else:
-        print("[!] Could not detect relay. Using default: {}".format(TARGET))
-        print("    Manually set in code if needed.")
+        print("[!] 未能自动检测中转地址，使用默认值：{}".format(TARGET))
+        print("    如有需要，可在脚本里手动设置。")
 
     # 2. Auto-configure Codex
     if CODEX_HOME:
         ok = auto_config(CODEX_HOME)
-        print("[{}] Codex config: {}".format("OK" if ok else "FAIL", CODEX_HOME / "config.toml"))
+        print("[{}] Codex 配置：{}".format("成功" if ok else "失败", CODEX_HOME / "config.toml"))
     else:
-        print("[!] Codex home not found. Skipping auto-config.")
-        print("    Install Codex CLI first.")
+        print("[!] 未找到 Codex 配置目录，跳过自动配置。")
+        print("    请先安装 Codex 命令行工具。")
 
     # 3. Animate startup
     startup_animation()
