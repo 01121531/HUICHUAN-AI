@@ -63,6 +63,7 @@ import {
   type NERVToolCategory,
 } from './nerv-catalog'
 import { NERVCodexConfigCard } from './nerv-codex-config-card'
+import { NERVProxyProcessCard } from './nerv-proxy-process-card'
 
 type NERVLabRecentEvent = {
   ts: number
@@ -1243,6 +1244,7 @@ export function NERVLabToolsSection({
             }}
           />
           <NERVCodexConfigCard />
+          <NERVProxyProcessCard />
 
           <div className='grid gap-4 md:grid-cols-2 xl:grid-cols-4'>
             <OverviewCard

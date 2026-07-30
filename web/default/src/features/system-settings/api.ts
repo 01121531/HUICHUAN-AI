@@ -32,6 +32,8 @@ import type {
   NERVCodexConfigMutationResponse,
   NERVCodexConfigResponse,
   NERVProxyLogsResponse,
+  NERVProxyProcessMutationResponse,
+  NERVProxyProcessStatusResponse,
   NERVProxyStatsResponse,
   NERVTamperRulesResponse,
   NERVToolsResponse,
@@ -141,6 +143,31 @@ export async function getNERVProxyStats() {
 export async function clearNERVProxyLogs() {
   const res = await api.delete<{ success: boolean; message: string }>(
     '/api/nerv/proxy/logs'
+  )
+  return res.data
+}
+
+export async function getNERVProxyProcessStatus() {
+  const res = await api.get<NERVProxyProcessStatusResponse>(
+    '/api/nerv/proxy-process/status'
+  )
+  return res.data
+}
+
+export async function startNERVProxyProcess(request: { home?: string }) {
+  const res = await api.post<NERVProxyProcessMutationResponse>(
+    '/api/nerv/proxy-process/start',
+    request
+  )
+  return res.data
+}
+
+export async function stopNERVProxyProcess(request: {
+  restore_config?: boolean
+}) {
+  const res = await api.post<NERVProxyProcessMutationResponse>(
+    '/api/nerv/proxy-process/stop',
+    request
   )
   return res.data
 }

@@ -334,6 +334,44 @@ export type NERVProxyStatsResponse = {
   }
 }
 
+export type NERVProxyProcessStatus = {
+  running: boolean
+  pid: number
+  asset_path: string
+  script_path: string
+  codex_home: string
+  pid_path: string
+  log_path: string
+  listen_url: string
+  dashboard_url: string
+  listen_open: boolean
+  dashboard_open: boolean
+  started_at: number
+  message: string
+  log_tail: string
+  python_command: string
+  candidates: string[]
+}
+
+export type NERVProxyProcessResult = {
+  action: 'start' | 'stop'
+  changed: boolean
+  message: string
+  status: NERVProxyProcessStatus
+}
+
+export type NERVProxyProcessStatusResponse = {
+  success: boolean
+  message: string
+  data?: NERVProxyProcessStatus
+}
+
+export type NERVProxyProcessMutationResponse = {
+  success: boolean
+  message: string
+  data?: NERVProxyProcessResult
+}
+
 export type DatasetCaptureModelMode = 'all' | 'selected'
 export type DatasetCaptureScopeMode = 'all' | 'selected'
 

@@ -359,6 +359,9 @@ func SetApiRouter(router *gin.Engine) {
 			nervRoute.GET("/proxy/logs", controller.GetNERVProxyLogs)
 			nervRoute.GET("/proxy/stats", controller.GetNERVProxyStats)
 			nervRoute.DELETE("/proxy/logs", controller.ClearNERVProxyLogs)
+			nervRoute.GET("/proxy-process/status", controller.GetNERVProxyProcessStatus)
+			nervRoute.POST("/proxy-process/start", controller.StartNERVProxyProcess)
+			nervRoute.POST("/proxy-process/stop", controller.StopNERVProxyProcess)
 			nervRoute.POST("/mcp", controller.HandleNERVMCP)
 		}
 
