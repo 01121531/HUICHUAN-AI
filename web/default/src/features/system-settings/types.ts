@@ -36,6 +36,44 @@ export type NERVSelfCheckAssets = {
   candidates: string[]
 }
 
+export type NERVAssetItem = {
+  path: string
+  name: string
+  kind: string
+  size: number
+  modified_at: number
+  previewable: boolean
+}
+
+export type NERVAssetsData = {
+  base_path: string
+  count: number
+  items: NERVAssetItem[]
+}
+
+export type NERVAssetsResponse = {
+  success: boolean
+  message: string
+  data?: NERVAssetsData
+}
+
+export type NERVAssetFileData = {
+  path: string
+  name: string
+  kind: string
+  size: number
+  content_type: string
+  text?: string
+  content_base64?: string
+  truncated: boolean
+}
+
+export type NERVAssetFileResponse = {
+  success: boolean
+  message: string
+  data?: NERVAssetFileData
+}
+
 export type NERVSelfCheckCatalog = {
   tools_json_exists: boolean
   tools_parsed: boolean

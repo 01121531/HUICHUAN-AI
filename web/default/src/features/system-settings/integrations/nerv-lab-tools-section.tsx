@@ -40,6 +40,8 @@ import { Textarea } from '@/components/ui/textarea'
 
 import {
   clearNERVProxyLogs,
+  getNERVAssetFile,
+  getNERVAssets,
   getNERVDirectProxyStatus,
   getNERVProxyLogs,
   getNERVSelfCheck,
@@ -52,6 +54,8 @@ import {
 } from '../api'
 import { SettingsSection } from '../components/settings-section'
 import type {
+  NERVAssetFileData,
+  NERVAssetItem,
   NERVDirectProxyStatus,
   NERVLabActionName,
   NERVLabActionResult,
@@ -329,6 +333,12 @@ function CommandCard({
       </CardContent>
     </Card>
   )
+}
+
+function assetKindBadgeVariant(kind: string) {
+  if (kind === '图片') return 'outline' as const
+  if (kind === '脚本') return 'secondary' as const
+  return 'outline' as const
 }
 
 function OverviewCard({
@@ -1468,6 +1478,186 @@ function LabScriptActionPanel({
   )
 }
 
+function AssetBrowserPanel() {
+  const [selectedPath, setSelectedPath] = useState('')
+  const assetsQuery = useQuery({
+    queryKey: ['nerv-assets'],
+    queryFn: getNERVAssets,
+    staleTime: 30 * 1000,
+  })
+  const fileQuery = useQuery({
+    queryKey: ['nerv-asset-file', selectedPath],
+    queryFn: () => getNERVAssetFile(selectedPath),
+    enabled: selectedPath !== '',
+  })
+  const items = useMemo(
+    () => (assetsQuery.data?.success ? assetsQuery.data.data?.items ?? [] : []),
+    [assetsQuery.data]
+  )
+  const grouped = useMemo(() => {
+    const map = new Map<string, NERVAssetItem[]>()
+    for (const item of items) {
+      map.set(item.kind, [...(map.get(item.kind) ?? []), item])
+    }
+    return [...map.entries()].sort(([left], [right]) =>
+      left.localeCompare(right)
+    )
+  }, [items])
+  const fileData = fileQuery.data?.success ? fileQuery.data.data : undefined
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className='flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'>
+          <div>
+            <CardTitle>文档与资产浏览</CardTitle>
+            <CardDescription>
+              对应原项目 README、docs、images、scripts、config、skills 和 tools 目录。
+            </CardDescription>
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            disabled={assetsQuery.isFetching}
+            onClick={() => {
+              void assetsQuery.refetch()
+            }}
+          >
+            {assetsQuery.isFetching ? '刷新中...' : '刷新资产'}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className='space-y-4'>
+        {assetsQuery.data?.success === false || assetsQuery.isError ? (
+          <div className='rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive'>
+            资产目录读取失败：{assetsQuery.data?.message || '请稍后重试'}
+          </div>
+        ) : null}
+
+        <div className='grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]'>
+          <div className='space-y-3'>
+            <div className='text-sm text-muted-foreground'>
+              资产目录：{assetsQuery.data?.data?.base_path || '读取中...'}；共{' '}
+              {assetsQuery.data?.data?.count ?? 0} 个文件。
+            </div>
+            {grouped.map(([kind, groupItems]) => (
+              <div key={kind} className='rounded-md border bg-muted/10 p-3'>
+                <div className='mb-2 flex items-center gap-2'>
+                  <Badge variant={assetKindBadgeVariant(kind)}>{kind}</Badge>
+                  <span className='text-xs text-muted-foreground'>
+                    {groupItems.length} 个
+                  </span>
+                </div>
+                <div className='max-h-72 space-y-1 overflow-auto pr-1'>
+                  {groupItems.map((item) => (
+                    <button
+                      key={item.path}
+                      type='button'
+                      className={`block w-full rounded px-2 py-1.5 text-left text-xs transition hover:bg-muted/40 ${
+                        selectedPath === item.path ? 'bg-muted/50' : ''
+                      }`}
+                      disabled={!item.previewable}
+                      onClick={() => setSelectedPath(item.path)}
+                    >
+                      <div className='break-all font-mono'>{item.path}</div>
+                      <div className='mt-0.5 text-muted-foreground'>
+                        {formatBytes(item.size)} · {formatTime(item.modified_at)}
+                        {!item.previewable ? ' · 不支持预览' : ''}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <AssetPreviewCard
+            selectedPath={selectedPath}
+            isLoading={fileQuery.isFetching}
+            isError={fileQuery.isError || fileQuery.data?.success === false}
+            errorMessage={fileQuery.data?.message}
+            file={fileData}
+          />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function AssetPreviewCard({
+  selectedPath,
+  isLoading,
+  isError,
+  errorMessage,
+  file,
+}: {
+  selectedPath: string
+  isLoading: boolean
+  isError: boolean
+  errorMessage?: string
+  file?: NERVAssetFileData
+}) {
+  if (!selectedPath) {
+    return (
+      <div className='rounded-md border bg-muted/10 p-4 text-sm text-muted-foreground'>
+        请在左侧选择一个文档、图片或脚本文件。
+      </div>
+    )
+  }
+  if (isLoading) {
+    return (
+      <div className='rounded-md border bg-muted/10 p-4 text-sm text-muted-foreground'>
+        正在读取：{selectedPath}
+      </div>
+    )
+  }
+  if (isError || !file) {
+    return (
+      <div className='rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive'>
+        文件读取失败：{errorMessage || selectedPath}
+      </div>
+    )
+  }
+
+  const isImage =
+    file.content_type.startsWith('image/') && file.content_base64
+
+  return (
+    <div className='space-y-3 rounded-md border bg-muted/10 p-3'>
+      <div className='flex flex-wrap items-center justify-between gap-2'>
+        <div>
+          <div className='break-all font-medium'>{file.path}</div>
+          <div className='text-xs text-muted-foreground'>
+            {file.kind} · {formatBytes(file.size)} · {file.content_type}
+            {file.truncated ? ' · 已截断预览' : ''}
+          </div>
+        </div>
+        <CopyButton
+          value={file.text || file.content_base64 || ''}
+          tooltip='复制内容'
+          successTooltip='已复制内容'
+        />
+      </div>
+      {isImage ? (
+        <div className='rounded-md border bg-background p-3'>
+          <img
+            alt={file.name}
+            className='max-h-[520px] w-full object-contain'
+            src={`data:${file.content_type};base64,${file.content_base64}`}
+          />
+        </div>
+      ) : (
+        <Textarea
+          readOnly
+          className='min-h-[520px] font-mono text-xs'
+          value={file.text || '该文件不是文本文件，无法直接预览。'}
+        />
+      )}
+    </div>
+  )
+}
+
 export function NERVLabToolsSection({
   defaultValues,
 }: NERVLabToolsSectionProps) {
@@ -1536,10 +1726,11 @@ export function NERVLabToolsSection({
       </Alert>
 
       <Tabs defaultValue='overview' className='mt-4'>
-        <TabsList className='grid w-full grid-cols-5'>
+        <TabsList className='grid w-full grid-cols-6'>
           <TabsTrigger value='overview'>总览</TabsTrigger>
           <TabsTrigger value='tools'>工具目录</TabsTrigger>
           <TabsTrigger value='skills'>技能目录</TabsTrigger>
+          <TabsTrigger value='assets'>文档资产</TabsTrigger>
           <TabsTrigger value='script-actions'>脚本按钮</TabsTrigger>
           <TabsTrigger value='commands'>快捷命令</TabsTrigger>
         </TabsList>
@@ -1639,6 +1830,10 @@ export function NERVLabToolsSection({
           {skillGroups.map(([group, skills]) => (
             <SkillGroupCard key={group} group={group} skills={skills} />
           ))}
+        </TabsContent>
+
+        <TabsContent value='assets' className='mt-4 space-y-4'>
+          <AssetBrowserPanel />
         </TabsContent>
 
         <TabsContent value='script-actions' className='mt-4 space-y-4'>

@@ -28,6 +28,8 @@ import type {
   DatasetCapturePolicy,
   DatasetCapturePolicyResponse,
   FetchUpstreamRatiosRequest,
+  NERVAssetFileResponse,
+  NERVAssetsResponse,
   NERVBridgePromptResponse,
   NERVCodexConfigMutationResponse,
   NERVCodexConfigResponse,
@@ -69,6 +71,18 @@ export async function updateSystemOption(request: UpdateOptionRequest) {
 
 export async function getNERVSelfCheck() {
   const res = await api.get<NERVSelfCheckResponse>('/api/nerv/self-check')
+  return res.data
+}
+
+export async function getNERVAssets() {
+  const res = await api.get<NERVAssetsResponse>('/api/nerv/assets')
+  return res.data
+}
+
+export async function getNERVAssetFile(path: string) {
+  const res = await api.get<NERVAssetFileResponse>('/api/nerv/assets/file', {
+    params: { path },
+  })
   return res.data
 }
 

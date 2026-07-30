@@ -349,6 +349,8 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			nervRoute.GET("/self-check", controller.GetNERVSelfCheck)
 			nervRoute.GET("/verify-smoke", controller.GetNERVVerifySmoke)
+			nervRoute.GET("/assets", controller.GetNERVAssets)
+			nervRoute.GET("/assets/file", controller.GetNERVAssetFile)
 			nervRoute.GET("/bridge-prompt", controller.GetNERVBridgePrompt)
 			nervRoute.GET("/tamper-rules", controller.GetNERVTamperRules)
 			nervRoute.GET("/tools", controller.GetNERVTools)
