@@ -1512,9 +1512,10 @@ function LabScriptActionPanel({
     <Card>
       <CardHeader>
         <CardTitle>原脚本按钮化</CardTitle>
-        <CardDescription>
-          对应原项目 scripts/lab.bat 和 kali_setup.bat。当前服务器不使用容器，容器项只保留兼容显示。
-        </CardDescription>
+      <CardDescription>
+        对应原项目 scripts/lab.bat 和 kali_setup.bat。当前服务器不使用容器，容器项只保留兼容显示。
+        常见动作已做成按钮，默认以中文展示。
+      </CardDescription>
       </CardHeader>
       <CardContent className='space-y-4'>
         <div className='grid gap-4 md:grid-cols-2'>
