@@ -249,7 +249,7 @@ function ProxyProcessStatusView({
     ],
     ['Python 运行时', status.python_command || '未找到', status.script_path || '暂无'],
     ['日志文件', status.log_path ? '可读取' : '暂无', status.log_path || '暂无'],
-    ['Codex 配置目录', status.codex_home || '自动查找', status.codex_home || '暂无'],
+    ['配置目录', status.codex_home || '自动查找', status.codex_home || '暂无'],
   ] as const
 
   return (
