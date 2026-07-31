@@ -211,12 +211,12 @@ function ProxyDashboardPreview({
     <div className='space-y-3 rounded-md border bg-muted/10 p-3 text-sm'>
       <div className='flex flex-wrap items-center justify-between gap-2'>
         <div>
-          <div className='font-medium'>NERV 8090 原生面板</div>
+          <div className='font-medium'>NERV 8090 面板</div>
           <div className='break-all text-xs text-muted-foreground'>
             {snapshot.message} · {snapshot.url}
           </div>
         </div>
-        <Badge variant='outline'>HTTP {snapshot.status_code || '未知'}</Badge>
+        <Badge variant='outline'>协议：HTTP {snapshot.status_code || '未知'}</Badge>
       </div>
       {snapshot.html ? (
         <iframe
@@ -247,7 +247,7 @@ function ProxyProcessStatusView({
       status.dashboard_open ? '端口已打开' : '端口未打开',
       status.dashboard_url,
     ],
-    ['Python', status.python_command || '未找到', status.script_path || '暂无'],
+    ['Python 运行时', status.python_command || '未找到', status.script_path || '暂无'],
     ['日志文件', status.log_path ? '可读取' : '暂无', status.log_path || '暂无'],
     ['Codex 配置目录', status.codex_home || '自动查找', status.codex_home || '暂无'],
   ] as const
@@ -256,7 +256,7 @@ function ProxyProcessStatusView({
     <div className='space-y-4'>
       <div className='flex flex-wrap gap-2'>
         <Badge variant={status.running ? 'secondary' : 'outline'}>
-          {status.message}
+          {status.running ? '运行中' : '未运行'}
         </Badge>
         {status.started_at ? (
           <Badge variant='outline'>

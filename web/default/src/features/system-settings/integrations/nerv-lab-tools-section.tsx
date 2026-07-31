@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useMutation, useQuery } from '@tanstack/react-query'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { CopyButton } from '@/components/copy-button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -366,33 +366,33 @@ function describeNERVAssetPath(path: string) {
 
 function explainNERVAssetPath(path: string) {
   if (path === 'README.md') {
-    return '这是原项目说明的中文化入口。文件内保留少量英文链接、命令和日志示例，方便复制使用。'
+    return '这是原项目说明的中文化入口。原文默认折叠，展开后可看到少量英文链接、命令和日志示例，方便复制使用。'
   }
   if (path === 'README_EN.md') {
-    return '这是英文原文说明，已作为原始资料保留；日常配置建议优先查看中文说明和后台表单。'
+    return '这是英文原文说明，已作为原始资料保留；原文默认折叠，日常配置建议优先查看中文说明和后台表单。'
   }
   if (path === 'bridge.md') {
-    return '这是桥接提示词原文。为保持验证兼容，里面的协议名、触发词和锁定标识会保留原文。'
+    return '这是桥接提示词原文。为保持验证兼容，里面的协议名、触发词和锁定标识会保留原文；默认折叠，按需展开。'
   }
   if (path.endsWith('/SKILL.md') || path.startsWith('skills/')) {
-    return '这是原项目技能原文。上方“技能目录”已提供中文标题和中文摘要，原文仅用于兼容 Codex 技能识别。'
+    return '这是原项目技能原文。上方“技能目录”已提供中文标题和中文摘要，原文默认折叠，仅用于兼容 Codex 技能识别。'
   }
   if (path === 'tools/tools.json' || path.startsWith('tools/')) {
-    return '这是原项目工具清单。后台工具页已优先显示中文名称、中文分类和中文参数说明，原始命令模板保持不翻译。'
+    return '这是原项目工具清单。后台工具页已优先显示中文名称、中文分类和中文参数说明，原始命令模板默认折叠不翻译。'
   }
   if (path.startsWith('config/')) {
-    return '这是原项目配置模板。配置键名和代码片段必须保持原样，中文说明请看“快捷命令”和“NERV 连接设置”。'
+    return '这是原项目配置模板。配置键名和代码片段必须保持原样，中文说明请看“快捷命令”和“NERV 连接设置”；原文默认折叠。'
   }
   if (path.startsWith('scripts/') || path.endsWith('.py') || path.endsWith('.bat')) {
-    return '这是原项目脚本文件。后台已经把常用脚本做成按钮；脚本内部命令、参数和日志原文会保留，避免影响执行。'
+    return '这是原项目脚本文件。后台已经把常用脚本做成按钮；脚本内部命令、参数和日志原文默认折叠，避免影响执行。'
   }
   if (path.startsWith('docs/')) {
-    return '这是原项目文档资料。页面保留原文以便核对，中文化配置入口在上方各个设置卡片中。'
+    return '这是原项目文档资料。页面保留原文以便核对，但默认折叠，中文化配置入口在上方各个设置卡片中。'
   }
   if (path.startsWith('images/')) {
     return '这是原项目图片资产，保留原始文件用于完整兼容。'
   }
-  return '这是随源码内置的原项目资产；技术标识、命令和文件名会按原样保留。'
+  return '这是随源码内置的原项目资产；技术标识、命令和文件名会按原样保留，原文默认折叠。'
 }
 
 function labActionLabel(action: NERVLabActionName) {
@@ -655,13 +655,25 @@ function SelfCheckCard({
 }
 
 function ToolCategoryCard({ category }: { category: NERVToolCategory }) {
+  const [showCommands, setShowCommands] = useState(false)
+
   return (
     <Card>
       <CardHeader>
-        <div className='flex flex-wrap items-center gap-2'>
-          <CardTitle>{category.label}</CardTitle>
-          <Badge variant='secondary'>{category.tools.length} 个工具</Badge>
-          <Badge variant='outline'>原分类：{category.key}</Badge>
+        <div className='flex flex-wrap items-start justify-between gap-3'>
+          <div className='flex flex-wrap items-center gap-2'>
+            <CardTitle>{category.label}</CardTitle>
+            <Badge variant='secondary'>{category.tools.length} 个工具</Badge>
+            <Badge variant='outline'>原分类：{category.key}</Badge>
+          </div>
+          <Button
+            type='button'
+            variant='outline'
+            size='sm'
+            onClick={() => setShowCommands((value) => !value)}
+          >
+            {showCommands ? '收起命令模板' : '查看命令模板'}
+          </Button>
         </div>
         <CardDescription>{category.description}</CardDescription>
       </CardHeader>
@@ -672,7 +684,7 @@ function ToolCategoryCard({ category }: { category: NERVToolCategory }) {
               <div>
                 <div className='font-medium'>{tool.description}</div>
                 <div className='font-mono text-xs text-muted-foreground'>
-                  {tool.name}
+                  原始标识：{tool.name}
                 </div>
               </div>
               {tool.params.length > 0 ? (
@@ -685,15 +697,21 @@ function ToolCategoryCard({ category }: { category: NERVToolCategory }) {
                 </div>
               ) : null}
             </div>
-            <div className='mt-2 flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 font-mono text-xs'>
-              <span className='break-all'>{tool.commandTemplate}</span>
-              <CopyButton
-                value={tool.commandTemplate}
-                tooltip='复制模板'
-                successTooltip='已复制模板'
-                className='shrink-0'
-              />
-            </div>
+            {showCommands ? (
+              <div className='mt-2 flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 font-mono text-xs'>
+                <span className='break-all'>{tool.commandTemplate}</span>
+                <CopyButton
+                  value={tool.commandTemplate}
+                  tooltip='复制模板'
+                  successTooltip='已复制模板'
+                  className='shrink-0'
+                />
+              </div>
+            ) : (
+              <div className='mt-2 rounded bg-background px-2 py-1.5 text-xs text-muted-foreground'>
+                命令模板已隐藏，点击右上角按钮后可查看。
+              </div>
+            )}
           </div>
         ))}
       </CardContent>
@@ -1041,6 +1059,7 @@ function ToolExecutionPanel({
   const [backend, setBackend] = useState<NERVToolBackend>(defaultBackend)
   const [timeoutSeconds, setTimeoutSeconds] = useState('30')
   const [lastResult, setLastResult] = useState<NERVToolRunResult | null>(null)
+  const [showCommandTemplate, setShowCommandTemplate] = useState(false)
 
   const toolsQuery = useQuery({
     queryKey: ['nerv-tools'],
@@ -1058,6 +1077,10 @@ function ToolExecutionPanel({
     }
     return tools[0]
   }, [selectedName, tools])
+
+  useEffect(() => {
+    setShowCommandTemplate(false)
+  }, [selectedTool?.name])
 
   const runMutation = useMutation({
     mutationFn: runNERVTool,
@@ -1127,7 +1150,7 @@ function ToolExecutionPanel({
               {tools.map((tool) => (
                 <NativeSelectOption key={tool.name} value={tool.name}>
                   {getNERVToolDisplayName(tool.name)}（
-                  {getNERVToolCategoryLabel(tool.category)}｜{tool.name}）
+                  {getNERVToolCategoryLabel(tool.category)}）
                 </NativeSelectOption>
               ))}
             </NativeSelect>
@@ -1173,20 +1196,46 @@ function ToolExecutionPanel({
               <Badge variant='outline'>
                 {getNERVToolCategoryLabel(selectedTool.category)}
               </Badge>
-              <Badge variant='outline'>工具标识：{selectedTool.name}</Badge>
+              <Badge variant='outline'>原始标识：{selectedTool.name}</Badge>
               <span className='text-sm text-muted-foreground'>
                 {getNERVToolDescription(selectedTool)}
               </span>
             </div>
-            <div className='flex items-center justify-between gap-3 rounded bg-background px-3 py-2 font-mono text-xs'>
-              <span className='break-all'>{selectedTool.command}</span>
-              <CopyButton
-                value={selectedTool.command}
-                tooltip='复制模板'
-                successTooltip='已复制模板'
-                className='shrink-0'
-              />
-            </div>
+            {!showCommandTemplate ? (
+              <div className='flex items-center justify-between gap-3 rounded bg-background px-3 py-2 text-sm text-muted-foreground'>
+                <span>命令模板默认隐藏，需要时再展开查看。</span>
+                <Button
+                  type='button'
+                  variant='outline'
+                  size='sm'
+                  onClick={() => setShowCommandTemplate(true)}
+                >
+                  查看命令
+                </Button>
+              </div>
+            ) : (
+              <div className='space-y-2 rounded bg-background px-3 py-2'>
+                <div className='flex items-center justify-between gap-3 font-mono text-xs'>
+                  <span className='break-all'>{selectedTool.command}</span>
+                  <CopyButton
+                    value={selectedTool.command}
+                    tooltip='复制模板'
+                    successTooltip='已复制模板'
+                    className='shrink-0'
+                  />
+                </div>
+                <div className='flex justify-end'>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='sm'
+                    onClick={() => setShowCommandTemplate(false)}
+                  >
+                    收起命令
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className='grid gap-3 md:grid-cols-2 xl:grid-cols-3'>
               {selectedTool.params.map((param) => (
@@ -1677,6 +1726,12 @@ function AssetPreviewCard({
   errorMessage?: string
   file?: NERVAssetFileData
 }) {
+  const [showOriginal, setShowOriginal] = useState(false)
+
+  useEffect(() => {
+    setShowOriginal(false)
+  }, [file?.path])
+
   if (!selectedPath) {
     return (
       <div className='rounded-md border bg-muted/10 p-4 text-sm text-muted-foreground'>
@@ -1735,12 +1790,46 @@ function AssetPreviewCard({
             src={`data:${file.content_type};base64,${file.content_base64}`}
           />
         </div>
+      ) : !showOriginal ? (
+        <div className='space-y-3 rounded-md border bg-background p-4'>
+          <div className='flex flex-wrap items-start justify-between gap-3'>
+            <div className='space-y-1'>
+              <div className='text-sm font-medium'>原文默认折叠</div>
+              <div className='text-sm text-muted-foreground'>
+                为减少页面上的英文，这里先显示中文说明；原始内容未修改，点击后可展开查看。
+              </div>
+            </div>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => setShowOriginal(true)}
+            >
+              查看原文
+            </Button>
+          </div>
+          <div className='rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground'>
+            {file.text ? '原文已经加载完成，可随时展开查看。' : '该文件没有可直接显示的文本预览。'}
+          </div>
+        </div>
       ) : (
-        <Textarea
-          readOnly
-          className='min-h-[520px] font-mono text-xs'
-          value={file.text || '该文件不是文本文件，无法直接预览。'}
-        />
+        <div className='space-y-2'>
+          <div className='flex justify-end'>
+            <Button
+              type='button'
+              variant='outline'
+              size='sm'
+              onClick={() => setShowOriginal(false)}
+            >
+              收起原文
+            </Button>
+          </div>
+          <Textarea
+            readOnly
+            className='min-h-[520px] font-mono text-xs'
+            value={file.text || '该文件不是文本文件，无法直接预览。'}
+          />
+        </div>
       )}
     </div>
   )
