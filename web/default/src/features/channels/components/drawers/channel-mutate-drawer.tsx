@@ -4169,16 +4169,17 @@ export function ChannelMutateDrawer({
                                 <FormItem>
                                   <FormLabel>{t("Proxy Address")}</FormLabel>
                                   <FormControl>
-                                    <Input
+                                    <Textarea
                                       placeholder={t(
-                                        "socks5://user:pass@host:port",
+                                        "Multiple proxy addresses (one per line, auto-rotate)",
                                       )}
+                                      rows={4}
                                       {...field}
                                     />
                                   </FormControl>
                                   <FormDescription>
                                     {t(
-                                      "Network proxy for this channel (supports socks5 protocol)",
+                                      "Multiple proxies auto-rotate per request; failed ones are skipped temporarily",
                                     )}
                                   </FormDescription>
                                   <FormMessage />

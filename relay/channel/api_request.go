@@ -12,6 +12,7 @@ import (
 	"time"
 
 	common2 "github.com/01121531/HUICHUAN-AI/common"
+	appconstant "github.com/01121531/HUICHUAN-AI/constant"
 	"github.com/01121531/HUICHUAN-AI/logger"
 	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 	"github.com/01121531/HUICHUAN-AI/relay/common"
@@ -488,12 +489,25 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error
+	proxyIndex := 0
 	if info.ChannelSetting.Proxy != "" {
-		client, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
-		if err != nil {
-			return nil, fmt.Errorf("new proxy http client failed: %w", err)
+		proxyURL, index, selErr := service.ChannelProxyRotator.SelectProxy(info.ChannelId, info.ChannelSetting.Proxy)
+		if selErr != nil {
+			return nil, selErr
 		}
-	} else {
+		proxyIndex = index
+		if proxyIndex > 0 {
+			common2.SetContextKey(c, appconstant.ContextKeyProxyIndex, proxyIndex)
+		}
+		if proxyURL != "" {
+			client, err = service.NewProxyHttpClient(proxyURL)
+			if err != nil {
+				service.ChannelProxyRotator.MarkProxyFailed(info.ChannelId, proxyIndex)
+				return nil, fmt.Errorf("new proxy http client failed: %w", err)
+			}
+		}
+	}
+	if client == nil {
 		client = service.GetHttpClient()
 	}
 
@@ -519,6 +533,9 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
+		if proxyIndex > 0 {
+			service.ChannelProxyRotator.MarkProxyFailed(info.ChannelId, proxyIndex)
+		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))
 	}

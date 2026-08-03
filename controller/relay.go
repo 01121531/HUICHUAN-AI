@@ -402,6 +402,9 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			adminInfo["is_multi_key"] = true
 			adminInfo["multi_key_index"] = common.GetContextKeyInt(c, constant.ContextKeyChannelMultiKeyIndex)
 		}
+		if proxyIndex := common.GetContextKeyInt(c, constant.ContextKeyProxyIndex); proxyIndex > 0 {
+			adminInfo["proxy_index"] = proxyIndex
+		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)

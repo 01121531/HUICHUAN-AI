@@ -63,6 +63,9 @@ const (
 	// It is not returned to end users, but can be persisted into consume/error logs for debugging.
 	ContextKeyAdminRejectReason ContextKey = "admin_reject_reason"
 
+	// ContextKeyProxyIndex 记录渠道可变代理中本次实际使用的代理序号（1 基）。
+	ContextKeyProxyIndex ContextKey = "proxy_index"
+
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"
 	ContextKeyIsStream ContextKey = "is_stream"
