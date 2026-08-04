@@ -35,6 +35,31 @@ func (gate *proxyGroupSwitchGate) notifyLocked() {
 	gate.changed = make(chan struct{})
 }
 
+func (gate *proxyGroupSwitchGate) tryAcquireSelection() (func(), bool) {
+	gate.mu.Lock()
+	if gate.switching {
+		gate.mu.Unlock()
+		return nil, false
+	}
+	gate.activeSelectors++
+	gate.mu.Unlock()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			gate.mu.Lock()
+			gate.activeSelectors--
+			gate.notifyLocked()
+			gate.mu.Unlock()
+		})
+	}, true
+}
+
+func (gate *proxyGroupSwitchGate) isSwitching() bool {
+	gate.mu.Lock()
+	defer gate.mu.Unlock()
+	return gate.switching
+}
+
 // acquireSelection prevents a switch from starting while a request is choosing
 // its proxy. Already selected/sent requests are intentionally not held.
 func (gate *proxyGroupSwitchGate) acquireSelection(ctx context.Context, maxWaiting int) (func(), error) {

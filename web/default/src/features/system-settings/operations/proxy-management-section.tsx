@@ -613,6 +613,7 @@ export function ProxyManagementSection() {
   const groupsQuery = useQuery({
     queryKey: ['proxy-groups'],
     queryFn: async () => (await listProxyGroups()).data ?? [],
+    refetchInterval: 2000,
   })
   const groups = groupsQuery.data ?? EMPTY_PROXY_GROUPS
 
@@ -891,6 +892,34 @@ export function ProxyManagementSection() {
               <div>
                 <span className='text-muted-foreground'>直连回退：</span>
                 {selectedGroup.allow_direct_fallback ? '允许' : '禁止'}
+              </div>
+            </div>
+          )}
+
+          {selectedGroup && (
+            <div className='grid gap-3 rounded-lg border border-dashed p-3 text-sm sm:grid-cols-2 lg:grid-cols-4'>
+              <div>
+                <span className='text-muted-foreground'>全局等待请求：</span>
+                {selectedGroup.waiting_requests} /{' '}
+                {selectedGroup.max_waiting_requests}
+              </div>
+              <div>
+                <span className='text-muted-foreground'>最近等待超时：</span>
+                {selectedGroup.nearest_wait_remaining_seconds > 0
+                  ? `${selectedGroup.nearest_wait_remaining_seconds} 秒`
+                  : '无等待请求'}
+              </div>
+              <div>
+                <span className='text-muted-foreground'>最长剩余等待：</span>
+                {selectedGroup.longest_wait_remaining_seconds > 0
+                  ? `${selectedGroup.longest_wait_remaining_seconds} 秒`
+                  : '—'}
+              </div>
+              <div>
+                <span className='text-muted-foreground'>切换状态：</span>
+                {selectedGroup.status === 'switching'
+                  ? '正在切换'
+                  : '可接收请求'}
               </div>
             </div>
           )}

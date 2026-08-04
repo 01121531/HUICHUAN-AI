@@ -66,6 +66,12 @@ type ProxyGroup struct {
 	AllowDirectFallback         bool    `json:"allow_direct_fallback" gorm:"default:false"`
 	CreatedAt                   int64   `json:"created_at" gorm:"bigint"`
 	UpdatedAt                   int64   `json:"updated_at" gorm:"bigint"`
+	WaitingRequests             int64   `json:"waiting_requests" gorm:"-"`
+	OldestWaitStartedAt         int64   `json:"oldest_wait_started_at" gorm:"-"`
+	NearestWaitDeadlineAt       int64   `json:"nearest_wait_deadline_at" gorm:"-"`
+	LongestWaitDeadlineAt       int64   `json:"longest_wait_deadline_at" gorm:"-"`
+	NearestWaitRemainingSeconds int64   `json:"nearest_wait_remaining_seconds" gorm:"-"`
+	LongestWaitRemainingSeconds int64   `json:"longest_wait_remaining_seconds" gorm:"-"`
 }
 
 func (ProxyGroup) TableName() string { return "proxy_groups" }
@@ -350,8 +356,13 @@ func UpdateProxyGroupCurrentProxy(groupId int, proxyId int) error {
 
 func ListProxyGroups() ([]*ProxyGroup, error) {
 	var groups []*ProxyGroup
-	err := DB.Order("id asc").Find(&groups).Error
-	return groups, err
+	if err := DB.Order("id asc").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	if err := PopulateProxyGroupWaitMetrics(groups, common.GetTimestamp()); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 func GetProxyGroupById(id int) (*ProxyGroup, error) {
@@ -417,6 +428,9 @@ func DeleteProxyGroup(id int) error {
 			return errors.New("proxy group is still bound to channels")
 		}
 		if err := tx.Where("group_id = ?", id).Delete(&Proxy{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("group_id = ?", id).Delete(&ProxyGroupWaiter{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&ProxyGroup{}, id).Error

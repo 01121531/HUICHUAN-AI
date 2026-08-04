@@ -49,6 +49,7 @@ func TestSelectChannelProxyUsesStableDatabaseIds(t *testing.T) {
 
 func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 	resetProxyGroupSwitchGatesForTest()
+	require.NoError(t, model.DB.AutoMigrate(&model.ProxyGroupWaiter{}))
 	const channelId = 99103
 	group := &model.ProxyGroup{
 		Name: "runtime-switch-wait-test", Enabled: true, Status: model.ProxyGroupStatusAvailable,
@@ -91,6 +92,10 @@ func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 		t.Fatal("selection completed while the group was switching")
 	case <-time.After(30 * time.Millisecond):
 	}
+	require.Eventually(t, func() bool {
+		metrics, metricsErr := model.ListProxyGroupWaitMetrics(time.Now().Unix())
+		return metricsErr == nil && metrics[group.Id].WaitingRequests == 1
+	}, time.Second, 10*time.Millisecond)
 	nextProxyId, err := model.CompleteProxyGroupSwitch(group.Id, first.Id, "remote-instance")
 	require.NoError(t, err)
 	require.Equal(t, second.Id, nextProxyId)
@@ -98,6 +103,57 @@ func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 	selected := <-result
 	require.NoError(t, selected.err)
 	require.Equal(t, second.Id, selected.selection.ProxyId)
+	require.Eventually(t, func() bool {
+		metrics, metricsErr := model.ListProxyGroupWaitMetrics(time.Now().Unix())
+		return metricsErr == nil && metrics[group.Id].WaitingRequests == 0
+	}, time.Second, 10*time.Millisecond)
+}
+
+func TestSelectChannelProxyEnforcesDatabaseGlobalWaitLimit(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	require.NoError(t, model.DB.AutoMigrate(&model.ProxyGroupWaiter{}))
+	const channelId = 99108
+	group := &model.ProxyGroup{
+		Name: "runtime-global-wait-limit-test", Enabled: true, Status: model.ProxyGroupStatusAvailable,
+		SwitchWaitSeconds: 2, MaxWaitingRequests: 1,
+	}
+	require.NoError(t, model.DB.Create(group).Error)
+	proxy := &model.Proxy{GroupId: group.Id, Name: "first", Protocol: "http", Host: "127.0.0.1", Port: 18088, Enabled: true, Status: model.ProxyStatusAvailable}
+	require.NoError(t, model.DB.Create(proxy).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("current_proxy_id", proxy.Id).Error)
+	acquired, _, err := model.TryAcquireProxyGroupSwitchLease(group.Id, proxy.Id, "remote-global-limit", 45)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		_ = model.AbortProxyGroupSwitch(group.Id, "remote-global-limit")
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.ProxyGroupWaiter{})
+		model.DB.Delete(binding)
+		model.DB.Delete(proxy)
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	firstDone := make(chan error, 1)
+	firstCtx, firstCancel := context.WithTimeout(context.Background(), time.Second)
+	defer firstCancel()
+	go func() {
+		_, selectErr := SelectChannelProxyWithContext(firstCtx, channelId, "")
+		firstDone <- selectErr
+	}()
+	require.Eventually(t, func() bool {
+		metrics, metricsErr := model.ListProxyGroupWaitMetrics(time.Now().Unix())
+		return metricsErr == nil && metrics[group.Id].WaitingRequests == 1
+	}, time.Second, 10*time.Millisecond)
+
+	_, err = SelectChannelProxyWithContext(context.Background(), channelId, "")
+	require.ErrorIs(t, err, ErrProxySwitchQueueFull)
+
+	require.NoError(t, model.AbortProxyGroupSwitch(group.Id, "remote-global-limit"))
+	require.NoError(t, <-firstDone)
 }
 
 func TestSelectChannelProxyWaitsWhenAllProxiesUnavailable(t *testing.T) {

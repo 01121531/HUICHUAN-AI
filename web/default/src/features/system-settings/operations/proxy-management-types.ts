@@ -19,6 +19,12 @@ export type ProxyGroup = {
   allow_direct_fallback: boolean
   created_at: number
   updated_at: number
+  waiting_requests: number
+  oldest_wait_started_at: number
+  nearest_wait_deadline_at: number
+  longest_wait_deadline_at: number
+  nearest_wait_remaining_seconds: number
+  longest_wait_remaining_seconds: number
 }
 
 export type ManagedProxy = {
@@ -67,7 +73,17 @@ export type ProxyBinding = {
 
 export type ProxyGroupInput = Omit<
   ProxyGroup,
-  'id' | 'current_proxy_id' | 'status' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'current_proxy_id'
+  | 'status'
+  | 'created_at'
+  | 'updated_at'
+  | 'waiting_requests'
+  | 'oldest_wait_started_at'
+  | 'nearest_wait_deadline_at'
+  | 'longest_wait_deadline_at'
+  | 'nearest_wait_remaining_seconds'
+  | 'longest_wait_remaining_seconds'
 >
 
 export type ManagedProxyInput = {

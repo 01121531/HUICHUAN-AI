@@ -110,7 +110,7 @@ func SelectChannelProxyWithContext(ctx context.Context, channelId int, legacyRaw
 		waitCtx, cancel := proxySwitchWaitContext(ctx, config.Group.SwitchWaitSeconds)
 		defer cancel()
 		gate := getProxyGroupSwitchGate(config.Group.Id)
-		err := gate.waitForAvailability(waitCtx, config.Group.MaxWaitingRequests, func() (bool, error) {
+		err := waitForManagedProxyAvailability(waitCtx, config.Group, gate, func() (bool, error) {
 			current, loadErr := model.GetChannelProxyRuntimeConfig(channelId)
 			if loadErr != nil {
 				return false, loadErr
@@ -183,7 +183,7 @@ func acquireManagedProxySelection(ctx context.Context, channelId int, config *mo
 	gate := getProxyGroupSwitchGate(group.Id)
 	for {
 		if group.Status == model.ProxyGroupStatusSwitching {
-			err := gate.waitForAvailability(waitCtx, group.MaxWaitingRequests, func() (bool, error) {
+			err := waitForManagedProxyAvailability(waitCtx, group, gate, func() (bool, error) {
 				current, loadErr := model.GetChannelProxyRuntimeConfig(channelId)
 				if loadErr != nil {
 					return false, loadErr
@@ -220,10 +220,33 @@ func acquireManagedProxySelection(ctx context.Context, channelId int, config *mo
 			continue
 		}
 
-		release, err := gate.acquireSelection(waitCtx, group.MaxWaitingRequests)
-		if err != nil {
-			cancel()
-			return nil, nil, err
+		release, acquired := gate.tryAcquireSelection()
+		if !acquired {
+			err := waitForManagedProxyAvailability(waitCtx, group, gate, func() (bool, error) {
+				current, loadErr := model.GetChannelProxyRuntimeConfig(channelId)
+				if loadErr != nil {
+					return false, loadErr
+				}
+				if current == nil || current.Group == nil {
+					return true, nil
+				}
+				return current.Group.Status != model.ProxyGroupStatusSwitching && !gate.isSwitching(), nil
+			})
+			if err != nil {
+				cancel()
+				return nil, nil, err
+			}
+			current, err := model.GetChannelProxyRuntimeConfig(channelId)
+			if err != nil {
+				cancel()
+				return nil, nil, err
+			}
+			if current == nil || current.Group == nil {
+				cancel()
+				return nil, nil, errors.New("channel proxy group does not exist")
+			}
+			config, group = current, current.Group
+			continue
 		}
 		current, err := model.GetChannelProxyRuntimeConfig(channelId)
 		if err != nil {
@@ -246,6 +269,32 @@ func acquireManagedProxySelection(ctx context.Context, channelId int, config *mo
 			cancel()
 		}, nil
 	}
+}
+
+func waitForManagedProxyAvailability(
+	ctx context.Context,
+	group *model.ProxyGroup,
+	gate *proxyGroupSwitchGate,
+	ready func() (bool, error),
+) error {
+	if group == nil || gate == nil {
+		return errors.New("channel proxy group does not exist")
+	}
+	expiresAt := time.Now().Add(time.Duration(group.SwitchWaitSeconds) * time.Second).Unix()
+	if deadline, ok := ctx.Deadline(); ok {
+		// Unix seconds truncate sub-second deadlines. One second of lease grace
+		// prevents another instance from reusing the slot before this waiter exits.
+		expiresAt = deadline.Unix() + 1
+	}
+	waiter, err := model.EnterProxyGroupWaitQueue(group.Id, group.MaxWaitingRequests, expiresAt)
+	if err != nil {
+		if errors.Is(err, model.ErrProxyGroupWaitQueueFull) {
+			return ErrProxySwitchQueueFull
+		}
+		return err
+	}
+	defer func() { _ = model.LeaveProxyGroupWaitQueue(waiter.Token) }()
+	return gate.waitForAvailability(ctx, 0, ready)
 }
 
 func availableRuntimeProxies(config *model.ChannelProxyRuntimeConfig) []*model.Proxy {

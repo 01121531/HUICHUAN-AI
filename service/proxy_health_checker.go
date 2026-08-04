@@ -79,7 +79,11 @@ func CheckManagedProxyNow(ctx context.Context, proxyId int) (ProxyHealthCheckRes
 
 func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, error) {
 	summary := ProxyHealthCheckSummary{}
-	recovered, err := model.RecoverExpiredProxyGroupSwitches(common.GetTimestamp())
+	now := common.GetTimestamp()
+	if err := model.DeleteExpiredProxyGroupWaiters(0, now); err != nil {
+		return summary, err
+	}
+	recovered, err := model.RecoverExpiredProxyGroupSwitches(now)
 	if err != nil {
 		return summary, err
 	}
