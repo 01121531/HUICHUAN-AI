@@ -79,15 +79,20 @@ func (r *channelProxyRotator) state(channelID int) *channelProxyState {
 // SelectProxy 为渠道从代理设置中选择当前要使用的代理。
 // 返回代理地址、1 基代理序号（用于日志关联）与错误；仅有一个代理时始终使用该代理。
 func (r *channelProxyRotator) SelectProxy(channelID int, raw string) (string, int, error) {
+	return r.SelectProxyWithPolicy(channelID, raw, ChannelProxyRotateRequests, ChannelProxyRotateSeconds)
+}
+
+func (r *channelProxyRotator) SelectProxyWithPolicy(stateKey int, raw string, maxRequests int, maxDurationSeconds int) (string, int, error) {
+	return r.SelectProxyWithPolicyFromIndex(stateKey, raw, maxRequests, maxDurationSeconds, 0)
+}
+
+func (r *channelProxyRotator) SelectProxyWithPolicyFromIndex(stateKey int, raw string, maxRequests int, maxDurationSeconds int, startIndex int) (string, int, error) {
 	proxies := parseProxyList(raw)
 	if len(proxies) == 0 {
 		return "", 0, nil
 	}
-	if len(proxies) == 1 {
-		return proxies[0], 1, nil
-	}
 
-	st := r.state(channelID)
+	st := r.state(stateKey)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 
@@ -96,15 +101,18 @@ func (r *channelProxyRotator) SelectProxy(channelID int, raw string) (string, in
 	if st.raw != raw {
 		st.raw = raw
 		st.proxies = proxies
-		st.currentIndex = 0
+		if startIndex < 0 || startIndex >= len(proxies) {
+			startIndex = 0
+		}
+		st.currentIndex = startIndex
 		st.roundCount = 0
 		st.roundStart = now
 		st.failedUntil = make(map[int]time.Time)
 	}
 
 	// 达到请求次数或使用时长阈值时轮换到下一个代理。
-	if (ChannelProxyRotateRequests > 0 && st.roundCount >= ChannelProxyRotateRequests) ||
-		(ChannelProxyRotateSeconds > 0 && now.Sub(st.roundStart) >= time.Duration(ChannelProxyRotateSeconds)*time.Second) {
+	if (maxRequests > 0 && st.roundCount >= maxRequests) ||
+		(maxDurationSeconds > 0 && now.Sub(st.roundStart) >= time.Duration(maxDurationSeconds)*time.Second) {
 		st.currentIndex = (st.currentIndex + 1) % len(st.proxies)
 		st.roundCount = 0
 		st.roundStart = now
@@ -130,17 +138,24 @@ func (r *channelProxyRotator) SelectProxy(channelID int, raw string) (string, in
 
 // MarkProxyFailed 标记代理请求失败并进入冷却，同时让下一次请求切换到下一个代理。
 func (r *channelProxyRotator) MarkProxyFailed(channelID int, proxyIndex int) {
+	r.MarkProxyFailedWithCooldown(channelID, proxyIndex, ChannelProxyFailCooldownSeconds)
+}
+
+func (r *channelProxyRotator) MarkProxyFailedWithCooldown(stateKey int, proxyIndex int, cooldownSeconds int) {
 	if proxyIndex <= 0 {
 		return
 	}
-	st := r.state(channelID)
+	st := r.state(stateKey)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	if len(st.proxies) == 0 {
 		return
 	}
 	idx := (proxyIndex - 1) % len(st.proxies)
-	st.failedUntil[idx] = time.Now().Add(time.Duration(ChannelProxyFailCooldownSeconds) * time.Second)
+	if cooldownSeconds <= 0 {
+		cooldownSeconds = ChannelProxyFailCooldownSeconds
+	}
+	st.failedUntil[idx] = time.Now().Add(time.Duration(cooldownSeconds) * time.Second)
 	// 当前代理失败时立即切换到下一个，重置轮换计数。
 	if idx == st.currentIndex && len(st.proxies) > 1 {
 		st.currentIndex = (st.currentIndex + 1) % len(st.proxies)

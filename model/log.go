@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
 	"github.com/01121531/HUICHUAN-AI/logger"
 	"github.com/01121531/HUICHUAN-AI/types"
 
@@ -71,6 +72,8 @@ type Log struct {
 	UseTime           int    `json:"use_time" gorm:"default:0"`
 	IsStream          bool   `json:"is_stream"`
 	ChannelId         int    `json:"channel" gorm:"index"`
+	ProxyId           int    `json:"proxy_id,omitempty" gorm:"index;default:0"`
+	ProxyGroupId      int    `json:"proxy_group_id,omitempty" gorm:"index;default:0"`
 	ChannelName       string `json:"channel_name" gorm:"->"`
 	TokenId           int    `json:"token_id" gorm:"default:0;index"`
 	Group             string `json:"group" gorm:"index"`
@@ -101,6 +104,14 @@ func ensureLogRequestId(log *Log) {
 func createLog(log *Log) error {
 	ensureLogRequestId(log)
 	return LOG_DB.Create(log).Error
+}
+
+func proxyLogContext(c *gin.Context) (int, int) {
+	if c == nil {
+		return 0, 0
+	}
+	return common.GetContextKeyInt(c, constant.ContextKeyProxyId),
+		common.GetContextKeyInt(c, constant.ContextKeyProxyGroupId)
 }
 
 func clickHouseLogOrder(prefix string) string {
@@ -287,6 +298,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 	requestId := c.GetString(common.RequestIdKey)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	needRecordIp := common.UsageLogIPCaptureEnabled.Load()
+	proxyId, proxyGroupId := proxyLogContext(c)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -299,6 +311,8 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 		ModelName:        modelName,
 		Quota:            0,
 		ChannelId:        channelId,
+		ProxyId:          proxyId,
+		ProxyGroupId:     proxyGroupId,
 		TokenId:          tokenId,
 		UseTime:          useTimeSeconds,
 		IsStream:         isStream,
@@ -340,6 +354,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 	upstreamRequestId := c.GetString(common.UpstreamRequestIdKey)
 	createdAt := common.GetTimestamp()
 	needRecordIp := common.UsageLogIPCaptureEnabled.Load()
+	proxyId, proxyGroupId := proxyLogContext(c)
 	log := &Log{
 		UserId:           userId,
 		Username:         username,
@@ -352,6 +367,8 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		ModelName:        params.ModelName,
 		Quota:            params.Quota,
 		ChannelId:        params.ChannelId,
+		ProxyId:          proxyId,
+		ProxyGroupId:     proxyGroupId,
 		TokenId:          params.TokenId,
 		UseTime:          params.UseTimeSeconds,
 		IsStream:         params.IsStream,

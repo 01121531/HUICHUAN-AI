@@ -489,22 +489,24 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error
-	proxyIndex := 0
-	if info.ChannelSetting.Proxy != "" {
-		proxyURL, index, selErr := service.ChannelProxyRotator.SelectProxy(info.ChannelId, info.ChannelSetting.Proxy)
-		if selErr != nil {
-			return nil, selErr
-		}
-		proxyIndex = index
-		if proxyIndex > 0 {
-			common2.SetContextKey(c, appconstant.ContextKeyProxyIndex, proxyIndex)
-		}
-		if proxyURL != "" {
-			client, err = service.NewProxyHttpClient(proxyURL)
-			if err != nil {
-				service.ChannelProxyRotator.MarkProxyFailed(info.ChannelId, proxyIndex)
-				return nil, fmt.Errorf("new proxy http client failed: %w", err)
-			}
+	proxySelection, err := service.SelectChannelProxy(info.ChannelId, info.ChannelSetting.Proxy)
+	if err != nil {
+		return nil, fmt.Errorf("select channel proxy failed: %w", err)
+	}
+	if proxySelection.ProxyIndex > 0 {
+		common2.SetContextKey(c, appconstant.ContextKeyProxyIndex, proxySelection.ProxyIndex)
+	}
+	if proxySelection.ProxyId > 0 {
+		common2.SetContextKey(c, appconstant.ContextKeyProxyId, proxySelection.ProxyId)
+	}
+	if proxySelection.ProxyGroupId > 0 {
+		common2.SetContextKey(c, appconstant.ContextKeyProxyGroupId, proxySelection.ProxyGroupId)
+	}
+	if proxySelection.URL != "" {
+		client, err = service.NewProxyHttpClient(proxySelection.URL)
+		if err != nil {
+			service.MarkChannelProxyFailed(proxySelection)
+			return nil, fmt.Errorf("new proxy http client failed: %w", err)
 		}
 	}
 	if client == nil {
@@ -533,8 +535,8 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 
 	resp, err := client.Do(req)
 	if err != nil {
-		if proxyIndex > 0 {
-			service.ChannelProxyRotator.MarkProxyFailed(info.ChannelId, proxyIndex)
+		if proxySelection.ProxyIndex > 0 {
+			service.MarkChannelProxyFailed(proxySelection)
 		}
 		logger.LogError(c, "do request failed: "+err.Error())
 		return nil, types.NewError(err, types.ErrorCodeDoRequestFailed, types.ErrOptionWithHideErrMsg("upstream error: do request failed"))

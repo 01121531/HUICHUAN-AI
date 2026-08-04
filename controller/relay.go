@@ -405,6 +405,12 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		if proxyIndex := common.GetContextKeyInt(c, constant.ContextKeyProxyIndex); proxyIndex > 0 {
 			adminInfo["proxy_index"] = proxyIndex
 		}
+		if proxyId := common.GetContextKeyInt(c, constant.ContextKeyProxyId); proxyId > 0 {
+			adminInfo["proxy_id"] = proxyId
+		}
+		if proxyGroupId := common.GetContextKeyInt(c, constant.ContextKeyProxyGroupId); proxyGroupId > 0 {
+			adminInfo["proxy_group_id"] = proxyGroupId
+		}
 		service.AppendChannelAffinityAdminInfo(c, adminInfo)
 		other["admin_info"] = adminInfo
 		startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)

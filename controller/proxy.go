@@ -1,0 +1,284 @@
+package controller
+
+import (
+	"net/http"
+	"strconv"
+	"strings"
+
+	"github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/model"
+	"github.com/01121531/HUICHUAN-AI/service"
+	"github.com/gin-gonic/gin"
+)
+
+type proxyGroupRequest struct {
+	Name                        string  `json:"name"`
+	Enabled                     *bool   `json:"enabled"`
+	MaxRequests                 int     `json:"max_requests"`
+	MaxDurationSeconds          int     `json:"max_duration_seconds"`
+	SwitchWaitSeconds           int     `json:"switch_wait_seconds"`
+	MaxWaitingRequests          int     `json:"max_waiting_requests"`
+	HealthCheckInterval         int     `json:"health_check_interval"`
+	ConsecutiveTimeoutThreshold int     `json:"consecutive_timeout_threshold"`
+	WindowSize                  int     `json:"window_size"`
+	WindowTimeoutRatio          float64 `json:"window_timeout_ratio"`
+	BaseCooldownSeconds         int     `json:"base_cooldown_seconds"`
+	MaxCooldownSeconds          int     `json:"max_cooldown_seconds"`
+	RecoverySuccessCount        int     `json:"recovery_success_count"`
+	AllowDirectFallback         *bool   `json:"allow_direct_fallback"`
+}
+
+type proxyRequest struct {
+	GroupId  int    `json:"group_id"`
+	Name     string `json:"name"`
+	Protocol string `json:"protocol"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Enabled  *bool  `json:"enabled"`
+	Sort     int    `json:"sort"`
+}
+
+type proxyBindingRequest struct {
+	ProxyGroupId int   `json:"proxy_group_id"`
+	Enabled      *bool `json:"enabled"`
+}
+
+func boolValue(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func parsePositiveId(c *gin.Context, name string) (int, bool) {
+	id, err := strconv.Atoi(c.Param(name))
+	if err != nil || id <= 0 {
+		common.ApiErrorMsg(c, "无效的 ID")
+		return 0, false
+	}
+	return id, true
+}
+
+func ListProxyGroups(c *gin.Context) {
+	groups, err := model.ListProxyGroups()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": groups})
+}
+
+func CreateProxyGroup(c *gin.Context) {
+	var req proxyGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	group := &model.ProxyGroup{
+		Name:                        strings.TrimSpace(req.Name),
+		Enabled:                     boolValue(req.Enabled, true),
+		Status:                      model.ProxyGroupStatusAvailable,
+		MaxRequests:                 req.MaxRequests,
+		MaxDurationSeconds:          req.MaxDurationSeconds,
+		SwitchWaitSeconds:           req.SwitchWaitSeconds,
+		MaxWaitingRequests:          req.MaxWaitingRequests,
+		HealthCheckInterval:         req.HealthCheckInterval,
+		ConsecutiveTimeoutThreshold: req.ConsecutiveTimeoutThreshold,
+		WindowSize:                  req.WindowSize,
+		WindowTimeoutRatio:          req.WindowTimeoutRatio,
+		BaseCooldownSeconds:         req.BaseCooldownSeconds,
+		MaxCooldownSeconds:          req.MaxCooldownSeconds,
+		RecoverySuccessCount:        req.RecoverySuccessCount,
+		AllowDirectFallback:         boolValue(req.AllowDirectFallback, false),
+	}
+	if err := model.CreateProxyGroup(group); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.group.create", map[string]interface{}{"id": group.Id, "name": group.Name})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": group})
+}
+
+func UpdateProxyGroup(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	var req proxyGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	group, err := model.GetProxyGroupById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	group.Name = strings.TrimSpace(req.Name)
+	group.Enabled = boolValue(req.Enabled, group.Enabled)
+	group.MaxRequests = req.MaxRequests
+	group.MaxDurationSeconds = req.MaxDurationSeconds
+	group.SwitchWaitSeconds = req.SwitchWaitSeconds
+	group.MaxWaitingRequests = req.MaxWaitingRequests
+	group.HealthCheckInterval = req.HealthCheckInterval
+	group.ConsecutiveTimeoutThreshold = req.ConsecutiveTimeoutThreshold
+	group.WindowSize = req.WindowSize
+	group.WindowTimeoutRatio = req.WindowTimeoutRatio
+	group.BaseCooldownSeconds = req.BaseCooldownSeconds
+	group.MaxCooldownSeconds = req.MaxCooldownSeconds
+	group.RecoverySuccessCount = req.RecoverySuccessCount
+	group.AllowDirectFallback = boolValue(req.AllowDirectFallback, group.AllowDirectFallback)
+	if err := model.UpdateProxyGroup(group); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.group.update", map[string]interface{}{"id": group.Id, "name": group.Name})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": group})
+}
+
+func DeleteProxyGroup(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	if err := model.DeleteProxyGroup(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.group.delete", map[string]interface{}{"id": id})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+func ListGroupProxies(c *gin.Context) {
+	groupId, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	proxies, err := model.ListProxiesByGroup(groupId)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxies})
+}
+
+func CreateProxy(c *gin.Context) {
+	var req proxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	proxy := &model.Proxy{
+		GroupId: req.GroupId, Name: strings.TrimSpace(req.Name), Protocol: req.Protocol,
+		Host: req.Host, Port: req.Port, Username: req.Username, Password: req.Password,
+		Enabled: boolValue(req.Enabled, true), Status: model.ProxyStatusAvailable, Sort: req.Sort,
+	}
+	if err := model.CreateProxy(proxy); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.create", map[string]interface{}{"id": proxy.Id, "group_id": proxy.GroupId, "name": proxy.Name})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
+}
+
+func UpdateProxy(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	var req proxyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	proxy, err := model.GetProxyById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if req.GroupId > 0 {
+		proxy.GroupId = req.GroupId
+	}
+	proxy.Name = strings.TrimSpace(req.Name)
+	proxy.Protocol = req.Protocol
+	proxy.Host = req.Host
+	proxy.Port = req.Port
+	proxy.Username = req.Username
+	if req.Password != "" {
+		proxy.Password = req.Password
+	}
+	proxy.Enabled = boolValue(req.Enabled, proxy.Enabled)
+	proxy.Sort = req.Sort
+	if err := model.UpdateProxy(proxy); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.update", map[string]interface{}{"id": proxy.Id, "group_id": proxy.GroupId, "name": proxy.Name})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
+}
+
+func DeleteProxy(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	if err := model.DeleteProxy(id); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	recordManageAudit(c, "proxy.delete", map[string]interface{}{"id": id})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+func ListProxyBindings(c *gin.Context) {
+	bindings, err := model.ListChannelProxyBindings()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": bindings})
+}
+
+func UpsertProxyBinding(c *gin.Context) {
+	channelId, ok := parsePositiveId(c, "channel_id")
+	if !ok {
+		return
+	}
+	var req proxyBindingRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	binding := &model.ChannelProxyBinding{
+		ChannelId: channelId, ProxyGroupId: req.ProxyGroupId, Enabled: boolValue(req.Enabled, true),
+	}
+	if err := model.UpsertChannelProxyBinding(binding); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(channelId)
+	recordManageAudit(c, "proxy.binding.upsert", map[string]interface{}{"channel_id": channelId, "proxy_group_id": binding.ProxyGroupId})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": binding})
+}
+
+func DeleteProxyBinding(c *gin.Context) {
+	channelId, ok := parsePositiveId(c, "channel_id")
+	if !ok {
+		return
+	}
+	if err := model.DeleteChannelProxyBinding(channelId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(channelId)
+	recordManageAudit(c, "proxy.binding.delete", map[string]interface{}{"channel_id": channelId})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}

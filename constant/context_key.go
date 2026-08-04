@@ -65,6 +65,10 @@ const (
 
 	// ContextKeyProxyIndex 记录渠道可变代理中本次实际使用的代理序号（1 基）。
 	ContextKeyProxyIndex ContextKey = "proxy_index"
+	// ContextKeyProxyId 记录本次真实上游请求使用的稳定代理 ID。
+	ContextKeyProxyId ContextKey = "proxy_id"
+	// ContextKeyProxyGroupId 记录本次真实上游请求所属的代理组 ID。
+	ContextKeyProxyGroupId ContextKey = "proxy_group_id"
 
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"

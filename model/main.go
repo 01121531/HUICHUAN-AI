@@ -302,6 +302,9 @@ func migrateDB() error {
 		&DatasetCaptureIndex{},
 		&DatasetCaptureAccessAudit{},
 		&DatasetCaptureAccessAuditItem{},
+		&ProxyGroup{},
+		&Proxy{},
+		&ChannelProxyBinding{},
 	)
 	if err != nil {
 		return err
@@ -315,7 +318,7 @@ func migrateDB() error {
 			return err
 		}
 	}
-	return nil
+	return migrateLegacyChannelProxies()
 }
 
 func migrateDBFast() error {
@@ -357,6 +360,9 @@ func migrateDBFast() error {
 		{&DatasetCaptureIndex{}, "DatasetCaptureIndex"},
 		{&DatasetCaptureAccessAudit{}, "DatasetCaptureAccessAudit"},
 		{&DatasetCaptureAccessAuditItem{}, "DatasetCaptureAccessAuditItem"},
+		{&ProxyGroup{}, "ProxyGroup"},
+		{&Proxy{}, "Proxy"},
+		{&ChannelProxyBinding{}, "ChannelProxyBinding"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))
@@ -390,6 +396,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := migrateLegacyChannelProxies(); err != nil {
+		return err
+	}
 	common.SysLog("database migrated")
 	return nil
 }
@@ -404,6 +413,9 @@ func migrateLOGDB() error {
 func migrateClickHouseLogDB() error {
 	ttlDays := clickHouseLogTTLDays()
 	if err := LOG_DB.Exec(clickHouseLogCreateTableSQL(ttlDays)).Error; err != nil {
+		return err
+	}
+	if err := ensureClickHouseProxyLogColumns(); err != nil {
 		return err
 	}
 	return syncClickHouseLogTTL(ttlDays)
@@ -449,6 +461,8 @@ CREATE TABLE IF NOT EXISTS logs (
 	use_time Int32 DEFAULT 0,
 	is_stream UInt8 DEFAULT 0,
 	channel_id Int32 DEFAULT 0,
+	proxy_id Int32 DEFAULT 0,
+	proxy_group_id Int32 DEFAULT 0,
 	token_id Int32 DEFAULT 0,
 	`+"`group`"+` String DEFAULT '',
 	ip String DEFAULT '',
@@ -459,6 +473,19 @@ CREATE TABLE IF NOT EXISTS logs (
 ENGINE = MergeTree()
 PARTITION BY toYYYYMM(toDateTime(created_at))
 ORDER BY (created_at, request_id)%s`, clickHouseLogTTLClause(ttlDays))
+}
+
+func ensureClickHouseProxyLogColumns() error {
+	statements := []string{
+		"ALTER TABLE logs ADD COLUMN IF NOT EXISTS proxy_id Int32 DEFAULT 0 AFTER channel_id",
+		"ALTER TABLE logs ADD COLUMN IF NOT EXISTS proxy_group_id Int32 DEFAULT 0 AFTER proxy_id",
+	}
+	for _, statement := range statements {
+		if err := LOG_DB.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func syncClickHouseLogTTL(ttlDays int) error {

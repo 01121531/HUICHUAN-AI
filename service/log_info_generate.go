@@ -110,6 +110,12 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	if proxyIndex := common.GetContextKeyInt(ctx, constant.ContextKeyProxyIndex); proxyIndex > 0 {
 		adminInfo["proxy_index"] = proxyIndex
 	}
+	if proxyId := common.GetContextKeyInt(ctx, constant.ContextKeyProxyId); proxyId > 0 {
+		adminInfo["proxy_id"] = proxyId
+	}
+	if proxyGroupId := common.GetContextKeyInt(ctx, constant.ContextKeyProxyGroupId); proxyGroupId > 0 {
+		adminInfo["proxy_group_id"] = proxyGroupId
+	}
 
 	AppendChannelAffinityAdminInfo(ctx, adminInfo)
 
