@@ -1,14 +1,128 @@
 package channel
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
+	"strings"
+	"sync/atomic"
 	"testing"
 
+	common2 "github.com/01121531/HUICHUAN-AI/common"
+	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/model"
 	relaycommon "github.com/01121531/HUICHUAN-AI/relay/common"
+	"github.com/01121531/HUICHUAN-AI/service"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
+
+func TestDoRequestRecordsEveryManagedProxyUpstreamAttempt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	previousDB := model.DB
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	t.Cleanup(func() {
+		model.DB = previousDB
+		if sqlDB, dbErr := db.DB(); dbErr == nil {
+			_ = sqlDB.Close()
+		}
+	})
+	require.NoError(t, model.DB.AutoMigrate(
+		&model.ProxyGroup{}, &model.Proxy{}, &model.ChannelProxyBinding{}, &model.ProxyUpstreamAttempt{},
+	))
+	var calls atomic.Int32
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		call := calls.Add(1)
+		if call == 3 {
+			connection, _, hijackErr := w.(http.Hijacker).Hijack()
+			if hijackErr == nil {
+				_ = connection.Close()
+			}
+			return
+		}
+		w.Header().Set(common2.RequestIdKey, "upstream-"+strconv.Itoa(int(call)))
+		if call == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer proxyServer.Close()
+	parsed, err := url.Parse(proxyServer.URL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+
+	const channelId = 99301
+	group := &model.ProxyGroup{Name: "attempt-test", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	require.NoError(t, model.DB.Create(group).Error)
+	proxy := &model.Proxy{
+		GroupId: group.Id, Name: "attempt-proxy", Protocol: "http",
+		Host: parsed.Hostname(), Port: port, Enabled: true, Status: model.ProxyStatusAvailable,
+	}
+	require.NoError(t, model.DB.Create(proxy).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("current_proxy_id", proxy.Id).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	service.InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		service.InvalidateChannelProxyConfig(channelId)
+		service.ResetProxyClientCache()
+		model.DB.Where("request_id = ?", "proxy-attempt-request").Delete(&model.ProxyUpstreamAttempt{})
+		model.DB.Delete(binding)
+		model.DB.Delete(proxy)
+		model.DB.Delete(group)
+	})
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader("{}"))
+	info := &relaycommon.RelayInfo{
+		RequestId:   "proxy-attempt-request",
+		ChannelMeta: &relaycommon.ChannelMeta{ChannelId: channelId},
+	}
+	for retryIndex := 0; retryIndex < 3; retryIndex++ {
+		info.RetryIndex = retryIndex
+		req, requestErr := http.NewRequest(http.MethodPost, "http://upstream.invalid/v1/chat/completions", io.NopCloser(strings.NewReader("{}")))
+		require.NoError(t, requestErr)
+		resp, requestErr := doRequest(c, req, info)
+		if retryIndex < 2 {
+			require.NoError(t, requestErr)
+			require.NotNil(t, resp)
+			_ = resp.Body.Close()
+		} else {
+			require.Error(t, requestErr)
+			require.Nil(t, resp)
+		}
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader("{}"))
+	}
+
+	attempts, err := model.ListProxyUpstreamAttempts(proxy.Id, "proxy-attempt-request", 10)
+	require.NoError(t, err)
+	require.Len(t, attempts, 3)
+	require.Equal(t, 3, attempts[0].AttemptSequence)
+	require.Equal(t, 2, attempts[0].RetryIndex)
+	require.Equal(t, model.ProxyAttemptResultNetworkError, attempts[0].Result)
+	require.Equal(t, "transport_error", attempts[0].FailureReason)
+	require.Equal(t, 2, attempts[1].AttemptSequence)
+	require.Equal(t, 1, attempts[1].RetryIndex)
+	require.Equal(t, http.StatusOK, attempts[1].HttpStatus)
+	require.Equal(t, model.ProxyAttemptResultSuccess, attempts[1].Result)
+	require.Equal(t, "upstream-2", attempts[1].UpstreamRequestId)
+	require.Equal(t, 1, attempts[2].AttemptSequence)
+	require.Equal(t, 0, attempts[2].RetryIndex)
+	require.Equal(t, http.StatusServiceUnavailable, attempts[2].HttpStatus)
+	require.Equal(t, model.ProxyAttemptResultHTTPError, attempts[2].Result)
+	require.Equal(t, "http_status_503", attempts[2].FailureReason)
+	require.Equal(t, proxy.Id, common2.GetContextKeyInt(c, constant.ContextKeyProxyId))
+}
 
 func TestProcessHeaderOverride_ChannelTestSkipsPassthroughRules(t *testing.T) {
 	t.Parallel()

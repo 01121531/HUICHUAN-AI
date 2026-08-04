@@ -11,6 +11,7 @@ import type {
   ProxyHealthCheckResult,
   ProxyLogAnalysis,
   ProxyStateEvent,
+  ProxyUpstreamAttempt,
 } from './proxy-management-types'
 
 export async function listProxyGroups() {
@@ -128,6 +129,14 @@ export async function listProxyLogAnalyses(proxyId: number, limit = 50) {
 export async function listProxyStateEvents(proxyId: number, limit = 50) {
   const response = await api.get<ProxyApiResponse<ProxyStateEvent[]>>(
     '/api/proxy/events',
+    { params: { proxy_id: proxyId, limit } }
+  )
+  return response.data
+}
+
+export async function listProxyUpstreamAttempts(proxyId: number, limit = 50) {
+  const response = await api.get<ProxyApiResponse<ProxyUpstreamAttempt[]>>(
+    '/api/proxy/attempts',
     { params: { proxy_id: proxyId, limit } }
   )
   return response.data

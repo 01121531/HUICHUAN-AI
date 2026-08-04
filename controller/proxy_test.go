@@ -35,7 +35,7 @@ func setupProxyControllerTestDB(t *testing.T) {
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Channel{}, &model.Log{}, &model.ProxyGroup{}, &model.Proxy{}, &model.ChannelProxyBinding{},
-		&model.ProxyLogAnalysis{}, &model.ProxyLogAnalysisCursor{}, &model.ProxyStateEvent{},
+		&model.ProxyLogAnalysis{}, &model.ProxyLogAnalysisCursor{}, &model.ProxyStateEvent{}, &model.ProxyUpstreamAttempt{},
 	))
 	t.Cleanup(func() {
 		model.DB = previousDB
@@ -130,6 +130,19 @@ func TestProxyManagementHandlersCreateAndBindWithoutLeakingPassword(t *testing.T
 	ListProxyStateEvents(eventContext)
 	require.Equal(t, http.StatusOK, eventRecorder.Code)
 	require.Contains(t, eventRecorder.Body.String(), "auto_paused")
+
+	require.NoError(t, model.CreateProxyUpstreamAttempt(&model.ProxyUpstreamAttempt{
+		RequestId: "request-1", AttemptSequence: 1, RetryIndex: 0,
+		ChannelId: channel.Id, ProxyId: storedProxy.Id, ProxyGroupId: groupResponse.Data.Id,
+		DurationMs: 123, HttpStatus: http.StatusBadGateway, Result: model.ProxyAttemptResultHTTPError,
+		FailureReason: "http_status_502",
+	}))
+	attemptContext, attemptRecorder := proxyJSONContext(t, http.MethodGet, nil)
+	attemptContext.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/?proxy_id=%d&request_id=request-1", storedProxy.Id), nil)
+	ListProxyUpstreamAttempts(attemptContext)
+	require.Equal(t, http.StatusOK, attemptRecorder.Code)
+	require.Contains(t, attemptRecorder.Body.String(), "http_status_502")
+	require.NotContains(t, attemptRecorder.Body.String(), "never-return-this-secret")
 
 	secondProxy := &model.Proxy{
 		GroupId: groupResponse.Data.Id, Name: "出口二", Protocol: "http",

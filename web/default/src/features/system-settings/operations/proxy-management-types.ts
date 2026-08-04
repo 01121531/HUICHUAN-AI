@@ -127,6 +127,25 @@ export type ProxyStateEvent = {
   created_at: number
 }
 
+export type ProxyUpstreamAttempt = {
+  id: number
+  request_id: string
+  attempt_sequence: number
+  retry_index: number
+  channel_id: number
+  proxy_id: number
+  proxy_group_id: number
+  proxy_index: number
+  started_at_ms: number
+  duration_ms: number
+  http_status: number
+  result: string
+  failure_reason: string
+  upstream_request_id: string
+  is_stream: boolean
+  created_at: number
+}
+
 export type ProxyApiResponse<T = unknown> = {
   success: boolean
   message?: string

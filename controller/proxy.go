@@ -318,6 +318,17 @@ func ListProxyStateEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": events})
 }
 
+func ListProxyUpstreamAttempts(c *gin.Context) {
+	proxyId, _ := strconv.Atoi(c.Query("proxy_id"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	attempts, err := model.ListProxyUpstreamAttempts(proxyId, c.Query("request_id"), limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": attempts})
+}
+
 func CheckProxyNow(c *gin.Context) {
 	id, ok := parsePositiveId(c, "id")
 	if !ok {

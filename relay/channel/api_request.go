@@ -9,11 +9,13 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	common2 "github.com/01121531/HUICHUAN-AI/common"
 	appconstant "github.com/01121531/HUICHUAN-AI/constant"
 	"github.com/01121531/HUICHUAN-AI/logger"
+	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/01121531/HUICHUAN-AI/pkg/datasetcapture"
 	"github.com/01121531/HUICHUAN-AI/relay/common"
 	"github.com/01121531/HUICHUAN-AI/relay/constant"
@@ -489,6 +491,9 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error
+	common2.SetContextKey(c, appconstant.ContextKeyProxyIndex, 0)
+	common2.SetContextKey(c, appconstant.ContextKeyProxyId, 0)
+	common2.SetContextKey(c, appconstant.ContextKeyProxyGroupId, 0)
 	proxySelection, err := service.SelectChannelProxyWithContext(req.Context(), info.ChannelId, info.ChannelSetting.Proxy)
 	if err != nil {
 		return nil, fmt.Errorf("select channel proxy failed: %w", err)
@@ -533,7 +538,13 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 		}
 	}
 
+	attemptSequence := 0
+	if proxySelection.ProxyId > 0 || proxySelection.ProxyGroupId > 0 {
+		attemptSequence = nextProxyUpstreamAttemptSequence(c)
+	}
+	attemptStartedAt := time.Now()
 	resp, err := client.Do(req)
+	recordProxyUpstreamAttempt(c, info, proxySelection, attemptSequence, attemptStartedAt, resp, err)
 	if err != nil {
 		if proxySelection.ProxyIndex > 0 {
 			service.MarkChannelProxyFailed(proxySelection)
@@ -552,6 +563,90 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	_ = req.Body.Close()
 	_ = c.Request.Body.Close()
 	return resp, nil
+}
+
+type proxyUpstreamAttemptCounter struct {
+	value atomic.Int64
+}
+
+var proxyUpstreamAttemptCounterInitMu sync.Mutex
+
+func nextProxyUpstreamAttemptSequence(c *gin.Context) int {
+	if counter, ok := common2.GetContextKeyType[*proxyUpstreamAttemptCounter](c, appconstant.ContextKeyProxyAttemptCounter); ok && counter != nil {
+		return int(counter.value.Add(1))
+	}
+	proxyUpstreamAttemptCounterInitMu.Lock()
+	defer proxyUpstreamAttemptCounterInitMu.Unlock()
+	if counter, ok := common2.GetContextKeyType[*proxyUpstreamAttemptCounter](c, appconstant.ContextKeyProxyAttemptCounter); ok && counter != nil {
+		return int(counter.value.Add(1))
+	}
+	counter := &proxyUpstreamAttemptCounter{}
+	common2.SetContextKey(c, appconstant.ContextKeyProxyAttemptCounter, counter)
+	return int(counter.value.Add(1))
+}
+
+func recordProxyUpstreamAttempt(
+	c *gin.Context,
+	info *common.RelayInfo,
+	selection service.ChannelProxySelection,
+	attemptSequence int,
+	startedAt time.Time,
+	resp *http.Response,
+	requestErr error,
+) {
+	if attemptSequence <= 0 || info == nil {
+		return
+	}
+	requestId := strings.TrimSpace(info.RequestId)
+	if requestId == "" {
+		requestId = strings.TrimSpace(c.GetString(common2.RequestIdKey))
+	}
+	if requestId == "" {
+		requestId = common2.NewRequestId()
+		c.Set(common2.RequestIdKey, requestId)
+	}
+	result := model.ProxyAttemptResultSuccess
+	failureReason := ""
+	httpStatus := 0
+	upstreamRequestId := ""
+	if resp != nil {
+		httpStatus = resp.StatusCode
+		upstreamRequestId = strings.TrimSpace(resp.Header.Get(common2.RequestIdKey))
+	}
+	if requestErr != nil {
+		result = model.ProxyAttemptResultNetworkError
+		failureReason = proxyAttemptFailureReason(requestErr)
+	} else if resp == nil {
+		result = model.ProxyAttemptResultInvalidResponse
+		failureReason = "nil_response"
+	} else if resp.StatusCode >= http.StatusBadRequest {
+		result = model.ProxyAttemptResultHTTPError
+		failureReason = fmt.Sprintf("http_status_%d", resp.StatusCode)
+	}
+	durationMs := int(time.Since(startedAt).Milliseconds())
+	if durationMs < 0 {
+		durationMs = 0
+	}
+	attempt := &model.ProxyUpstreamAttempt{
+		RequestId: requestId, AttemptSequence: attemptSequence, RetryIndex: info.RetryIndex,
+		ChannelId: info.ChannelId, ProxyId: selection.ProxyId, ProxyGroupId: selection.ProxyGroupId,
+		ProxyIndex: selection.ProxyIndex, StartedAtMs: startedAt.UnixMilli(), DurationMs: durationMs,
+		HttpStatus: httpStatus, Result: result, FailureReason: failureReason,
+		UpstreamRequestId: upstreamRequestId, IsStream: info.IsStream,
+	}
+	if err := model.CreateProxyUpstreamAttempt(attempt); err != nil {
+		logger.LogError(c, "record proxy upstream attempt failed: "+err.Error())
+	}
+}
+
+func proxyAttemptFailureReason(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) {
+		return "deadline_exceeded"
+	}
+	if errors.Is(err, context.Canceled) {
+		return "request_canceled"
+	}
+	return "transport_error"
 }
 
 func DoTaskApiRequest(a TaskAdaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*http.Response, error) {

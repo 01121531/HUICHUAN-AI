@@ -70,6 +70,8 @@ const (
 	// ContextKeyProxyGroupId 记录本次真实上游请求所属的代理组 ID。
 	ContextKeyProxyGroupId ContextKey = "proxy_group_id"
 
+	ContextKeyProxyAttemptCounter ContextKey = "proxy_attempt_counter"
+
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage ContextKey = "language"
 	ContextKeyIsStream ContextKey = "is_stream"

@@ -54,6 +54,7 @@ import {
   listProxyBindings,
   listProxyGroups,
   listProxyStateEvents,
+  listProxyUpstreamAttempts,
   setManagedProxyPaused,
   switchProxyGroup,
   updateManagedProxy,
@@ -68,6 +69,7 @@ import type {
   ProxyGroupInput,
   ProxyLogAnalysis,
   ProxyStateEvent,
+  ProxyUpstreamAttempt,
 } from './proxy-management-types'
 
 const defaultGroupInput = (): ProxyGroupInput => ({
@@ -115,6 +117,14 @@ const proxyEventLabels: Record<string, string> = {
   health_unavailable: '连接检测不可用',
   manual_paused: '手动暂停',
   manual_resumed: '手动恢复',
+  manual_recovery_requested: '手动恢复检测',
+}
+
+const proxyAttemptResultLabels: Record<string, string> = {
+  success: '请求成功',
+  http_error: '上游 HTTP 错误',
+  network_error: '网络错误',
+  invalid_response: '响应异常',
 }
 
 const proxyReasonLabels: Record<string, string> = {
@@ -639,6 +649,12 @@ export function ProxyManagementSection() {
       (await listProxyStateEvents(selectedProxyId, 50)).data ?? [],
     enabled: selectedProxyId > 0,
   })
+  const attemptsQuery = useQuery({
+    queryKey: ['proxy-upstream-attempts', selectedProxyId],
+    queryFn: async () =>
+      (await listProxyUpstreamAttempts(selectedProxyId, 50)).data ?? [],
+    enabled: selectedProxyId > 0,
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['proxy-groups'] })
@@ -646,6 +662,7 @@ export function ProxyManagementSection() {
     queryClient.invalidateQueries({ queryKey: ['proxy-bindings'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-log-analyses'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-state-events'] })
+    queryClient.invalidateQueries({ queryKey: ['proxy-upstream-attempts'] })
   }
 
   const groupMutation = useMutation({
@@ -735,6 +752,7 @@ export function ProxyManagementSection() {
   const bindings = bindingsQuery.data ?? []
   const analyses = analysesQuery.data ?? []
   const events = eventsQuery.data ?? []
+  const attempts = attemptsQuery.data ?? []
 
   useEffect(() => {
     if (!proxies.length) {
@@ -1144,6 +1162,80 @@ export function ProxyManagementSection() {
               记录来自通用日志红色判定和连接检测，不包含代理密码。
             </p>
           </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className='text-base'>最近真实上游尝试</CardTitle>
+            </CardHeader>
+            <CardContent className='overflow-x-auto p-0'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>发起时间</TableHead>
+                    <TableHead>请求 / 次序</TableHead>
+                    <TableHead>渠道</TableHead>
+                    <TableHead>结果</TableHead>
+                    <TableHead>耗时</TableHead>
+                    <TableHead>上游请求 ID</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!attempts.length ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className='text-muted-foreground py-8 text-center'
+                      >
+                        暂无真实上游尝试记录
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    attempts.map((attempt: ProxyUpstreamAttempt) => (
+                      <TableRow key={attempt.id}>
+                        <TableCell className='whitespace-nowrap'>
+                          {new Date(attempt.started_at_ms).toLocaleString(
+                            'zh-CN',
+                            { hour12: false }
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className='max-w-48 truncate font-mono text-xs'>
+                            {attempt.request_id}
+                          </div>
+                          <div className='text-muted-foreground text-xs'>
+                            第 {attempt.attempt_sequence} 次 · 重试索引{' '}
+                            {attempt.retry_index}
+                          </div>
+                        </TableCell>
+                        <TableCell>{attempt.channel_id || '—'}</TableCell>
+                        <TableCell
+                          className={
+                            attempt.result === 'success'
+                              ? 'text-success font-medium'
+                              : 'text-destructive font-medium'
+                          }
+                        >
+                          {proxyAttemptResultLabels[attempt.result] ??
+                            attempt.result}
+                          <div className='text-muted-foreground text-xs font-normal'>
+                            {attempt.http_status
+                              ? `HTTP ${attempt.http_status}`
+                              : proxyReasonLabel(attempt.failure_reason)}
+                          </div>
+                        </TableCell>
+                        <TableCell className='whitespace-nowrap'>
+                          {attempt.duration_ms} ms
+                        </TableCell>
+                        <TableCell className='max-w-48 truncate font-mono text-xs'>
+                          {attempt.upstream_request_id || '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
