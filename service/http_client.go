@@ -163,6 +163,28 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		proxyClientLock.Unlock()
 		return client, nil
 
+	case "socks4":
+		timeout := time.Duration(common.RelayTimeout) * time.Second
+		dialer, err := newSOCKS4Dialer(parsedURL, timeout)
+		if err != nil {
+			return nil, err
+		}
+		transport := &http.Transport{
+			MaxIdleConns:        common.RelayMaxIdleConns,
+			MaxIdleConnsPerHost: common.RelayMaxIdleConnsPerHost,
+			IdleConnTimeout:     time.Duration(common.RelayIdleConnTimeout) * time.Second,
+			ForceAttemptHTTP2:   true,
+			DialContext:         dialer.DialContext,
+		}
+		if common.TLSInsecureSkipVerify {
+			transport.TLSClientConfig = common.InsecureTLSConfig
+		}
+		client := &http.Client{Transport: transport, CheckRedirect: checkRedirect, Timeout: timeout}
+		proxyClientLock.Lock()
+		proxyClients[proxyURL] = client
+		proxyClientLock.Unlock()
+		return client, nil
+
 	case "socks5", "socks5h":
 		// 获取认证信息
 		var auth *proxy.Auth
@@ -204,6 +226,6 @@ func NewProxyHttpClient(proxyURL string) (*http.Client, error) {
 		return client, nil
 
 	default:
-		return nil, fmt.Errorf("unsupported proxy scheme: %s, must be http, https, socks5 or socks5h", parsedURL.Scheme)
+		return nil, fmt.Errorf("unsupported proxy scheme: %s, must be http, https, socks4, socks5 or socks5h", parsedURL.Scheme)
 	}
 }

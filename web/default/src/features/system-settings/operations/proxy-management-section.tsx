@@ -438,6 +438,7 @@ function ProxyDialog(props: {
             >
               <NativeSelectOption value='http'>HTTP</NativeSelectOption>
               <NativeSelectOption value='https'>HTTPS</NativeSelectOption>
+              <NativeSelectOption value='socks4'>SOCKS4</NativeSelectOption>
               <NativeSelectOption value='socks5'>SOCKS5</NativeSelectOption>
               <NativeSelectOption value='socks5h'>SOCKS5H</NativeSelectOption>
             </NativeSelect>

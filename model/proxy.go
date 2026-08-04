@@ -234,7 +234,7 @@ func validateProxy(proxy *Proxy) error {
 		proxy.Name = proxy.Host
 	}
 	switch proxy.Protocol {
-	case "http", "https", "socks5", "socks5h":
+	case "http", "https", "socks4", "socks5", "socks5h":
 	default:
 		return fmt.Errorf("unsupported proxy protocol: %s", proxy.Protocol)
 	}
@@ -243,6 +243,9 @@ func validateProxy(proxy *Proxy) error {
 	}
 	if proxy.Port < 1 || proxy.Port > 65535 {
 		return errors.New("proxy port must be between 1 and 65535")
+	}
+	if proxy.Protocol == "socks4" && proxy.Password != "" {
+		return errors.New("SOCKS4 supports a user ID but not password authentication")
 	}
 	if proxy.Status == "" {
 		proxy.Status = ProxyStatusAvailable

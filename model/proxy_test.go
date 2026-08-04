@@ -63,8 +63,22 @@ func TestUpdateProxyGroupPreservesActiveSwitchLease(t *testing.T) {
 	require.Zero(t, stored.SwitchLockUntil)
 }
 
+func TestParseProxyURLSupportsSOCKS4UserId(t *testing.T) {
+	proxy, err := ParseProxyURL("socks4://user@127.0.0.1:1080")
+	require.NoError(t, err)
+	require.Equal(t, "socks4", proxy.Protocol)
+	require.Equal(t, "user", proxy.Username)
+	require.Empty(t, proxy.Password)
+	require.Equal(t, "socks4://user@127.0.0.1:1080", proxy.URL())
+}
+
+func TestParseProxyURLRejectsSOCKS4Password(t *testing.T) {
+	_, err := ParseProxyURL("socks4://user:password@127.0.0.1:1080")
+	require.ErrorContains(t, err, "not password authentication")
+}
+
 func TestParseProxyURLRejectsUnsupportedProtocol(t *testing.T) {
-	_, err := ParseProxyURL("socks4://127.0.0.1:1080")
+	_, err := ParseProxyURL("socks6://127.0.0.1:1080")
 	require.ErrorContains(t, err, "unsupported proxy protocol")
 }
 
