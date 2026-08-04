@@ -356,41 +356,6 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 	return result, err
 }
 
-func CompleteProxyGroupSwitch(groupId int, failedProxyId int) (int, error) {
-	nextProxyId := 0
-	err := DB.Transaction(func(tx *gorm.DB) error {
-		var failed Proxy
-		if err := tx.First(&failed, failedProxyId).Error; err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return tx.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
-					"current_proxy_id": 0,
-					"status":           ProxyGroupStatusAvailable,
-					"updated_at":       common.GetTimestamp(),
-				}).Error
-			}
-			return err
-		}
-		var err error
-		nextProxyId, err = selectNextAvailableProxyId(tx, &failed)
-		if err != nil {
-			return err
-		}
-		return tx.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
-			"current_proxy_id": nextProxyId,
-			"status":           ProxyGroupStatusAvailable,
-			"updated_at":       common.GetTimestamp(),
-		}).Error
-	})
-	return nextProxyId, err
-}
-
-func AbortProxyGroupSwitch(groupId int) error {
-	return DB.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
-		"status":     ProxyGroupStatusAvailable,
-		"updated_at": common.GetTimestamp(),
-	}).Error
-}
-
 func selectNextAvailableProxyId(tx *gorm.DB, current *Proxy) (int, error) {
 	var candidates []*Proxy
 	if err := tx.Where("group_id = ? AND id <> ? AND enabled = ?", current.GroupId, current.Id, true).

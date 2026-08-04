@@ -183,35 +183,41 @@ func acquireManagedProxySelection(ctx context.Context, channelId int, config *mo
 	gate := getProxyGroupSwitchGate(group.Id)
 	for {
 		if group.Status == model.ProxyGroupStatusSwitching {
-			owner, err := gate.beginSwitch(waitCtx)
+			err := gate.waitForAvailability(waitCtx, group.MaxWaitingRequests, func() (bool, error) {
+				current, loadErr := model.GetChannelProxyRuntimeConfig(channelId)
+				if loadErr != nil {
+					return false, loadErr
+				}
+				if current == nil || current.Group == nil {
+					return true, nil
+				}
+				if current.Group.Status == model.ProxyGroupStatusSwitching && current.Group.SwitchLockUntil > 0 && current.Group.SwitchLockUntil <= time.Now().Unix() {
+					recovered, recoverErr := model.RecoverExpiredProxyGroupSwitch(current.Group.Id, time.Now().Unix())
+					if recoverErr != nil {
+						return false, recoverErr
+					}
+					if recovered {
+						InvalidateChannelProxyConfig(channelId)
+						return true, nil
+					}
+				}
+				return current.Group.Status != model.ProxyGroupStatusSwitching, nil
+			})
 			if err != nil {
 				cancel()
-				return nil, nil, ErrProxySwitchTimeout
+				return nil, nil, err
 			}
-			if owner {
-				for group.Status == model.ProxyGroupStatusSwitching {
-					select {
-					case <-waitCtx.Done():
-						gate.finishSwitch()
-						cancel()
-						return nil, nil, ErrProxySwitchTimeout
-					case <-time.After(50 * time.Millisecond):
-					}
-					current, err := model.GetChannelProxyRuntimeConfig(channelId)
-					if err != nil {
-						gate.finishSwitch()
-						cancel()
-						return nil, nil, err
-					}
-					if current == nil || current.Group == nil {
-						gate.finishSwitch()
-						cancel()
-						return nil, nil, errors.New("channel proxy group does not exist")
-					}
-					config, group = current, current.Group
-				}
-				gate.finishSwitch()
+			current, err := model.GetChannelProxyRuntimeConfig(channelId)
+			if err != nil {
+				cancel()
+				return nil, nil, err
 			}
+			if current == nil || current.Group == nil {
+				cancel()
+				return nil, nil, errors.New("channel proxy group does not exist")
+			}
+			config, group = current, current.Group
+			continue
 		}
 
 		release, err := gate.acquireSelection(waitCtx, group.MaxWaitingRequests)

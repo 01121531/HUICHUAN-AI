@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/stretchr/testify/require"
 )
@@ -38,6 +39,55 @@ func TestProxySwitchGateWaitsForActiveSelection(t *testing.T) {
 	}
 	release()
 	require.NoError(t, <-switchFinished)
+}
+
+func TestProxyGroupSwitchLeaseHasOneOwnerAndRejectsStaleCompletion(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+
+	acquired, state, err := model.TryAcquireProxyGroupSwitchLease(group.Id, first.Id, "instance-a", 45)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.Equal(t, "instance-a", state.SwitchLockOwner)
+
+	acquired, state, err = model.TryAcquireProxyGroupSwitchLease(group.Id, first.Id, "instance-b", 45)
+	require.NoError(t, err)
+	require.False(t, acquired)
+	require.Equal(t, "instance-a", state.SwitchLockOwner)
+
+	require.NoError(t, model.DB.Model(group).UpdateColumn("switch_lock_until", common.GetTimestamp()-1).Error)
+	acquired, state, err = model.TryAcquireProxyGroupSwitchLease(group.Id, first.Id, "instance-b", 45)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.Equal(t, "instance-b", state.SwitchLockOwner)
+
+	_, err = model.CompleteProxyGroupSwitch(group.Id, first.Id, "instance-a")
+	require.ErrorIs(t, err, model.ErrProxyGroupSwitchLeaseLost)
+	nextProxyId, err := model.CompleteProxyGroupSwitch(group.Id, first.Id, "instance-b")
+	require.NoError(t, err)
+	require.Equal(t, second.Id, nextProxyId)
+	require.NoError(t, model.DB.First(group, group.Id).Error)
+	require.Equal(t, second.Id, group.CurrentProxyId)
+	require.Equal(t, model.ProxyGroupStatusAvailable, group.Status)
+	require.Empty(t, group.SwitchLockOwner)
+	require.Zero(t, group.SwitchLockUntil)
+}
+
+func TestExpiredProxyGroupSwitchLeaseIsRecovered(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, _ := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	acquired, _, err := model.TryAcquireProxyGroupSwitchLease(group.Id, first.Id, "stopped-instance", 45)
+	require.NoError(t, err)
+	require.True(t, acquired)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("switch_lock_until", common.GetTimestamp()-1).Error)
+
+	recovered, err := model.RecoverExpiredProxyGroupSwitches(common.GetTimestamp())
+	require.NoError(t, err)
+	require.EqualValues(t, 1, recovered)
+	require.NoError(t, model.DB.First(group, group.Id).Error)
+	require.Equal(t, model.ProxyGroupStatusAvailable, group.Status)
+	require.Empty(t, group.SwitchLockOwner)
+	require.Zero(t, group.SwitchLockUntil)
 }
 
 func TestManualPauseResumeAndSwitch(t *testing.T) {

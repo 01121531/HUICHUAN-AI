@@ -49,6 +49,8 @@ type ProxyGroup struct {
 	Enabled                     bool    `json:"enabled" gorm:"index"`
 	CurrentProxyId              int     `json:"current_proxy_id" gorm:"default:0;index"`
 	Status                      string  `json:"status" gorm:"type:varchar(32);default:'available';index"`
+	SwitchLockOwner             string  `json:"-" gorm:"type:varchar(128);default:'';index"`
+	SwitchLockUntil             int64   `json:"switch_lock_until" gorm:"bigint;default:0;index"`
 	MaxRequests                 int     `json:"max_requests" gorm:"default:500"`
 	MaxDurationSeconds          int     `json:"max_duration_seconds" gorm:"default:1800"`
 	SwitchWaitSeconds           int     `json:"switch_wait_seconds" gorm:"default:30"`
@@ -373,7 +375,33 @@ func UpdateProxyGroup(group *ProxyGroup) error {
 		return errors.New("proxy group name is required")
 	}
 	group.Name = strings.TrimSpace(group.Name)
-	return DB.Save(group).Error
+	applyProxyGroupDefaults(group)
+	updates := map[string]interface{}{
+		"name":                          group.Name,
+		"enabled":                       group.Enabled,
+		"max_requests":                  group.MaxRequests,
+		"max_duration_seconds":          group.MaxDurationSeconds,
+		"switch_wait_seconds":           group.SwitchWaitSeconds,
+		"max_waiting_requests":          group.MaxWaitingRequests,
+		"health_check_interval":         group.HealthCheckInterval,
+		"health_failure_threshold":      group.HealthFailureThreshold,
+		"consecutive_timeout_threshold": group.ConsecutiveTimeoutThreshold,
+		"window_size":                   group.WindowSize,
+		"window_timeout_ratio":          group.WindowTimeoutRatio,
+		"base_cooldown_seconds":         group.BaseCooldownSeconds,
+		"max_cooldown_seconds":          group.MaxCooldownSeconds,
+		"recovery_success_count":        group.RecoverySuccessCount,
+		"allow_direct_fallback":         group.AllowDirectFallback,
+		"updated_at":                    common.GetTimestamp(),
+	}
+	if !group.Enabled {
+		updates["status"] = ProxyGroupStatusDisabled
+		updates["switch_lock_owner"] = ""
+		updates["switch_lock_until"] = 0
+	} else if group.Status == ProxyGroupStatusDisabled {
+		updates["status"] = ProxyGroupStatusAvailable
+	}
+	return DB.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(updates).Error
 }
 
 func DeleteProxyGroup(id int) error {

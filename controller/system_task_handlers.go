@@ -57,7 +57,8 @@ type proxyHealthCheckHandler struct{}
 func (proxyHealthCheckHandler) Type() string { return model.SystemTaskTypeProxyHealthCheck }
 
 func (proxyHealthCheckHandler) Enabled() bool {
-	return model.HasEnabledManagedProxies() && model.HasDueProxyHealthChecks(common.GetTimestamp())
+	now := common.GetTimestamp()
+	return model.HasEnabledManagedProxies() && (model.HasDueProxyHealthChecks(now) || model.HasExpiredProxyGroupSwitches(now))
 }
 
 func (proxyHealthCheckHandler) Interval() time.Duration {

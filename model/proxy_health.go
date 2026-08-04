@@ -6,6 +6,7 @@ import (
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ProxyHealthCheckTarget struct {
@@ -68,7 +69,7 @@ func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 			return err
 		}
 		var group ProxyGroup
-		if err := tx.First(&group, proxy.GroupId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&group, proxy.GroupId).Error; err != nil {
 			return err
 		}
 		now := common.GetTimestamp()
@@ -86,21 +87,37 @@ func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 			updates["health_failures"] = 0
 			updates["last_health_error"] = ""
 			if proxy.Enabled && (proxy.Status == ProxyStatusUnavailable || (proxy.Status == ProxyStatusCooling && proxy.CooldownUntil <= now)) {
-				probeCount := group.RecoverySuccessCount
-				if probeCount <= 0 {
-					probeCount = DefaultProxyRecoverySuccessCount
+				var recoveringCount int64
+				if err := tx.Model(&Proxy{}).
+					Where("group_id = ? AND id <> ? AND enabled = ? AND status = ?", group.Id, proxy.Id, true, ProxyStatusRecovering).
+					Count(&recoveringCount).Error; err != nil {
+					return err
 				}
-				result.ToStatus = ProxyStatusRecovering
-				result.ProbeRequired = true
-				updates["status"] = result.ToStatus
-				updates["recovery_successes"] = 0
-				updates["recovery_probe_remaining"] = probeCount
-				updates["cooldown_until"] = 0
-				updates["health_epoch_at"] = now
-				updates["consecutive_timeouts"] = 0
-				updates["window_samples"] = 0
-				updates["window_timeouts"] = 0
-				updates["window_timeout_ratio"] = 0
+				if recoveringCount > 0 {
+					if proxy.Status == ProxyStatusCooling {
+						interval := group.HealthCheckInterval
+						if interval <= 0 {
+							interval = DefaultProxyHealthCheckInterval
+						}
+						updates["cooldown_until"] = now + int64(interval)
+					}
+				} else {
+					probeCount := group.RecoverySuccessCount
+					if probeCount <= 0 {
+						probeCount = DefaultProxyRecoverySuccessCount
+					}
+					result.ToStatus = ProxyStatusRecovering
+					result.ProbeRequired = true
+					updates["status"] = result.ToStatus
+					updates["recovery_successes"] = 0
+					updates["recovery_probe_remaining"] = probeCount
+					updates["cooldown_until"] = 0
+					updates["health_epoch_at"] = now
+					updates["consecutive_timeouts"] = 0
+					updates["window_samples"] = 0
+					updates["window_timeouts"] = 0
+					updates["window_timeout_ratio"] = 0
+				}
 			}
 		} else {
 			failures := proxy.HealthFailures + 1
@@ -182,14 +199,6 @@ func ClaimRecoveringProxyProbe(proxyId int) (bool, error) {
 		Where("id = ? AND enabled = ? AND status = ? AND recovery_probe_remaining > 0", proxyId, true, ProxyStatusRecovering).
 		UpdateColumn("recovery_probe_remaining", gorm.Expr("recovery_probe_remaining - 1"))
 	return result.RowsAffected == 1, result.Error
-}
-
-func SetProxyGroupRecoveryProbe(groupId int, proxyId int) error {
-	return DB.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
-		"current_proxy_id": proxyId,
-		"status":           ProxyGroupStatusAvailable,
-		"updated_at":       common.GetTimestamp(),
-	}).Error
 }
 
 func GetProxyHealthTarget(proxyId int) (*ProxyHealthCheckTarget, error) {

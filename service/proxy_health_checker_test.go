@@ -131,6 +131,29 @@ func TestCoolingProxyUsesRealProbeLogsBeforeRecovery(t *testing.T) {
 	require.Zero(t, first.RecoveryProbeRemaining)
 }
 
+func TestProxyGroupStartsOnlyOneRecoveryProbeAtATime(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	now := common.GetTimestamp()
+	require.NoError(t, model.DB.Model(&model.Proxy{}).Where("id IN ?", []int{first.Id, second.Id}).UpdateColumns(map[string]interface{}{
+		"status": model.ProxyStatusCooling, "cooldown_until": now - 1,
+	}).Error)
+
+	firstTransition, err := model.ApplyProxyHealthCheckResult(first.Id, true, 80, "203.0.113.41", "")
+	require.NoError(t, err)
+	require.True(t, firstTransition.ProbeRequired)
+	require.Equal(t, model.ProxyStatusRecovering, firstTransition.ToStatus)
+
+	secondTransition, err := model.ApplyProxyHealthCheckResult(second.Id, true, 90, "203.0.113.42", "")
+	require.NoError(t, err)
+	require.False(t, secondTransition.ProbeRequired)
+	require.Equal(t, model.ProxyStatusCooling, secondTransition.ToStatus)
+	require.NoError(t, model.DB.First(second, second.Id).Error)
+	require.Equal(t, model.ProxyStatusCooling, second.Status)
+	require.Greater(t, second.CooldownUntil, now)
+	require.NoError(t, model.DB.First(group, group.Id).Error)
+}
+
 func TestRecoveryRedLogReturnsToExponentialCooldown(t *testing.T) {
 	cleanupProxyAnalyzerTestData(t)
 	group, first, _ := seedProxyAnalyzerGroup(t, 3, 10, 0.6)

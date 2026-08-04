@@ -51,7 +51,7 @@ func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 	resetProxyGroupSwitchGatesForTest()
 	const channelId = 99103
 	group := &model.ProxyGroup{
-		Name: "runtime-switch-wait-test", Enabled: true, Status: model.ProxyGroupStatusSwitching,
+		Name: "runtime-switch-wait-test", Enabled: true, Status: model.ProxyGroupStatusAvailable,
 		SwitchWaitSeconds: 2, MaxWaitingRequests: 10,
 	}
 	require.NoError(t, model.DB.Create(group).Error)
@@ -59,16 +59,15 @@ func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 	second := &model.Proxy{GroupId: group.Id, Name: "second", Protocol: "http", Host: "127.0.0.2", Port: 18084, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 2}
 	require.NoError(t, model.DB.Create(first).Error)
 	require.NoError(t, model.DB.Create(second).Error)
-	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{"current_proxy_id": first.Id, "status": model.ProxyGroupStatusSwitching}).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{"current_proxy_id": first.Id, "status": model.ProxyGroupStatusAvailable}).Error)
+	acquired, _, err := model.TryAcquireProxyGroupSwitchLease(group.Id, first.Id, "remote-instance", 45)
+	require.NoError(t, err)
+	require.True(t, acquired)
 	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
 	require.NoError(t, model.DB.Create(binding).Error)
 	InvalidateChannelProxyConfig(channelId)
-	gate := getProxyGroupSwitchGate(group.Id)
-	owner, err := gate.beginSwitch(context.Background())
-	require.NoError(t, err)
-	require.True(t, owner)
 	t.Cleanup(func() {
-		gate.finishSwitch()
+		_ = model.AbortProxyGroupSwitch(group.Id, "remote-instance")
 		InvalidateChannelProxyConfig(channelId)
 		model.DB.Delete(binding)
 		model.DB.Where("group_id = ?", group.Id).Delete(&model.Proxy{})
@@ -92,10 +91,9 @@ func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
 		t.Fatal("selection completed while the group was switching")
 	case <-time.After(30 * time.Millisecond):
 	}
-	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{
-		"current_proxy_id": second.Id, "status": model.ProxyGroupStatusAvailable,
-	}).Error)
-	gate.finishSwitch()
+	nextProxyId, err := model.CompleteProxyGroupSwitch(group.Id, first.Id, "remote-instance")
+	require.NoError(t, err)
+	require.Equal(t, second.Id, nextProxyId)
 
 	selected := <-result
 	require.NoError(t, selected.err)

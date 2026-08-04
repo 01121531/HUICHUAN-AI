@@ -34,6 +34,35 @@ func TestProxyGroupDefaultsMatchDesign(t *testing.T) {
 	require.Equal(t, 7200, group.MaxCooldownSeconds)
 }
 
+func TestUpdateProxyGroupPreservesActiveSwitchLease(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&ProxyGroup{}))
+	group := &ProxyGroup{
+		Name: "lease-preserve", Enabled: true, Status: ProxyGroupStatusSwitching,
+		CurrentProxyId: 123, SwitchLockOwner: "instance-a", SwitchLockUntil: common.GetTimestamp() + 60,
+	}
+	require.NoError(t, DB.Create(group).Error)
+	t.Cleanup(func() { DB.Delete(group) })
+
+	group.Name = "lease-preserve-updated"
+	group.MaxRequests = 88
+	require.NoError(t, UpdateProxyGroup(group))
+	var stored ProxyGroup
+	require.NoError(t, DB.First(&stored, group.Id).Error)
+	require.Equal(t, "lease-preserve-updated", stored.Name)
+	require.Equal(t, 88, stored.MaxRequests)
+	require.Equal(t, ProxyGroupStatusSwitching, stored.Status)
+	require.Equal(t, 123, stored.CurrentProxyId)
+	require.Equal(t, "instance-a", stored.SwitchLockOwner)
+	require.Equal(t, group.SwitchLockUntil, stored.SwitchLockUntil)
+
+	stored.Enabled = false
+	require.NoError(t, UpdateProxyGroup(&stored))
+	require.NoError(t, DB.First(&stored, group.Id).Error)
+	require.Equal(t, ProxyGroupStatusDisabled, stored.Status)
+	require.Empty(t, stored.SwitchLockOwner)
+	require.Zero(t, stored.SwitchLockUntil)
+}
+
 func TestParseProxyURLRejectsUnsupportedProtocol(t *testing.T) {
 	_, err := ParseProxyURL("socks4://127.0.0.1:1080")
 	require.ErrorContains(t, err, "unsupported proxy protocol")

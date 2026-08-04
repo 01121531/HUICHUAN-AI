@@ -23,12 +23,13 @@ const (
 )
 
 type ProxyHealthCheckSummary struct {
-	Checked     int `json:"checked"`
-	Healthy     int `json:"healthy"`
-	Failed      int `json:"failed"`
-	Unavailable int `json:"unavailable"`
-	Recovering  int `json:"recovering"`
-	Switched    int `json:"switched"`
+	Checked           int   `json:"checked"`
+	Healthy           int   `json:"healthy"`
+	Failed            int   `json:"failed"`
+	Unavailable       int   `json:"unavailable"`
+	Recovering        int   `json:"recovering"`
+	Switched          int   `json:"switched"`
+	RecoveredSwitches int64 `json:"recovered_switches"`
 }
 
 type proxyHealthCheckOutcome struct {
@@ -78,6 +79,11 @@ func CheckManagedProxyNow(ctx context.Context, proxyId int) (ProxyHealthCheckRes
 
 func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, error) {
 	summary := ProxyHealthCheckSummary{}
+	recovered, err := model.RecoverExpiredProxyGroupSwitches(common.GetTimestamp())
+	if err != nil {
+		return summary, err
+	}
+	summary.RecoveredSwitches = recovered
 	targets, err := model.ListDueProxyHealthChecks(common.GetTimestamp(), defaultProxyHealthCheckBatchSize)
 	if err != nil {
 		return summary, err

@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/model"
 )
 
@@ -168,20 +169,29 @@ func proxySwitchWaitContext(ctx context.Context, waitSeconds int) (context.Conte
 func switchManagedProxyGroup(ctx context.Context, groupId int, failedProxyId int, waitSeconds int) (int, error) {
 	waitCtx, cancel := proxySwitchWaitContext(ctx, waitSeconds)
 	defer cancel()
+	leaseOwner, acquired, currentProxyId, err := acquireProxyGroupSwitchLease(waitCtx, groupId, failedProxyId, waitSeconds)
+	if err != nil {
+		return 0, err
+	}
+	if !acquired {
+		return currentProxyId, nil
+	}
+
 	gate := getProxyGroupSwitchGate(groupId)
 	owner, err := gate.beginSwitch(waitCtx)
 	if err != nil {
-		_ = model.AbortProxyGroupSwitch(groupId)
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
 		return 0, err
 	}
 	if !owner {
-		return 0, nil
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
+		return currentProxyId, nil
 	}
 	defer gate.finishSwitch()
 
-	nextProxyId, err := model.CompleteProxyGroupSwitch(groupId, failedProxyId)
+	nextProxyId, err := model.CompleteProxyGroupSwitch(groupId, failedProxyId, leaseOwner)
 	if err != nil {
-		_ = model.AbortProxyGroupSwitch(groupId)
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
 		return 0, err
 	}
 	InvalidateChannelProxyConfig(0)
@@ -191,20 +201,68 @@ func switchManagedProxyGroup(ctx context.Context, groupId int, failedProxyId int
 func switchManagedProxyGroupTo(ctx context.Context, groupId int, targetProxyId int, waitSeconds int) error {
 	waitCtx, cancel := proxySwitchWaitContext(ctx, waitSeconds)
 	defer cancel()
-	gate := getProxyGroupSwitchGate(groupId)
-	owner, err := gate.beginSwitch(waitCtx)
+	state, err := model.GetProxyGroupSwitchLeaseState(groupId)
 	if err != nil {
 		return err
 	}
+	if state.CurrentProxyId == targetProxyId && state.Status != model.ProxyGroupStatusSwitching {
+		return nil
+	}
+	leaseOwner, acquired, _, err := acquireProxyGroupSwitchLease(waitCtx, groupId, 0, waitSeconds)
+	if err != nil {
+		return err
+	}
+	if !acquired {
+		return nil
+	}
+
+	gate := getProxyGroupSwitchGate(groupId)
+	owner, err := gate.beginSwitch(waitCtx)
+	if err != nil {
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
+		return err
+	}
 	if !owner {
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
 		return nil
 	}
 	defer gate.finishSwitch()
-	if err := model.SetProxyGroupRecoveryProbe(groupId, targetProxyId); err != nil {
+	if err := model.CompleteProxyGroupRecoverySwitch(groupId, targetProxyId, leaseOwner); err != nil {
+		_ = model.AbortProxyGroupSwitch(groupId, leaseOwner)
 		return err
 	}
 	InvalidateChannelProxyConfig(0)
 	return nil
+}
+
+func acquireProxyGroupSwitchLease(ctx context.Context, groupId int, expectedCurrentProxyId int, waitSeconds int) (string, bool, int, error) {
+	owner := common.GetUUID()
+	leaseSeconds := waitSeconds + 15
+	if leaseSeconds < 45 {
+		leaseSeconds = 45
+	}
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		acquired, state, err := model.TryAcquireProxyGroupSwitchLease(groupId, expectedCurrentProxyId, owner, leaseSeconds)
+		if err != nil {
+			return "", false, 0, err
+		}
+		if acquired {
+			return owner, true, state.CurrentProxyId, nil
+		}
+		if expectedCurrentProxyId > 0 && state.CurrentProxyId != expectedCurrentProxyId {
+			return "", false, state.CurrentProxyId, nil
+		}
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				return "", false, state.CurrentProxyId, ErrProxySwitchTimeout
+			}
+			return "", false, state.CurrentProxyId, ctx.Err()
+		case <-ticker.C:
+		}
+	}
 }
 
 func SetManagedProxyPaused(ctx context.Context, proxyId int, paused bool) error {
