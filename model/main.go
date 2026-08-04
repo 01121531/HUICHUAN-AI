@@ -305,6 +305,9 @@ func migrateDB() error {
 		&ProxyGroup{},
 		&Proxy{},
 		&ChannelProxyBinding{},
+		&ProxyLogAnalysis{},
+		&ProxyLogAnalysisCursor{},
+		&ProxyStateEvent{},
 	)
 	if err != nil {
 		return err
@@ -363,6 +366,9 @@ func migrateDBFast() error {
 		{&ProxyGroup{}, "ProxyGroup"},
 		{&Proxy{}, "Proxy"},
 		{&ChannelProxyBinding{}, "ChannelProxyBinding"},
+		{&ProxyLogAnalysis{}, "ProxyLogAnalysis"},
+		{&ProxyLogAnalysisCursor{}, "ProxyLogAnalysisCursor"},
+		{&ProxyStateEvent{}, "ProxyStateEvent"},
 	}
 	// 动态计算migration数量，确保errChan缓冲区足够大
 	errChan := make(chan error, len(migrations))

@@ -21,5 +21,7 @@ func registerProxyRoutes(apiRouter *gin.RouterGroup) {
 		proxyRoute.GET("/bindings", controller.ListProxyBindings)
 		proxyRoute.PUT("/bindings/:channel_id", controller.UpsertProxyBinding)
 		proxyRoute.DELETE("/bindings/:channel_id", controller.DeleteProxyBinding)
+		proxyRoute.GET("/analyses", controller.ListProxyLogAnalyses)
+		proxyRoute.GET("/events", controller.ListProxyStateEvents)
 	}
 }

@@ -41,6 +41,13 @@ export type ManagedProxy = {
   last_used_at: number
   total_requests: number
   total_timeouts: number
+  window_samples: number
+  window_timeouts: number
+  window_timeout_ratio: number
+  last_analyzed_at: number
+  last_frt_ms: number
+  last_tps: number
+  last_timeout_reason: string
 }
 
 export type ProxyBinding = {

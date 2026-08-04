@@ -33,6 +33,7 @@ func setupProxyControllerTestDB(t *testing.T) {
 	common.SetDatabaseTypes(common.DatabaseTypeSQLite, common.DatabaseTypeSQLite)
 	require.NoError(t, db.AutoMigrate(
 		&model.User{}, &model.Channel{}, &model.Log{}, &model.ProxyGroup{}, &model.Proxy{}, &model.ChannelProxyBinding{},
+		&model.ProxyLogAnalysis{}, &model.ProxyLogAnalysisCursor{}, &model.ProxyStateEvent{},
 	))
 	t.Cleanup(func() {
 		model.DB = previousDB
@@ -105,4 +106,26 @@ func TestProxyManagementHandlersCreateAndBindWithoutLeakingPassword(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, config)
 	require.Equal(t, groupResponse.Data.Id, config.Group.Id)
+
+	require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+		AnalysisKey: "controller-proxy-analysis", RequestId: "request-1",
+		LogType: model.LogTypeConsume, LogCreatedAt: 100, ProxyId: storedProxy.Id,
+		ProxyGroupId: groupResponse.Data.Id, Counted: true, IsTimeout: true, Reason: "duration",
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ProxyStateEvent{
+		ProxyId: storedProxy.Id, ProxyGroupId: groupResponse.Data.Id,
+		EventType: "auto_paused", FromStatus: model.ProxyStatusWatching, ToStatus: model.ProxyStatusCooling,
+	}).Error)
+	analysisContext, analysisRecorder := proxyJSONContext(t, http.MethodGet, nil)
+	analysisContext.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/?proxy_id=%d", storedProxy.Id), nil)
+	ListProxyLogAnalyses(analysisContext)
+	require.Equal(t, http.StatusOK, analysisRecorder.Code)
+	require.Contains(t, analysisRecorder.Body.String(), "duration")
+	require.NotContains(t, analysisRecorder.Body.String(), "never-return-this-secret")
+
+	eventContext, eventRecorder := proxyJSONContext(t, http.MethodGet, nil)
+	eventContext.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/?proxy_id=%d", storedProxy.Id), nil)
+	ListProxyStateEvents(eventContext)
+	require.Equal(t, http.StatusOK, eventRecorder.Code)
+	require.Contains(t, eventRecorder.Body.String(), "auto_paused")
 }

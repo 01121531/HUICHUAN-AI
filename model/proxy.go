@@ -18,11 +18,13 @@ const (
 	ProxyGroupStatusSwitching = "switching"
 	ProxyGroupStatusDisabled  = "disabled"
 
-	ProxyStatusAvailable  = "available"
-	ProxyStatusPaused     = "paused"
-	ProxyStatusCooling    = "cooling"
-	ProxyStatusRecovering = "recovering"
-	ProxyStatusDisabled   = "disabled"
+	ProxyStatusAvailable   = "available"
+	ProxyStatusWatching    = "watching"
+	ProxyStatusPaused      = "paused"
+	ProxyStatusCooling     = "cooling"
+	ProxyStatusRecovering  = "recovering"
+	ProxyStatusUnavailable = "unavailable"
+	ProxyStatusDisabled    = "disabled"
 )
 
 const (
@@ -32,10 +34,10 @@ const (
 	DefaultProxyMaxWaitingRequests   = 500
 	DefaultProxyHealthCheckInterval  = 300
 	DefaultProxyConsecutiveTimeouts  = 3
-	DefaultProxyWindowSize           = 20
-	DefaultProxyWindowTimeoutRatio   = 0.5
-	DefaultProxyBaseCooldownSeconds  = 60
-	DefaultProxyMaxCooldownSeconds   = 3600
+	DefaultProxyWindowSize           = 10
+	DefaultProxyWindowTimeoutRatio   = 0.6
+	DefaultProxyBaseCooldownSeconds  = 600
+	DefaultProxyMaxCooldownSeconds   = 7200
 	DefaultProxyRecoverySuccessCount = 2
 )
 
@@ -52,10 +54,10 @@ type ProxyGroup struct {
 	MaxWaitingRequests          int     `json:"max_waiting_requests" gorm:"default:500"`
 	HealthCheckInterval         int     `json:"health_check_interval" gorm:"default:300"`
 	ConsecutiveTimeoutThreshold int     `json:"consecutive_timeout_threshold" gorm:"default:3"`
-	WindowSize                  int     `json:"window_size" gorm:"default:20"`
-	WindowTimeoutRatio          float64 `json:"window_timeout_ratio" gorm:"default:0.5"`
-	BaseCooldownSeconds         int     `json:"base_cooldown_seconds" gorm:"default:60"`
-	MaxCooldownSeconds          int     `json:"max_cooldown_seconds" gorm:"default:3600"`
+	WindowSize                  int     `json:"window_size" gorm:"default:10"`
+	WindowTimeoutRatio          float64 `json:"window_timeout_ratio" gorm:"default:0.6"`
+	BaseCooldownSeconds         int     `json:"base_cooldown_seconds" gorm:"default:600"`
+	MaxCooldownSeconds          int     `json:"max_cooldown_seconds" gorm:"default:7200"`
 	RecoverySuccessCount        int     `json:"recovery_success_count" gorm:"default:2"`
 	AllowDirectFallback         bool    `json:"allow_direct_fallback" gorm:"default:false"`
 	CreatedAt                   int64   `json:"created_at" gorm:"bigint"`
@@ -66,29 +68,36 @@ func (ProxyGroup) TableName() string { return "proxy_groups" }
 
 // Proxy 保存稳定代理 ID 和运行指标。认证信息不参与 JSON 序列化。
 type Proxy struct {
-	Id                  int    `json:"id" gorm:"primaryKey"`
-	GroupId             int    `json:"group_id" gorm:"not null;index"`
-	Name                string `json:"name" gorm:"type:varchar(128);not null"`
-	Protocol            string `json:"protocol" gorm:"type:varchar(16);not null"`
-	Host                string `json:"host" gorm:"type:varchar(255);not null"`
-	Port                int    `json:"port" gorm:"not null"`
-	Username            string `json:"username" gorm:"type:varchar(255)"`
-	Password            string `json:"-" gorm:"type:varchar(512)"`
-	Enabled             bool   `json:"enabled" gorm:"index"`
-	Status              string `json:"status" gorm:"type:varchar(32);default:'available';index"`
-	Sort                int    `json:"sort" gorm:"default:0;index"`
-	LastExitIp          string `json:"last_exit_ip" gorm:"type:varchar(64);default:''"`
-	LastCheckAt         int64  `json:"last_check_at" gorm:"bigint;default:0"`
-	LastCheckLatencyMs  int    `json:"last_check_latency_ms" gorm:"default:0"`
-	HealthFailures      int    `json:"health_failures" gorm:"default:0"`
-	ConsecutiveTimeouts int    `json:"consecutive_timeouts" gorm:"default:0"`
-	RecoveryFailures    int    `json:"recovery_failures" gorm:"default:0"`
-	CooldownUntil       int64  `json:"cooldown_until" gorm:"bigint;default:0;index"`
-	LastUsedAt          int64  `json:"last_used_at" gorm:"bigint;default:0"`
-	TotalRequests       int64  `json:"total_requests" gorm:"bigint;default:0"`
-	TotalTimeouts       int64  `json:"total_timeouts" gorm:"bigint;default:0"`
-	CreatedAt           int64  `json:"created_at" gorm:"bigint"`
-	UpdatedAt           int64  `json:"updated_at" gorm:"bigint"`
+	Id                  int     `json:"id" gorm:"primaryKey"`
+	GroupId             int     `json:"group_id" gorm:"not null;index"`
+	Name                string  `json:"name" gorm:"type:varchar(128);not null"`
+	Protocol            string  `json:"protocol" gorm:"type:varchar(16);not null"`
+	Host                string  `json:"host" gorm:"type:varchar(255);not null"`
+	Port                int     `json:"port" gorm:"not null"`
+	Username            string  `json:"username" gorm:"type:varchar(255)"`
+	Password            string  `json:"-" gorm:"type:varchar(512)"`
+	Enabled             bool    `json:"enabled" gorm:"index"`
+	Status              string  `json:"status" gorm:"type:varchar(32);default:'available';index"`
+	Sort                int     `json:"sort" gorm:"default:0;index"`
+	LastExitIp          string  `json:"last_exit_ip" gorm:"type:varchar(64);default:''"`
+	LastCheckAt         int64   `json:"last_check_at" gorm:"bigint;default:0"`
+	LastCheckLatencyMs  int     `json:"last_check_latency_ms" gorm:"default:0"`
+	HealthFailures      int     `json:"health_failures" gorm:"default:0"`
+	ConsecutiveTimeouts int     `json:"consecutive_timeouts" gorm:"default:0"`
+	RecoveryFailures    int     `json:"recovery_failures" gorm:"default:0"`
+	CooldownUntil       int64   `json:"cooldown_until" gorm:"bigint;default:0;index"`
+	LastUsedAt          int64   `json:"last_used_at" gorm:"bigint;default:0"`
+	TotalRequests       int64   `json:"total_requests" gorm:"bigint;default:0"`
+	TotalTimeouts       int64   `json:"total_timeouts" gorm:"bigint;default:0"`
+	WindowSamples       int     `json:"window_samples" gorm:"default:0"`
+	WindowTimeouts      int     `json:"window_timeouts" gorm:"default:0"`
+	WindowTimeoutRatio  float64 `json:"window_timeout_ratio" gorm:"default:0"`
+	LastAnalyzedAt      int64   `json:"last_analyzed_at" gorm:"bigint;default:0"`
+	LastFrtMs           int     `json:"last_frt_ms" gorm:"default:0"`
+	LastTps             float64 `json:"last_tps" gorm:"default:0"`
+	LastTimeoutReason   string  `json:"last_timeout_reason" gorm:"type:varchar(255);default:''"`
+	CreatedAt           int64   `json:"created_at" gorm:"bigint"`
+	UpdatedAt           int64   `json:"updated_at" gorm:"bigint"`
 }
 
 func (Proxy) TableName() string { return "proxies" }

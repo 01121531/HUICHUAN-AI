@@ -52,6 +52,9 @@ func TestMain(m *testing.M) {
 		&model.ProxyGroup{},
 		&model.Proxy{},
 		&model.ChannelProxyBinding{},
+		&model.ProxyLogAnalysis{},
+		&model.ProxyLogAnalysisCursor{},
+		&model.ProxyStateEvent{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -75,6 +78,9 @@ func truncate(t *testing.T) {
 		model.DB.Exec("DELETE FROM user_subscriptions")
 		model.DB.Exec("DELETE FROM system_task_locks")
 		model.DB.Exec("DELETE FROM system_tasks")
+		model.DB.Exec("DELETE FROM proxy_state_events")
+		model.DB.Exec("DELETE FROM proxy_log_analyses")
+		model.DB.Exec("DELETE FROM proxy_log_analysis_cursors")
 	})
 }
 

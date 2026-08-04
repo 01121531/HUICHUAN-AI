@@ -60,15 +60,30 @@ const defaultGroupInput = (): ProxyGroupInput => ({
   max_waiting_requests: 500,
   health_check_interval: 300,
   consecutive_timeout_threshold: 3,
-  window_size: 20,
-  window_timeout_ratio: 0.5,
-  base_cooldown_seconds: 60,
-  max_cooldown_seconds: 3600,
+  window_size: 10,
+  window_timeout_ratio: 0.6,
+  base_cooldown_seconds: 600,
+  max_cooldown_seconds: 7200,
   recovery_success_count: 2,
   allow_direct_fallback: false,
 })
 
 const EMPTY_PROXY_GROUPS: ProxyGroup[] = []
+
+const proxyStatusLabels: Record<string, string> = {
+  available: '正常',
+  watching: '观察中',
+  paused: '已暂停',
+  cooling: '冷却中',
+  recovering: '恢复测试',
+  unavailable: '不可用',
+  disabled: '已停用',
+}
+
+function proxyStatusLabel(proxy: ManagedProxy) {
+  if (!proxy.enabled) return '手动停用'
+  return proxyStatusLabels[proxy.status] ?? proxy.status ?? '正常'
+}
 
 function groupToInput(group: ProxyGroup): ProxyGroupInput {
   return {
@@ -719,7 +734,7 @@ export function ProxyManagementSection() {
               新增代理
             </Button>
           </div>
-          <div className='rounded-lg border'>
+          <div className='overflow-x-auto rounded-lg border'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -727,7 +742,10 @@ export function ProxyManagementSection() {
                   <TableHead>协议</TableHead>
                   <TableHead>地址</TableHead>
                   <TableHead>状态</TableHead>
-                  <TableHead>累计请求</TableHead>
+                  <TableHead>连续红色</TableHead>
+                  <TableHead>窗口红色率</TableHead>
+                  <TableHead>最近指标</TableHead>
+                  <TableHead>累计请求 / 红色</TableHead>
                   <TableHead className='text-right'>操作</TableHead>
                 </TableRow>
               </TableHeader>
@@ -735,7 +753,7 @@ export function ProxyManagementSection() {
                 {!proxies.length ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={9}
                       className='text-muted-foreground py-10 text-center'
                     >
                       当前分组还没有代理
@@ -756,8 +774,26 @@ export function ProxyManagementSection() {
                       <TableCell className='font-mono'>
                         {proxy.host}:{proxy.port}
                       </TableCell>
-                      <TableCell>{proxy.enabled ? '可用' : '已停用'}</TableCell>
-                      <TableCell>{proxy.total_requests}</TableCell>
+                      <TableCell>{proxyStatusLabel(proxy)}</TableCell>
+                      <TableCell>{proxy.consecutive_timeouts}</TableCell>
+                      <TableCell>
+                        {proxy.window_samples > 0
+                          ? `${Math.round(proxy.window_timeout_ratio * 100)}%（${proxy.window_timeouts}/${proxy.window_samples}）`
+                          : '暂无样本'}
+                      </TableCell>
+                      <TableCell className='whitespace-nowrap'>
+                        {proxy.last_frt_ms > 0
+                          ? `首字 ${proxy.last_frt_ms} ms`
+                          : '首字 —'}
+                        <div className='text-muted-foreground text-xs'>
+                          {proxy.last_tps > 0
+                            ? `TPS ${proxy.last_tps.toFixed(1)}`
+                            : 'TPS —'}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {proxy.total_requests} / {proxy.total_timeouts}
+                      </TableCell>
                       <TableCell className='text-right'>
                         <div className='flex justify-end gap-1'>
                           <Button

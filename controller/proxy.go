@@ -282,3 +282,25 @@ func DeleteProxyBinding(c *gin.Context) {
 	recordManageAudit(c, "proxy.binding.delete", map[string]interface{}{"channel_id": channelId})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
+
+func ListProxyLogAnalyses(c *gin.Context) {
+	proxyId, _ := strconv.Atoi(c.Query("proxy_id"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	analyses, err := model.ListProxyLogAnalyses(proxyId, limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": analyses})
+}
+
+func ListProxyStateEvents(c *gin.Context) {
+	proxyId, _ := strconv.Atoi(c.Query("proxy_id"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	events, err := model.ListProxyStateEvents(proxyId, limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": events})
+}

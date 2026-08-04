@@ -23,6 +23,16 @@ func TestParseProxyURLList(t *testing.T) {
 	require.Equal(t, "http://10.0.0.2:8080", proxies[1].URL())
 }
 
+func TestProxyGroupDefaultsMatchDesign(t *testing.T) {
+	group := &ProxyGroup{}
+	applyProxyGroupDefaults(group)
+	require.Equal(t, 3, group.ConsecutiveTimeoutThreshold)
+	require.Equal(t, 10, group.WindowSize)
+	require.InDelta(t, 0.6, group.WindowTimeoutRatio, 0.0001)
+	require.Equal(t, 600, group.BaseCooldownSeconds)
+	require.Equal(t, 7200, group.MaxCooldownSeconds)
+}
+
 func TestParseProxyURLRejectsUnsupportedProtocol(t *testing.T) {
 	_, err := ParseProxyURL("socks4://127.0.0.1:1080")
 	require.ErrorContains(t, err, "unsupported proxy protocol")

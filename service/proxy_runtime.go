@@ -140,7 +140,7 @@ func availableRuntimeProxies(config *model.ChannelProxyRuntimeConfig) []*model.P
 		if proxy == nil || !proxy.Enabled {
 			continue
 		}
-		if proxy.Status != "" && proxy.Status != model.ProxyStatusAvailable {
+		if proxy.Status != "" && proxy.Status != model.ProxyStatusAvailable && proxy.Status != model.ProxyStatusWatching {
 			continue
 		}
 		available = append(available, proxy)
