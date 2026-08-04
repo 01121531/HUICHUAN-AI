@@ -86,6 +86,13 @@ export async function setManagedProxyPaused(id: number, paused: boolean) {
   return response.data
 }
 
+export async function resetManagedProxyObservation(id: number) {
+  const response = await api.post<ProxyApiResponse<ManagedProxy>>(
+    `/api/proxy/proxies/${id}/reset-observation`
+  )
+  return response.data
+}
+
 export async function switchProxyGroup(id: number) {
   const response = await api.post<
     ProxyApiResponse<{ current_proxy_id: number }>

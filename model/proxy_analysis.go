@@ -209,7 +209,7 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		result.Inserted = true
 
 		var proxy Proxy
-		if err := tx.First(&proxy, analysis.ProxyId).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&proxy, analysis.ProxyId).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return nil
 			}
@@ -224,14 +224,20 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		result.SwitchWaitSeconds = group.SwitchWaitSeconds
 
 		updates := map[string]interface{}{
-			"total_requests":   gorm.Expr("total_requests + 1"),
-			"last_analyzed_at": analysis.LogCreatedAt,
-			"last_frt_ms":      analysis.FirstResponseTimeMs,
-			"last_tps":         analysis.TokensPerSecond,
-			"updated_at":       common.GetTimestamp(),
+			"total_requests": gorm.Expr("total_requests + 1"),
+			"updated_at":     common.GetTimestamp(),
 		}
 		if analysis.IsTimeout {
 			updates["total_timeouts"] = gorm.Expr("total_timeouts + 1")
+		}
+		beforeObservationEpoch := proxy.HealthEpochAt > 0 && analysis.LogCreatedAt < proxy.HealthEpochAt
+		if beforeObservationEpoch {
+			return tx.Model(&Proxy{}).Where("id = ?", proxy.Id).UpdateColumns(updates).Error
+		}
+		updates["last_analyzed_at"] = analysis.LogCreatedAt
+		updates["last_frt_ms"] = analysis.FirstResponseTimeMs
+		updates["last_tps"] = analysis.TokensPerSecond
+		if analysis.IsTimeout {
 			updates["last_timeout_reason"] = analysis.Reason
 		}
 		if !analysis.Counted {
@@ -354,6 +360,49 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		}).Error
 	})
 	return result, err
+}
+
+// ResetProxyObservationCounters starts a fresh observation epoch without
+// deleting durable analyses or cumulative request totals. Backlogged logs from
+// before the reset remain auditable but cannot repopulate the live window.
+func ResetProxyObservationCounters(proxyId int) (*Proxy, error) {
+	if proxyId <= 0 {
+		return nil, errors.New("invalid proxy")
+	}
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var proxy Proxy
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&proxy, proxyId).Error; err != nil {
+			return err
+		}
+		now := common.GetTimestamp()
+		toStatus := proxy.Status
+		if toStatus == ProxyStatusWatching {
+			toStatus = ProxyStatusAvailable
+		}
+		if err := tx.Model(&Proxy{}).Where("id = ?", proxy.Id).UpdateColumns(map[string]interface{}{
+			"status":               toStatus,
+			"consecutive_timeouts": 0,
+			"window_samples":       0,
+			"window_timeouts":      0,
+			"window_timeout_ratio": 0,
+			"last_analyzed_at":     0,
+			"last_frt_ms":          0,
+			"last_tps":             0,
+			"last_timeout_reason":  "",
+			"health_epoch_at":      now,
+			"updated_at":           now,
+		}).Error; err != nil {
+			return err
+		}
+		return tx.Create(&ProxyStateEvent{
+			ProxyId: proxy.Id, ProxyGroupId: proxy.GroupId, EventType: "manual_observation_reset",
+			FromStatus: proxy.Status, ToStatus: toStatus, Reason: "manual",
+		}).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return GetProxyById(proxyId)
 }
 
 func selectNextAvailableProxyId(tx *gorm.DB, current *Proxy) (int, error) {

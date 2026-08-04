@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import {
   Activity,
+  FileText,
   History,
   Link2,
   Pause,
@@ -8,6 +10,7 @@ import {
   Play,
   Plus,
   RefreshCw,
+  RotateCcw,
   ServerCog,
   Shuffle,
   Trash2,
@@ -55,6 +58,7 @@ import {
   listProxyGroups,
   listProxyStateEvents,
   listProxyUpstreamAttempts,
+  resetManagedProxyObservation,
   setManagedProxyPaused,
   switchProxyGroup,
   updateManagedProxy,
@@ -118,6 +122,7 @@ const proxyEventLabels: Record<string, string> = {
   manual_paused: '手动暂停',
   manual_resumed: '手动恢复',
   manual_recovery_requested: '手动恢复检测',
+  manual_observation_reset: '清空观察计数',
 }
 
 const proxyAttemptResultLabels: Record<string, string> = {
@@ -601,6 +606,7 @@ type DeleteTarget =
 
 export function ProxyManagementSection() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const [selectedGroupId, setSelectedGroupId] = useState(0)
   const [selectedProxyId, setSelectedProxyId] = useState(0)
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
@@ -708,6 +714,13 @@ export function ProxyManagementSection() {
       setManagedProxyPaused(proxyId, paused),
     onSuccess: (_response, variables) => {
       toast.success(variables.paused ? '代理已暂停' : '代理已恢复')
+      refresh()
+    },
+  })
+  const resetObservationMutation = useMutation({
+    mutationFn: (proxyId: number) => resetManagedProxyObservation(proxyId),
+    onSuccess: () => {
+      toast.success('当前观察计数已清空')
       refresh()
     },
   })
@@ -1040,6 +1053,31 @@ export function ProxyManagementSection() {
                             }
                           >
                             {proxy.status === 'paused' ? <Play /> : <Pause />}
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon-sm'
+                            aria-label='查看该代理的通用日志'
+                            onClick={() =>
+                              navigate({
+                                to: '/usage-logs/$section',
+                                params: { section: 'common' },
+                                search: { page: 1, proxyId: String(proxy.id) },
+                              })
+                            }
+                          >
+                            <FileText />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon-sm'
+                            aria-label='清空当前观察计数'
+                            disabled={resetObservationMutation.isPending}
+                            onClick={() =>
+                              resetObservationMutation.mutate(proxy.id)
+                            }
+                          >
+                            <RotateCcw />
                           </Button>
                           <Button
                             variant='ghost'

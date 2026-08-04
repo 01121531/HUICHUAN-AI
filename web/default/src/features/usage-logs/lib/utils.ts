@@ -215,6 +215,9 @@ export function buildApiParams(config: {
     ...(searchParams.upstreamRequestId
       ? { upstream_request_id: String(searchParams.upstreamRequestId) }
       : {}),
+    ...(searchParams.proxyId
+      ? { proxy_id: Number(searchParams.proxyId) || 0 }
+      : {}),
     ...buildTimeRangeParams(searchParams, false),
   }
 

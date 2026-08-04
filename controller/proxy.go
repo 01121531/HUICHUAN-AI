@@ -351,6 +351,20 @@ func ResumeProxy(c *gin.Context) {
 	setProxyPaused(c, false)
 }
 
+func ResetProxyObservation(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	proxy, err := model.ResetProxyObservationCounters(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "proxy.observation.reset", map[string]interface{}{"id": id})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
+}
+
 func setProxyPaused(c *gin.Context, paused bool) {
 	id, ok := parsePositiveId(c, "id")
 	if !ok {

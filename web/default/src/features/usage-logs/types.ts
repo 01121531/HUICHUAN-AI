@@ -53,6 +53,7 @@ export interface CommonLogFilters extends CommonFilters {
   username?: string
   requestId?: string
   upstreamRequestId?: string
+  proxyId?: string
 }
 
 /**
@@ -314,6 +315,7 @@ export interface GetLogsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  proxy_id?: number
   audit_reveal?: boolean
 }
 
@@ -387,6 +389,7 @@ export interface GetLogStatsParams {
   group?: string
   request_id?: string
   upstream_request_id?: string
+  proxy_id?: number
 }
 
 export interface GetLogStatsResponse {
