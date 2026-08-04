@@ -8,6 +8,9 @@ import type {
   ProxyBindingInput,
   ProxyGroup,
   ProxyGroupInput,
+  ProxyHealthCheckResult,
+  ProxyLogAnalysis,
+  ProxyStateEvent,
 } from './proxy-management-types'
 
 export async function listProxyGroups() {
@@ -67,6 +70,28 @@ export async function deleteManagedProxy(id: number) {
   return response.data
 }
 
+export async function checkManagedProxy(id: number) {
+  const response = await api.post<ProxyApiResponse<ProxyHealthCheckResult>>(
+    `/api/proxy/proxies/${id}/check`
+  )
+  return response.data
+}
+
+export async function setManagedProxyPaused(id: number, paused: boolean) {
+  const action = paused ? 'pause' : 'resume'
+  const response = await api.post<ProxyApiResponse>(
+    `/api/proxy/proxies/${id}/${action}`
+  )
+  return response.data
+}
+
+export async function switchProxyGroup(id: number) {
+  const response = await api.post<
+    ProxyApiResponse<{ current_proxy_id: number }>
+  >(`/api/proxy/groups/${id}/switch`)
+  return response.data
+}
+
 export async function listProxyBindings() {
   const response = await api.get<ProxyApiResponse<ProxyBinding[]>>(
     '/api/proxy/bindings'
@@ -88,6 +113,22 @@ export async function upsertProxyBinding(
 export async function deleteProxyBinding(channelId: number) {
   const response = await api.delete<ProxyApiResponse>(
     `/api/proxy/bindings/${channelId}`
+  )
+  return response.data
+}
+
+export async function listProxyLogAnalyses(proxyId: number, limit = 50) {
+  const response = await api.get<ProxyApiResponse<ProxyLogAnalysis[]>>(
+    '/api/proxy/analyses',
+    { params: { proxy_id: proxyId, limit } }
+  )
+  return response.data
+}
+
+export async function listProxyStateEvents(proxyId: number, limit = 50) {
+  const response = await api.get<ProxyApiResponse<ProxyStateEvent[]>>(
+    '/api/proxy/events',
+    { params: { proxy_id: proxyId, limit } }
   )
   return response.data
 }

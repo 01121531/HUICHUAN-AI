@@ -19,6 +19,7 @@ type proxyGroupRequest struct {
 	SwitchWaitSeconds           int     `json:"switch_wait_seconds"`
 	MaxWaitingRequests          int     `json:"max_waiting_requests"`
 	HealthCheckInterval         int     `json:"health_check_interval"`
+	HealthFailureThreshold      int     `json:"health_failure_threshold"`
 	ConsecutiveTimeoutThreshold int     `json:"consecutive_timeout_threshold"`
 	WindowSize                  int     `json:"window_size"`
 	WindowTimeoutRatio          float64 `json:"window_timeout_ratio"`
@@ -29,15 +30,16 @@ type proxyGroupRequest struct {
 }
 
 type proxyRequest struct {
-	GroupId  int    `json:"group_id"`
-	Name     string `json:"name"`
-	Protocol string `json:"protocol"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Enabled  *bool  `json:"enabled"`
-	Sort     int    `json:"sort"`
+	GroupId        int     `json:"group_id"`
+	Name           string  `json:"name"`
+	Protocol       string  `json:"protocol"`
+	Host           string  `json:"host"`
+	Port           int     `json:"port"`
+	Username       string  `json:"username"`
+	Password       string  `json:"password"`
+	Enabled        *bool   `json:"enabled"`
+	Sort           int     `json:"sort"`
+	ExpectedExitIp *string `json:"expected_exit_ip"`
 }
 
 type proxyBindingRequest struct {
@@ -85,6 +87,7 @@ func CreateProxyGroup(c *gin.Context) {
 		SwitchWaitSeconds:           req.SwitchWaitSeconds,
 		MaxWaitingRequests:          req.MaxWaitingRequests,
 		HealthCheckInterval:         req.HealthCheckInterval,
+		HealthFailureThreshold:      req.HealthFailureThreshold,
 		ConsecutiveTimeoutThreshold: req.ConsecutiveTimeoutThreshold,
 		WindowSize:                  req.WindowSize,
 		WindowTimeoutRatio:          req.WindowTimeoutRatio,
@@ -124,6 +127,7 @@ func UpdateProxyGroup(c *gin.Context) {
 	group.SwitchWaitSeconds = req.SwitchWaitSeconds
 	group.MaxWaitingRequests = req.MaxWaitingRequests
 	group.HealthCheckInterval = req.HealthCheckInterval
+	group.HealthFailureThreshold = req.HealthFailureThreshold
 	group.ConsecutiveTimeoutThreshold = req.ConsecutiveTimeoutThreshold
 	group.WindowSize = req.WindowSize
 	group.WindowTimeoutRatio = req.WindowTimeoutRatio
@@ -178,11 +182,15 @@ func CreateProxy(c *gin.Context) {
 		Host: req.Host, Port: req.Port, Username: req.Username, Password: req.Password,
 		Enabled: boolValue(req.Enabled, true), Status: model.ProxyStatusAvailable, Sort: req.Sort,
 	}
+	if req.ExpectedExitIp != nil {
+		proxy.ExpectedExitIp = strings.TrimSpace(*req.ExpectedExitIp)
+	}
 	if err := model.CreateProxy(proxy); err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	service.InvalidateChannelProxyConfig(0)
+	service.ResetProxyClientCache()
 	recordManageAudit(c, "proxy.create", map[string]interface{}{"id": proxy.Id, "group_id": proxy.GroupId, "name": proxy.Name})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
 }
@@ -210,6 +218,9 @@ func UpdateProxy(c *gin.Context) {
 	proxy.Host = req.Host
 	proxy.Port = req.Port
 	proxy.Username = req.Username
+	if req.ExpectedExitIp != nil {
+		proxy.ExpectedExitIp = strings.TrimSpace(*req.ExpectedExitIp)
+	}
 	if req.Password != "" {
 		proxy.Password = req.Password
 	}
@@ -220,6 +231,7 @@ func UpdateProxy(c *gin.Context) {
 		return
 	}
 	service.InvalidateChannelProxyConfig(0)
+	service.ResetProxyClientCache()
 	recordManageAudit(c, "proxy.update", map[string]interface{}{"id": proxy.Id, "group_id": proxy.GroupId, "name": proxy.Name})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
 }
@@ -234,6 +246,7 @@ func DeleteProxy(c *gin.Context) {
 		return
 	}
 	service.InvalidateChannelProxyConfig(0)
+	service.ResetProxyClientCache()
 	recordManageAudit(c, "proxy.delete", map[string]interface{}{"id": id})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
 }
@@ -303,4 +316,57 @@ func ListProxyStateEvents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": events})
+}
+
+func CheckProxyNow(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	result, err := service.CheckManagedProxyNow(c.Request.Context(), id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "proxy.check", map[string]interface{}{"id": id, "success": result.Success, "failure_reason": result.FailureReason})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": result})
+}
+
+func PauseProxy(c *gin.Context) {
+	setProxyPaused(c, true)
+}
+
+func ResumeProxy(c *gin.Context) {
+	setProxyPaused(c, false)
+}
+
+func setProxyPaused(c *gin.Context, paused bool) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	if err := service.SetManagedProxyPaused(c.Request.Context(), id, paused); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	action := "proxy.resume"
+	if paused {
+		action = "proxy.pause"
+	}
+	recordManageAudit(c, action, map[string]interface{}{"id": id})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+}
+
+func SwitchProxyGroupNow(c *gin.Context) {
+	id, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	nextProxyId, err := service.SwitchManagedProxyGroupNow(c.Request.Context(), id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "proxy.group.switch", map[string]interface{}{"id": id, "next_proxy_id": nextProxyId})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{"current_proxy_id": nextProxyId}})
 }

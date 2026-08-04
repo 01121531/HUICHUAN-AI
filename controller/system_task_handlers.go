@@ -24,6 +24,7 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(asyncTaskPollHandler{})
 	service.RegisterSystemTaskHandler(usageLogExportTaskHandler{})
 	service.RegisterSystemTaskHandler(proxyLogAnalyzeHandler{})
+	service.RegisterSystemTaskHandler(proxyHealthCheckHandler{})
 	startUsageLogExportCleaner()
 }
 
@@ -34,7 +35,9 @@ type proxyLogAnalyzeHandler struct{}
 
 func (proxyLogAnalyzeHandler) Type() string { return model.SystemTaskTypeProxyLogAnalyze }
 
-func (proxyLogAnalyzeHandler) Enabled() bool { return model.HasEnabledManagedProxies() }
+func (proxyLogAnalyzeHandler) Enabled() bool {
+	return model.HasEnabledManagedProxies() && model.HasPendingProxyLogsForAnalysis(common.GetTimestamp()-10)
+}
 
 func (proxyLogAnalyzeHandler) Interval() time.Duration { return service.ProxyLogAnalysisInterval() }
 
@@ -42,6 +45,29 @@ func (proxyLogAnalyzeHandler) NewPayload() any { return nil }
 
 func (proxyLogAnalyzeHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	summary, err := service.RunProxyLogAnalysisTask(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+type proxyHealthCheckHandler struct{}
+
+func (proxyHealthCheckHandler) Type() string { return model.SystemTaskTypeProxyHealthCheck }
+
+func (proxyHealthCheckHandler) Enabled() bool {
+	return model.HasEnabledManagedProxies() && model.HasDueProxyHealthChecks(common.GetTimestamp())
+}
+
+func (proxyHealthCheckHandler) Interval() time.Duration {
+	return service.ProxyHealthCheckTaskInterval()
+}
+
+func (proxyHealthCheckHandler) NewPayload() any { return nil }
+
+func (proxyHealthCheckHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	summary, err := service.RunProxyHealthCheckTask(ctx)
 	if err != nil {
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
 		return

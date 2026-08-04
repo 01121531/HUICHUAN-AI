@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -128,4 +130,40 @@ func TestProxyManagementHandlersCreateAndBindWithoutLeakingPassword(t *testing.T
 	ListProxyStateEvents(eventContext)
 	require.Equal(t, http.StatusOK, eventRecorder.Code)
 	require.Contains(t, eventRecorder.Body.String(), "auto_paused")
+
+	secondProxy := &model.Proxy{
+		GroupId: groupResponse.Data.Id, Name: "出口二", Protocol: "http",
+		Host: "127.0.0.2", Port: 18080, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 2,
+	}
+	require.NoError(t, model.DB.Create(secondProxy).Error)
+	pauseContext, pauseRecorder := proxyJSONContext(t, http.MethodPost, nil, gin.Param{Key: "id", Value: strconv.Itoa(storedProxy.Id)})
+	PauseProxy(pauseContext)
+	require.Equal(t, http.StatusOK, pauseRecorder.Code)
+	require.NoError(t, model.DB.First(&storedProxy, storedProxy.Id).Error)
+	require.Equal(t, model.ProxyStatusPaused, storedProxy.Status)
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ip":"203.0.113.32"}`))
+	}))
+	defer proxyServer.Close()
+	parsedProxyServer, err := url.Parse(proxyServer.URL)
+	require.NoError(t, err)
+	proxyPort, err := strconv.Atoi(parsedProxyServer.Port())
+	require.NoError(t, err)
+	t.Setenv("PROXY_HEALTH_CHECK_URL", "http://health-check.invalid/ip")
+	t.Setenv("PROXY_HEALTH_CHECK_TIMEOUT_SECONDS", "2")
+	require.NoError(t, model.DB.Model(&storedProxy).UpdateColumns(map[string]interface{}{
+		"protocol": "http", "host": parsedProxyServer.Hostname(), "port": proxyPort,
+		"username": "", "password": "", "expected_exit_ip": "203.0.113.32",
+	}).Error)
+
+	resumeContext, resumeRecorder := proxyJSONContext(t, http.MethodPost, nil, gin.Param{Key: "id", Value: strconv.Itoa(storedProxy.Id)})
+	ResumeProxy(resumeContext)
+	require.Equal(t, http.StatusOK, resumeRecorder.Code)
+	require.NoError(t, model.DB.First(&storedProxy, storedProxy.Id).Error)
+	require.Equal(t, model.ProxyStatusRecovering, storedProxy.Status)
+
+	switchContext, switchRecorder := proxyJSONContext(t, http.MethodPost, nil, gin.Param{Key: "id", Value: strconv.Itoa(groupResponse.Data.Id)})
+	SwitchProxyGroupNow(switchContext)
+	require.Equal(t, http.StatusOK, switchRecorder.Code)
 }

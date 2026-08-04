@@ -1,7 +1,9 @@
 package service
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/01121531/HUICHUAN-AI/model"
 	"github.com/stretchr/testify/require"
@@ -45,6 +47,142 @@ func TestSelectChannelProxyUsesStableDatabaseIds(t *testing.T) {
 	require.Equal(t, "http://127.0.0.1:18080", selection.URL)
 }
 
+func TestSelectChannelProxyWaitsForGroupSwitchAndUsesNewProxy(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	const channelId = 99103
+	group := &model.ProxyGroup{
+		Name: "runtime-switch-wait-test", Enabled: true, Status: model.ProxyGroupStatusSwitching,
+		SwitchWaitSeconds: 2, MaxWaitingRequests: 10,
+	}
+	require.NoError(t, model.DB.Create(group).Error)
+	first := &model.Proxy{GroupId: group.Id, Name: "first", Protocol: "http", Host: "127.0.0.1", Port: 18083, Enabled: true, Status: model.ProxyStatusCooling, Sort: 1}
+	second := &model.Proxy{GroupId: group.Id, Name: "second", Protocol: "http", Host: "127.0.0.2", Port: 18084, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 2}
+	require.NoError(t, model.DB.Create(first).Error)
+	require.NoError(t, model.DB.Create(second).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{"current_proxy_id": first.Id, "status": model.ProxyGroupStatusSwitching}).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	gate := getProxyGroupSwitchGate(group.Id)
+	owner, err := gate.beginSwitch(context.Background())
+	require.NoError(t, err)
+	require.True(t, owner)
+	t.Cleanup(func() {
+		gate.finishSwitch()
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Delete(binding)
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.Proxy{})
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	result := make(chan struct {
+		selection ChannelProxySelection
+		err       error
+	}, 1)
+	go func() {
+		selection, selectErr := SelectChannelProxyWithContext(context.Background(), channelId, "")
+		result <- struct {
+			selection ChannelProxySelection
+			err       error
+		}{selection: selection, err: selectErr}
+	}()
+	select {
+	case <-result:
+		t.Fatal("selection completed while the group was switching")
+	case <-time.After(30 * time.Millisecond):
+	}
+	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{
+		"current_proxy_id": second.Id, "status": model.ProxyGroupStatusAvailable,
+	}).Error)
+	gate.finishSwitch()
+
+	selected := <-result
+	require.NoError(t, selected.err)
+	require.Equal(t, second.Id, selected.selection.ProxyId)
+}
+
+func TestSelectChannelProxyWaitsWhenAllProxiesUnavailable(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	const channelId = 99104
+	group := &model.ProxyGroup{
+		Name: "runtime-no-proxy-wait-test", Enabled: true, Status: model.ProxyGroupStatusAvailable,
+		SwitchWaitSeconds: 1, MaxWaitingRequests: 10,
+	}
+	require.NoError(t, model.DB.Create(group).Error)
+	proxy := &model.Proxy{GroupId: group.Id, Name: "cooling", Protocol: "http", Host: "127.0.0.1", Port: 18085, Enabled: true, Status: model.ProxyStatusCooling}
+	require.NoError(t, model.DB.Create(proxy).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("current_proxy_id", proxy.Id).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Delete(binding)
+		model.DB.Delete(proxy)
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	result := make(chan struct {
+		selection ChannelProxySelection
+		err       error
+	}, 1)
+	go func() {
+		selection, selectErr := SelectChannelProxyWithContext(context.Background(), channelId, "")
+		result <- struct {
+			selection ChannelProxySelection
+			err       error
+		}{selection, selectErr}
+	}()
+	select {
+	case <-result:
+		t.Fatal("selection completed instead of waiting for availability")
+	case <-time.After(30 * time.Millisecond):
+	}
+	require.NoError(t, model.DB.Model(proxy).UpdateColumn("status", model.ProxyStatusAvailable).Error)
+	selected := <-result
+	require.NoError(t, selected.err)
+	require.Equal(t, proxy.Id, selected.selection.ProxyId)
+}
+
+func TestSelectChannelProxyLimitsRecoveringProxyToProbeRequests(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	const channelId = 99105
+	group := &model.ProxyGroup{Name: "runtime-recovery-probe-test", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	require.NoError(t, model.DB.Create(group).Error)
+	recovering := &model.Proxy{
+		GroupId: group.Id, Name: "recovering", Protocol: "http", Host: "127.0.0.1", Port: 18086,
+		Enabled: true, Status: model.ProxyStatusRecovering, RecoveryProbeRemaining: 2, Sort: 1,
+	}
+	normal := &model.Proxy{GroupId: group.Id, Name: "normal", Protocol: "http", Host: "127.0.0.2", Port: 18087, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 2}
+	require.NoError(t, model.DB.Create(recovering).Error)
+	require.NoError(t, model.DB.Create(normal).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("current_proxy_id", recovering.Id).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Delete(binding)
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.Proxy{})
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	first, err := SelectChannelProxy(channelId, "")
+	require.NoError(t, err)
+	second, err := SelectChannelProxy(channelId, "")
+	require.NoError(t, err)
+	third, err := SelectChannelProxy(channelId, "")
+	require.NoError(t, err)
+	require.Equal(t, recovering.Id, first.ProxyId)
+	require.Equal(t, recovering.Id, second.ProxyId)
+	require.Equal(t, normal.Id, third.ProxyId)
+	require.NoError(t, model.DB.First(recovering, recovering.Id).Error)
+	require.Zero(t, recovering.RecoveryProbeRemaining)
+}
+
 func TestSelectChannelProxyFallsBackToLegacyChannelSetting(t *testing.T) {
 	const channelId = 99102
 	InvalidateChannelProxyConfig(channelId)
@@ -58,9 +196,9 @@ func TestSelectChannelProxyFallsBackToLegacyChannelSetting(t *testing.T) {
 	require.Equal(t, 1, selection.ProxyIndex)
 }
 
-func TestSelectChannelProxyRejectsUnavailableGroupWithoutDirectFallback(t *testing.T) {
+func TestSelectChannelProxyTimesOutWhenGroupHasNoAvailableProxy(t *testing.T) {
 	const channelId = 99103
-	group := &model.ProxyGroup{Name: "empty-runtime-test", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	group := &model.ProxyGroup{Name: "empty-runtime-test", Enabled: true, Status: model.ProxyGroupStatusAvailable, SwitchWaitSeconds: 1}
 	require.NoError(t, model.DB.Create(group).Error)
 	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
 	require.NoError(t, model.DB.Create(binding).Error)
@@ -71,6 +209,8 @@ func TestSelectChannelProxyRejectsUnavailableGroupWithoutDirectFallback(t *testi
 		model.DB.Delete(group)
 	})
 
-	_, err := SelectChannelProxy(channelId, "")
-	require.ErrorContains(t, err, "no available proxy")
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	_, err := SelectChannelProxyWithContext(ctx, channelId, "")
+	require.ErrorIs(t, err, ErrProxySwitchTimeout)
 }

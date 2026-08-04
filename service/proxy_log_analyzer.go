@@ -191,9 +191,6 @@ func RunProxyLogAnalysisTask(ctx context.Context) (ProxyLogAnalysisSummary, erro
 				if applyResult.Paused {
 					summary.Paused++
 				}
-				if applyResult.SwitchedToProxyId > 0 {
-					summary.Switched++
-				}
 			} else {
 				summary.Duplicates++
 			}
@@ -204,6 +201,15 @@ func RunProxyLogAnalysisTask(ctx context.Context) (ProxyLogAnalysisSummary, erro
 			summary.CursorAt = cursor.LastCreatedAt
 			if applyResult.Paused {
 				InvalidateChannelProxyConfig(0)
+			}
+			if applyResult.SwitchRequired {
+				nextProxyId, err := switchManagedProxyGroup(ctx, applyResult.ProxyGroupId, applyResult.ProxyId, applyResult.SwitchWaitSeconds)
+				if err != nil {
+					return summary, err
+				}
+				if nextProxyId > 0 {
+					summary.Switched++
+				}
 			}
 		}
 		if err := model.SaveProxyLogAnalysisCursor(cursor.LastCreatedAt, cursor.LastRequestId, cursor.LastLogId, cursor.LastLogType); err != nil {

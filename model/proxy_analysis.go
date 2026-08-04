@@ -86,7 +86,10 @@ func (event *ProxyStateEvent) BeforeCreate(_ *gorm.DB) error {
 type ProxyLogAnalysisApplyResult struct {
 	Inserted          bool `json:"inserted"`
 	Paused            bool `json:"paused"`
-	SwitchedToProxyId int  `json:"switched_to_proxy_id"`
+	SwitchRequired    bool `json:"switch_required"`
+	ProxyId           int  `json:"proxy_id"`
+	ProxyGroupId      int  `json:"proxy_group_id"`
+	SwitchWaitSeconds int  `json:"switch_wait_seconds"`
 }
 
 func HasEnabledManagedProxies() bool {
@@ -179,6 +182,15 @@ func ListProxyLogsForAnalysis(cursor *ProxyLogAnalysisCursor, maxCreatedAt int64
 	return logs, err
 }
 
+func HasPendingProxyLogsForAnalysis(maxCreatedAt int64) bool {
+	cursor, err := GetProxyLogAnalysisCursor()
+	if err != nil {
+		return false
+	}
+	logs, err := ListProxyLogsForAnalysis(cursor, maxCreatedAt, 1)
+	return err == nil && len(logs) > 0
+}
+
 // ApplyProxyLogAnalysis inserts one decision exactly once and recalculates the
 // current consecutive/window metrics from durable analysis rows.
 func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyResult, error) {
@@ -207,6 +219,9 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		if err := tx.First(&group, proxy.GroupId).Error; err != nil {
 			return err
 		}
+		result.ProxyId = proxy.Id
+		result.ProxyGroupId = group.Id
+		result.SwitchWaitSeconds = group.SwitchWaitSeconds
 
 		updates := map[string]interface{}{
 			"total_requests":   gorm.Expr("total_requests + 1"),
@@ -228,7 +243,11 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 			windowSize = DefaultProxyWindowSize
 		}
 		var latest []*ProxyLogAnalysis
-		if err := tx.Where("proxy_id = ? AND counted = ?", proxy.Id, true).
+		analysisQuery := tx.Where("proxy_id = ? AND counted = ?", proxy.Id, true)
+		if proxy.HealthEpochAt > 0 {
+			analysisQuery = analysisQuery.Where("log_created_at >= ?", proxy.HealthEpochAt)
+		}
+		if err := analysisQuery.
 			Order("log_created_at desc, id desc").
 			Limit(windowSize).
 			Find(&latest).Error; err != nil {
@@ -265,7 +284,31 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 			(len(latest) >= windowSize && windowRatio+1e-9 >= windowThreshold)
 
 		fromStatus := proxy.Status
-		if proxy.Enabled && (fromStatus == "" || fromStatus == ProxyStatusAvailable || fromStatus == ProxyStatusWatching) {
+		if proxy.Enabled && fromStatus == ProxyStatusRecovering {
+			if analysis.IsTimeout {
+				recoveryFailures := proxy.RecoveryFailures + 1
+				updates["status"] = ProxyStatusCooling
+				updates["recovery_failures"] = recoveryFailures
+				updates["recovery_successes"] = 0
+				updates["recovery_probe_remaining"] = 0
+				updates["cooldown_until"] = common.GetTimestamp() + int64(proxyCooldownSeconds(&group, recoveryFailures))
+				result.Paused = true
+			} else {
+				required := group.RecoverySuccessCount
+				if required <= 0 {
+					required = DefaultProxyRecoverySuccessCount
+				}
+				successes := proxy.RecoverySuccesses + 1
+				updates["recovery_successes"] = successes
+				if successes >= required {
+					updates["status"] = ProxyStatusAvailable
+					updates["recovery_failures"] = 0
+					updates["recovery_successes"] = 0
+					updates["recovery_probe_remaining"] = 0
+					updates["cooldown_until"] = 0
+				}
+			}
+		} else if proxy.Enabled && (fromStatus == "" || fromStatus == ProxyStatusAvailable || fromStatus == ProxyStatusWatching) {
 			if shouldPause {
 				updates["status"] = ProxyStatusCooling
 				cooldownSeconds := group.BaseCooldownSeconds
@@ -287,7 +330,11 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		toStatus, _ := updates["status"].(string)
 		if toStatus != "" && toStatus != fromStatus {
 			eventType := "health_status_changed"
-			if result.Paused {
+			if fromStatus == ProxyStatusRecovering && toStatus == ProxyStatusAvailable {
+				eventType = "recovery_succeeded"
+			} else if fromStatus == ProxyStatusRecovering && toStatus == ProxyStatusCooling {
+				eventType = "recovery_failed"
+			} else if result.Paused {
 				eventType = "auto_paused"
 			}
 			if err := tx.Create(&ProxyStateEvent{
@@ -300,19 +347,48 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 		if !result.Paused || group.CurrentProxyId != proxy.Id {
 			return nil
 		}
+		result.SwitchRequired = true
+		return tx.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(map[string]interface{}{
+			"status":     ProxyGroupStatusSwitching,
+			"updated_at": common.GetTimestamp(),
+		}).Error
+	})
+	return result, err
+}
 
-		nextProxyId, err := selectNextAvailableProxyId(tx, &proxy)
+func CompleteProxyGroupSwitch(groupId int, failedProxyId int) (int, error) {
+	nextProxyId := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var failed Proxy
+		if err := tx.First(&failed, failedProxyId).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return tx.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
+					"current_proxy_id": 0,
+					"status":           ProxyGroupStatusAvailable,
+					"updated_at":       common.GetTimestamp(),
+				}).Error
+			}
+			return err
+		}
+		var err error
+		nextProxyId, err = selectNextAvailableProxyId(tx, &failed)
 		if err != nil {
 			return err
 		}
-		result.SwitchedToProxyId = nextProxyId
-		return tx.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(map[string]interface{}{
+		return tx.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
 			"current_proxy_id": nextProxyId,
 			"status":           ProxyGroupStatusAvailable,
 			"updated_at":       common.GetTimestamp(),
 		}).Error
 	})
-	return result, err
+	return nextProxyId, err
+}
+
+func AbortProxyGroupSwitch(groupId int) error {
+	return DB.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
+		"status":     ProxyGroupStatusAvailable,
+		"updated_at": common.GetTimestamp(),
+	}).Error
 }
 
 func selectNextAvailableProxyId(tx *gorm.DB, current *Proxy) (int, error) {

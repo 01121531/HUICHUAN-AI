@@ -1,5 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link2, Pencil, Plus, RefreshCw, ServerCog, Trash2 } from 'lucide-react'
+import {
+  Activity,
+  History,
+  Link2,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  RefreshCw,
+  ServerCog,
+  Shuffle,
+  Trash2,
+} from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -33,12 +45,17 @@ import { SettingsSection } from '../components/settings-section'
 import {
   createManagedProxy,
   createProxyGroup,
+  checkManagedProxy,
   deleteManagedProxy,
   deleteProxyBinding,
   deleteProxyGroup,
   listGroupProxies,
+  listProxyLogAnalyses,
   listProxyBindings,
   listProxyGroups,
+  listProxyStateEvents,
+  setManagedProxyPaused,
+  switchProxyGroup,
   updateManagedProxy,
   updateProxyGroup,
   upsertProxyBinding,
@@ -49,6 +66,8 @@ import type {
   ProxyBinding,
   ProxyGroup,
   ProxyGroupInput,
+  ProxyLogAnalysis,
+  ProxyStateEvent,
 } from './proxy-management-types'
 
 const defaultGroupInput = (): ProxyGroupInput => ({
@@ -59,6 +78,7 @@ const defaultGroupInput = (): ProxyGroupInput => ({
   switch_wait_seconds: 30,
   max_waiting_requests: 500,
   health_check_interval: 300,
+  health_failure_threshold: 2,
   consecutive_timeout_threshold: 3,
   window_size: 10,
   window_timeout_ratio: 0.6,
@@ -69,6 +89,7 @@ const defaultGroupInput = (): ProxyGroupInput => ({
 })
 
 const EMPTY_PROXY_GROUPS: ProxyGroup[] = []
+const EMPTY_MANAGED_PROXIES: ManagedProxy[] = []
 
 const proxyStatusLabels: Record<string, string> = {
   available: '正常',
@@ -85,6 +106,54 @@ function proxyStatusLabel(proxy: ManagedProxy) {
   return proxyStatusLabels[proxy.status] ?? proxy.status ?? '正常'
 }
 
+const proxyEventLabels: Record<string, string> = {
+  health_status_changed: '健康状态变化',
+  auto_paused: '自动暂停',
+  recovery_started: '开始恢复测试',
+  recovery_failed: '恢复失败',
+  recovery_succeeded: '恢复成功',
+  health_unavailable: '连接检测不可用',
+  manual_paused: '手动暂停',
+  manual_resumed: '手动恢复',
+}
+
+const proxyReasonLabels: Record<string, string> = {
+  first_response: '首字响应超过 10 秒',
+  duration: '小输出总耗时达到 30 秒',
+  throughput: '大输出 TPS 低于 15',
+  request_failed: '检测请求失败',
+  client_init_failed: '代理客户端初始化失败',
+  invalid_check_url: '检测地址无效',
+  http_status_400: '检测接口返回 400',
+  response_read_failed: '检测响应读取失败',
+  invalid_exit_ip: '未取得有效出口 IP',
+  exit_ip_mismatch: '出口 IP 与预期不一致',
+  manual: '管理员手动操作',
+}
+
+function proxyReasonLabel(reason: string) {
+  if (!reason) return '—'
+  return reason
+    .split(',')
+    .map((item) =>
+      item.startsWith('http_status_')
+        ? `检测接口返回 ${item.slice('http_status_'.length)}`
+        : (proxyReasonLabels[item] ?? item)
+    )
+    .join('；')
+}
+
+function formatProxyTime(timestamp: number) {
+  if (!timestamp) return '—'
+  return new Date(timestamp * 1000).toLocaleString('zh-CN', { hour12: false })
+}
+
+function proxyAnalysisResultLabel(analysis: ProxyLogAnalysis) {
+  if (analysis.is_timeout) return '红色 / 超时'
+  if (analysis.counted) return '正常'
+  return '忽略业务错误'
+}
+
 function groupToInput(group: ProxyGroup): ProxyGroupInput {
   return {
     name: group.name,
@@ -94,6 +163,7 @@ function groupToInput(group: ProxyGroup): ProxyGroupInput {
     switch_wait_seconds: group.switch_wait_seconds,
     max_waiting_requests: group.max_waiting_requests,
     health_check_interval: group.health_check_interval,
+    health_failure_threshold: group.health_failure_threshold,
     consecutive_timeout_threshold: group.consecutive_timeout_threshold,
     window_size: group.window_size,
     window_timeout_ratio: group.window_timeout_ratio,
@@ -151,7 +221,7 @@ function GroupDialog(props: {
             {props.group ? '编辑代理分组' : '新增代理分组'}
           </DialogTitle>
           <DialogDescription>
-            设置轮换、超时判定和冷却恢复参数。未完成的自动检测能力会在后续阶段接入这些参数。
+            设置轮换、红色判定、连接检测和冷却恢复参数。
           </DialogDescription>
         </DialogHeader>
         <div className='space-y-4'>
@@ -195,6 +265,12 @@ function GroupDialog(props: {
               value={form.health_check_interval}
               min={1}
               onChange={(v) => setNumber('health_check_interval', v)}
+            />
+            <NumberField
+              label='连续检测失败阈值'
+              value={form.health_failure_threshold}
+              min={1}
+              onChange={(v) => setNumber('health_failure_threshold', v)}
             />
             <NumberField
               label='连续超时阈值'
@@ -289,6 +365,7 @@ function ProxyDialog(props: {
     password: '',
     enabled: true,
     sort: 0,
+    expected_exit_ip: '',
   })
 
   useEffect(() => {
@@ -305,6 +382,7 @@ function ProxyDialog(props: {
             password: '',
             enabled: props.proxy.enabled,
             sort: props.proxy.sort,
+            expected_exit_ip: props.proxy.expected_exit_ip ?? '',
           }
         : {
             group_id: props.groupId,
@@ -316,6 +394,7 @@ function ProxyDialog(props: {
             password: '',
             enabled: true,
             sort: 0,
+            expected_exit_ip: '',
           }
     )
   }, [props.open, props.proxy, props.groupId])
@@ -372,6 +451,16 @@ function ProxyDialog(props: {
             min={1}
             onChange={(port) => setForm((v) => ({ ...v, port }))}
           />
+          <div className='space-y-1.5 sm:col-span-2'>
+            <Label>预期出口 IP（可选）</Label>
+            <Input
+              value={form.expected_exit_ip}
+              placeholder='支持单个 IP、CIDR 或逗号分隔多个值'
+              onChange={(e) =>
+                setForm((v) => ({ ...v, expected_exit_ip: e.target.value }))
+              }
+            />
+          </div>
           <div className='space-y-1.5'>
             <Label>用户名</Label>
             <Input
@@ -502,6 +591,7 @@ type DeleteTarget =
 export function ProxyManagementSection() {
   const queryClient = useQueryClient()
   const [selectedGroupId, setSelectedGroupId] = useState(0)
+  const [selectedProxyId, setSelectedProxyId] = useState(0)
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<ProxyGroup | null>(null)
   const [proxyDialogOpen, setProxyDialogOpen] = useState(false)
@@ -537,11 +627,25 @@ export function ProxyManagementSection() {
     queryFn: async () =>
       (await getChannels({ p: 1, page_size: 1000 })).data?.items ?? [],
   })
+  const analysesQuery = useQuery({
+    queryKey: ['proxy-log-analyses', selectedProxyId],
+    queryFn: async () =>
+      (await listProxyLogAnalyses(selectedProxyId, 50)).data ?? [],
+    enabled: selectedProxyId > 0,
+  })
+  const eventsQuery = useQuery({
+    queryKey: ['proxy-state-events', selectedProxyId],
+    queryFn: async () =>
+      (await listProxyStateEvents(selectedProxyId, 50)).data ?? [],
+    enabled: selectedProxyId > 0,
+  })
 
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['proxy-groups'] })
     queryClient.invalidateQueries({ queryKey: ['managed-proxies'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-bindings'] })
+    queryClient.invalidateQueries({ queryKey: ['proxy-log-analyses'] })
+    queryClient.invalidateQueries({ queryKey: ['proxy-state-events'] })
   }
 
   const groupMutation = useMutation({
@@ -563,6 +667,35 @@ export function ProxyManagementSection() {
     onSuccess: () => {
       toast.success(editingProxy ? '代理已更新' : '代理已创建')
       setProxyDialogOpen(false)
+      refresh()
+    },
+  })
+  const checkMutation = useMutation({
+    mutationFn: (proxyId: number) => checkManagedProxy(proxyId),
+    onSuccess: (response) => {
+      const result = response.data
+      if (result?.success) {
+        toast.success(
+          `检测成功：出口 ${result.exit_ip || '未知'}，耗时 ${result.latency_ms} ms`
+        )
+      } else {
+        toast.error(`检测失败：${result?.failure_reason || '未知原因'}`)
+      }
+      refresh()
+    },
+  })
+  const pauseMutation = useMutation({
+    mutationFn: ({ proxyId, paused }: { proxyId: number; paused: boolean }) =>
+      setManagedProxyPaused(proxyId, paused),
+    onSuccess: (_response, variables) => {
+      toast.success(variables.paused ? '代理已暂停' : '代理已恢复')
+      refresh()
+    },
+  })
+  const switchMutation = useMutation({
+    mutationFn: (groupId: number) => switchProxyGroup(groupId),
+    onSuccess: (response) => {
+      toast.success(`已切换到代理 ID ${response.data?.current_proxy_id || '—'}`)
       refresh()
     },
   })
@@ -598,8 +731,18 @@ export function ProxyManagementSection() {
     () => groups.find((group) => group.id === selectedGroupId) ?? null,
     [groups, selectedGroupId]
   )
-  const proxies = proxiesQuery.data ?? []
+  const proxies = proxiesQuery.data ?? EMPTY_MANAGED_PROXIES
   const bindings = bindingsQuery.data ?? []
+  const analyses = analysesQuery.data ?? []
+  const events = eventsQuery.data ?? []
+
+  useEffect(() => {
+    if (!proxies.length) {
+      setSelectedProxyId(0)
+    } else if (!proxies.some((proxy) => proxy.id === selectedProxyId)) {
+      setSelectedProxyId(proxies[0].id)
+    }
+  }, [proxies, selectedProxyId])
 
   return (
     <SettingsSection title='代理管理与自动切换'>
@@ -641,6 +784,10 @@ export function ProxyManagementSection() {
               <Link2 />
               渠道绑定
             </TabsTrigger>
+            <TabsTrigger value='records'>
+              <History />
+              状态与记录
+            </TabsTrigger>
           </TabsList>
           <Button
             variant='outline'
@@ -671,17 +818,28 @@ export function ProxyManagementSection() {
             </NativeSelect>
             <div className='flex gap-2'>
               {selectedGroup && (
-                <Button
-                  variant='outline'
-                  size='sm'
-                  onClick={() => {
-                    setEditingGroup(selectedGroup)
-                    setGroupDialogOpen(true)
-                  }}
-                >
-                  <Pencil className='mr-1.5 h-4 w-4' />
-                  编辑分组
-                </Button>
+                <>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={switchMutation.isPending || proxies.length < 2}
+                    onClick={() => switchMutation.mutate(selectedGroup.id)}
+                  >
+                    <Shuffle className='mr-1.5 h-4 w-4' />
+                    立即切换
+                  </Button>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    onClick={() => {
+                      setEditingGroup(selectedGroup)
+                      setGroupDialogOpen(true)
+                    }}
+                  >
+                    <Pencil className='mr-1.5 h-4 w-4' />
+                    编辑分组
+                  </Button>
+                </>
               )}
               <Button
                 size='sm'
@@ -774,7 +932,19 @@ export function ProxyManagementSection() {
                       <TableCell className='font-mono'>
                         {proxy.host}:{proxy.port}
                       </TableCell>
-                      <TableCell>{proxyStatusLabel(proxy)}</TableCell>
+                      <TableCell className='whitespace-nowrap'>
+                        {proxyStatusLabel(proxy)}
+                        <div className='text-muted-foreground text-xs'>
+                          {proxy.last_check_at > 0
+                            ? `检测 ${proxy.last_check_latency_ms} ms`
+                            : '尚未检测'}
+                        </div>
+                        {proxy.last_exit_ip && (
+                          <div className='text-muted-foreground font-mono text-xs'>
+                            {proxy.last_exit_ip}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell>{proxy.consecutive_timeouts}</TableCell>
                       <TableCell>
                         {proxy.window_samples > 0
@@ -796,6 +966,33 @@ export function ProxyManagementSection() {
                       </TableCell>
                       <TableCell className='text-right'>
                         <div className='flex justify-end gap-1'>
+                          <Button
+                            variant='ghost'
+                            size='icon-sm'
+                            aria-label='立即检测代理'
+                            disabled={checkMutation.isPending}
+                            onClick={() => checkMutation.mutate(proxy.id)}
+                          >
+                            <Activity />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon-sm'
+                            aria-label={
+                              proxy.status === 'paused'
+                                ? '恢复代理'
+                                : '暂停代理'
+                            }
+                            disabled={pauseMutation.isPending}
+                            onClick={() =>
+                              pauseMutation.mutate({
+                                proxyId: proxy.id,
+                                paused: proxy.status !== 'paused',
+                              })
+                            }
+                          >
+                            {proxy.status === 'paused' ? <Play /> : <Pause />}
+                          </Button>
                           <Button
                             variant='ghost'
                             size='icon-sm'
@@ -918,6 +1115,155 @@ export function ProxyManagementSection() {
               </TableBody>
             </Table>
           </div>
+        </TabsContent>
+
+        <TabsContent value='records' className='space-y-4 pt-3'>
+          <div className='flex flex-wrap items-end gap-3'>
+            <div className='min-w-64 space-y-1.5'>
+              <Label>查看代理</Label>
+              <NativeSelect
+                className='w-full'
+                value={String(selectedProxyId)}
+                onChange={(event) =>
+                  setSelectedProxyId(Number(event.target.value))
+                }
+              >
+                {!proxies.length && (
+                  <NativeSelectOption value='0'>
+                    当前分组暂无代理
+                  </NativeSelectOption>
+                )}
+                {proxies.map((proxy) => (
+                  <NativeSelectOption key={proxy.id} value={proxy.id}>
+                    {proxy.name}（#{proxy.id}）
+                  </NativeSelectOption>
+                ))}
+              </NativeSelect>
+            </div>
+            <p className='text-muted-foreground text-sm'>
+              记录来自通用日志红色判定和连接检测，不包含代理密码。
+            </p>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className='text-base'>状态变更记录</CardTitle>
+            </CardHeader>
+            <CardContent className='overflow-x-auto p-0'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>时间</TableHead>
+                    <TableHead>事件</TableHead>
+                    <TableHead>状态变化</TableHead>
+                    <TableHead>原因</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!events.length ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={4}
+                        className='text-muted-foreground py-8 text-center'
+                      >
+                        暂无状态变更记录
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    events.map((event: ProxyStateEvent) => (
+                      <TableRow key={event.id}>
+                        <TableCell className='whitespace-nowrap'>
+                          {formatProxyTime(event.created_at)}
+                        </TableCell>
+                        <TableCell>
+                          {proxyEventLabels[event.event_type] ??
+                            event.event_type}
+                        </TableCell>
+                        <TableCell className='whitespace-nowrap'>
+                          {proxyStatusLabels[event.from_status] ??
+                            event.from_status ??
+                            '—'}{' '}
+                          →{' '}
+                          {proxyStatusLabels[event.to_status] ??
+                            event.to_status ??
+                            '—'}
+                        </TableCell>
+                        <TableCell>{proxyReasonLabel(event.reason)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className='text-base'>最近通用日志判定</CardTitle>
+            </CardHeader>
+            <CardContent className='overflow-x-auto p-0'>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>请求时间</TableHead>
+                    <TableHead>日志</TableHead>
+                    <TableHead>结果</TableHead>
+                    <TableHead>首字</TableHead>
+                    <TableHead>总耗时 / TPS</TableHead>
+                    <TableHead>原因</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {!analyses.length ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className='text-muted-foreground py-8 text-center'
+                      >
+                        暂无已分析日志
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    analyses.map((analysis: ProxyLogAnalysis) => (
+                      <TableRow key={analysis.id}>
+                        <TableCell className='whitespace-nowrap'>
+                          {formatProxyTime(analysis.log_created_at)}
+                        </TableCell>
+                        <TableCell>
+                          {analysis.log_type === 5 ? '错误日志' : '消费日志'}
+                        </TableCell>
+                        <TableCell
+                          className={
+                            analysis.is_timeout
+                              ? 'text-destructive font-medium'
+                              : 'text-success font-medium'
+                          }
+                        >
+                          {proxyAnalysisResultLabel(analysis)}
+                        </TableCell>
+                        <TableCell>
+                          {analysis.first_response_time_ms > 0
+                            ? `${analysis.first_response_time_ms} ms`
+                            : '—'}
+                        </TableCell>
+                        <TableCell className='whitespace-nowrap'>
+                          {analysis.use_time_seconds} 秒
+                          <div className='text-muted-foreground text-xs'>
+                            {analysis.tokens_per_second > 0
+                              ? `TPS ${analysis.tokens_per_second.toFixed(1)}`
+                              : 'TPS —'}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {proxyReasonLabel(analysis.reason)}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

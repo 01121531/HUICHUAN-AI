@@ -489,7 +489,7 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
 	var client *http.Client
 	var err error
-	proxySelection, err := service.SelectChannelProxy(info.ChannelId, info.ChannelSetting.Proxy)
+	proxySelection, err := service.SelectChannelProxyWithContext(req.Context(), info.ChannelId, info.ChannelSetting.Proxy)
 	if err != nil {
 		return nil, fmt.Errorf("select channel proxy failed: %w", err)
 	}

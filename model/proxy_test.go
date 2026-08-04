@@ -27,6 +27,7 @@ func TestProxyGroupDefaultsMatchDesign(t *testing.T) {
 	group := &ProxyGroup{}
 	applyProxyGroupDefaults(group)
 	require.Equal(t, 3, group.ConsecutiveTimeoutThreshold)
+	require.Equal(t, 2, group.HealthFailureThreshold)
 	require.Equal(t, 10, group.WindowSize)
 	require.InDelta(t, 0.6, group.WindowTimeoutRatio, 0.0001)
 	require.Equal(t, 600, group.BaseCooldownSeconds)
