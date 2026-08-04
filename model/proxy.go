@@ -144,6 +144,14 @@ type ChannelProxyBindingView struct {
 	Enabled        bool   `json:"enabled"`
 }
 
+type ProxyPoolOption struct {
+	Id         int    `json:"id"`
+	Name       string `json:"name"`
+	Enabled    bool   `json:"enabled"`
+	Status     string `json:"status"`
+	ProxyCount int64  `json:"proxy_count"`
+}
+
 func (group *ProxyGroup) BeforeCreate(_ *gorm.DB) error {
 	now := common.GetTimestamp()
 	if group.CreatedAt == 0 {
@@ -504,19 +512,49 @@ func ListChannelProxyBindings() ([]*ChannelProxyBindingView, error) {
 	return bindings, err
 }
 
+func ListProxyPoolOptions() ([]*ProxyPoolOption, error) {
+	var options []*ProxyPoolOption
+	err := DB.Table("proxy_groups AS g").
+		Select("g.id, g.name, g.enabled, g.status, COUNT(p.id) AS proxy_count").
+		Joins("LEFT JOIN proxies AS p ON p.group_id = g.id AND p.enabled = ?", true).
+		Group("g.id, g.name, g.enabled, g.status").
+		Order("g.name asc, g.id asc").
+		Scan(&options).Error
+	return options, err
+}
+
+func GetChannelProxyGroupId(channelId int) (int, error) {
+	if channelId <= 0 {
+		return 0, nil
+	}
+	var binding ChannelProxyBinding
+	err := DB.Where("channel_id = ? AND enabled = ?", channelId, true).First(&binding).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return binding.ProxyGroupId, nil
+}
+
 func UpsertChannelProxyBinding(binding *ChannelProxyBinding) error {
+	return upsertChannelProxyBinding(DB, binding)
+}
+
+func upsertChannelProxyBinding(tx *gorm.DB, binding *ChannelProxyBinding) error {
 	if binding == nil || binding.ChannelId <= 0 || binding.ProxyGroupId <= 0 {
 		return errors.New("channel and proxy group are required")
 	}
 	var channelCount int64
-	if err := DB.Model(&Channel{}).Where("id = ?", binding.ChannelId).Count(&channelCount).Error; err != nil {
+	if err := tx.Model(&Channel{}).Where("id = ?", binding.ChannelId).Count(&channelCount).Error; err != nil {
 		return err
 	}
 	if channelCount == 0 {
 		return errors.New("channel does not exist")
 	}
 	var groupCount int64
-	if err := DB.Model(&ProxyGroup{}).Where("id = ?", binding.ProxyGroupId).Count(&groupCount).Error; err != nil {
+	if err := tx.Model(&ProxyGroup{}).Where("id = ?", binding.ProxyGroupId).Count(&groupCount).Error; err != nil {
 		return err
 	}
 	if groupCount == 0 {
@@ -527,7 +565,7 @@ func UpsertChannelProxyBinding(binding *ChannelProxyBinding) error {
 		binding.CreatedAt = now
 	}
 	binding.UpdatedAt = now
-	return DB.Clauses(clause.OnConflict{
+	return tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "channel_id"}},
 		DoUpdates: clause.Assignments(map[string]interface{}{
 			"proxy_group_id": binding.ProxyGroupId,
@@ -539,6 +577,34 @@ func UpsertChannelProxyBinding(binding *ChannelProxyBinding) error {
 
 func DeleteChannelProxyBinding(channelId int) error {
 	return DB.Where("channel_id = ?", channelId).Delete(&ChannelProxyBinding{}).Error
+}
+
+// SetChannelProxyGroup makes the pool binding authoritative for a channel and
+// clears the legacy raw proxy field so selecting "no pool" cannot fall back to it.
+func SetChannelProxyGroup(channelId int, proxyGroupId int) error {
+	if channelId <= 0 || proxyGroupId < 0 {
+		return errors.New("invalid channel or proxy group")
+	}
+	return DB.Transaction(func(tx *gorm.DB) error {
+		var channel Channel
+		if err := tx.First(&channel, "id = ?", channelId).Error; err != nil {
+			return err
+		}
+		setting := channel.GetSetting()
+		if setting.Proxy != "" {
+			setting.Proxy = ""
+			channel.SetSetting(setting)
+			if err := tx.Model(&Channel{}).Where("id = ?", channelId).Update("setting", channel.Setting).Error; err != nil {
+				return err
+			}
+		}
+		if proxyGroupId == 0 {
+			return tx.Where("channel_id = ?", channelId).Delete(&ChannelProxyBinding{}).Error
+		}
+		return upsertChannelProxyBinding(tx, &ChannelProxyBinding{
+			ChannelId: channelId, ProxyGroupId: proxyGroupId, Enabled: true,
+		})
+	})
 }
 
 // migrateLegacyChannelProxies 将现有渠道 Proxy 列表幂等迁移为稳定代理实体。

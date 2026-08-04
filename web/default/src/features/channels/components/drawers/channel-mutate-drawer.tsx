@@ -81,6 +81,10 @@ import {
 import { IconBadge, type IconBadgeTone } from "@/components/ui/icon-badge";
 import { Input } from "@/components/ui/input";
 import {
+  NativeSelect,
+  NativeSelectOption,
+} from "@/components/ui/native-select";
+import {
   Select,
   SelectContent,
   SelectGroup,
@@ -132,6 +136,7 @@ import {
   getChannel,
   getChannelKey,
   getGroups,
+  getProxyPoolOptions,
   getPrefillGroups,
   refreshCodexCredential,
 } from "../../api";
@@ -282,7 +287,6 @@ const SENSITIVE_FORM_FIELDS = [
   "azure_responses_version",
   "force_format",
   "thinking_to_content",
-  "proxy",
   "pass_through_body_enabled",
   "system_prompt",
   "system_prompt_override",
@@ -332,7 +336,6 @@ function hasAdvancedSettingsValues(values: ChannelFormValues): boolean {
     values.remark?.trim() ||
     values.priority ||
     values.weight ||
-    values.proxy?.trim() ||
     values.system_prompt?.trim() ||
     values.force_format ||
     values.thinking_to_content ||
@@ -664,6 +667,12 @@ export function ChannelMutateDrawer({
     queryFn: getGroups,
   });
 
+  const { data: proxyPoolOptionsData, isLoading: isLoadingProxyPools } =
+    useQuery({
+      queryKey: ["proxy-pool-options"],
+      queryFn: getProxyPoolOptions,
+    });
+
   // Fetch all available models
   const { data: allModelsData } = useQuery({
     queryKey: ["channel_models"],
@@ -743,7 +752,6 @@ export function ChannelMutateDrawer({
   const currentDisableTaskPollingSleep = form.watch(
     "disable_task_polling_sleep",
   );
-  const currentProxy = form.watch("proxy");
   const currentSystemPrompt = form.watch("system_prompt");
   const currentSystemPromptOverride = form.watch("system_prompt_override");
   const currentAllowServiceTier = form.watch("allow_service_tier");
@@ -1011,7 +1019,6 @@ export function ChannelMutateDrawer({
     currentThinkingToContent ||
     currentPassThroughBodyEnabled ||
     currentDisableTaskPollingSleep ||
-    currentProxy?.trim() ||
     currentSystemPrompt?.trim() ||
     currentSystemPromptOverride,
   );
@@ -3582,6 +3589,64 @@ export function ChannelMutateDrawer({
                               )}
                             />
                           </div>
+
+                          <div className="border-border/60 rounded-lg border p-4">
+                            <FormField
+                              control={form.control}
+                              name="proxy_group_id"
+                              render={({ field }) => (
+                                <FormItem className="space-y-3">
+                                  <div className="space-y-1">
+                                    <FormLabel>代理池</FormLabel>
+                                    <FormDescription>
+                                      代理地址、健康检测和自动切换由代理池统一管理。
+                                    </FormDescription>
+                                  </div>
+                                  <FormControl>
+                                    {isLoadingProxyPools ? (
+                                      <Skeleton className="h-10 w-full" />
+                                    ) : (
+                                      <NativeSelect
+                                        className="w-full"
+                                        value={String(field.value || 0)}
+                                        onChange={(event) =>
+                                          field.onChange(
+                                            Number(event.target.value),
+                                          )
+                                        }
+                                      >
+                                        <NativeSelectOption value="0">
+                                          不使用代理池
+                                        </NativeSelectOption>
+                                        {(proxyPoolOptionsData?.data ?? []).map(
+                                          (pool) => (
+                                            <NativeSelectOption
+                                              key={pool.id}
+                                              value={pool.id}
+                                              disabled={
+                                                !pool.enabled ||
+                                                pool.status === "disabled" ||
+                                                pool.proxy_count < 1
+                                              }
+                                            >
+                                              {pool.name}（{pool.proxy_count}{" "}
+                                              个代理
+                                              {!pool.enabled ||
+                                              pool.status === "disabled"
+                                                ? "，已停用"
+                                                : ""}
+                                              ）
+                                            </NativeSelectOption>
+                                          ),
+                                        )}
+                                      </NativeSelect>
+                                    )}
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          </div>
                         </div>
                       </ChannelModelsSection>
                     </div>
@@ -4161,31 +4226,6 @@ export function ChannelMutateDrawer({
                                 )}
                               />
                             </div>
-
-                            <FormField
-                              control={form.control}
-                              name="proxy"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>{t("Proxy Address")}</FormLabel>
-                                  <FormControl>
-                                    <Textarea
-                                      placeholder={t(
-                                        "Multiple proxy addresses (one per line, auto-rotate)",
-                                      )}
-                                      rows={4}
-                                      {...field}
-                                    />
-                                  </FormControl>
-                                  <FormDescription>
-                                    {t(
-                                      "Multiple proxies auto-rotate per request; failed ones are skipped temporarily",
-                                    )}
-                                  </FormDescription>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
 
                             <FormField
                               control={form.control}

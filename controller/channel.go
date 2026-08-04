@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -400,6 +401,12 @@ func GetChannel(c *gin.Context) {
 	}
 	if channel != nil {
 		clearChannelInfo(channel)
+		proxyGroupId, bindingErr := model.GetChannelProxyGroupId(channel.Id)
+		if bindingErr != nil {
+			common.ApiError(c, bindingErr)
+			return
+		}
+		channel.ProxyGroupId = &proxyGroupId
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
@@ -562,6 +569,41 @@ type AddChannelRequest struct {
 	Channel                   *model.Channel        `json:"channel"`
 }
 
+func validateChannelProxyPoolSelection(proxyGroupId *int) error {
+	if proxyGroupId == nil || *proxyGroupId == 0 {
+		return nil
+	}
+	if *proxyGroupId < 0 {
+		return errors.New("invalid proxy pool")
+	}
+	group, err := model.GetProxyGroupById(*proxyGroupId)
+	if err != nil {
+		return err
+	}
+	if !group.Enabled || group.Status == model.ProxyGroupStatusDisabled {
+		return errors.New("selected proxy pool is disabled")
+	}
+	return nil
+}
+
+func syncChannelProxyPoolSelection(channelId int, proxyGroupId int) error {
+	return model.SetChannelProxyGroup(channelId, proxyGroupId)
+}
+
+func validateChannelProxyPoolUpdate(channelId int, proxyGroupId *int) error {
+	if proxyGroupId == nil {
+		return nil
+	}
+	currentGroupId, err := model.GetChannelProxyGroupId(channelId)
+	if err != nil {
+		return err
+	}
+	if currentGroupId == *proxyGroupId {
+		return nil
+	}
+	return validateChannelProxyPoolSelection(proxyGroupId)
+}
+
 func getVertexArrayKeys(keys string) ([]string, error) {
 	if keys == "" {
 		return nil, nil
@@ -609,6 +651,15 @@ func AddChannel(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	if err := validateChannelProxyPoolSelection(addChannelRequest.Channel.ProxyGroupId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if addChannelRequest.Channel.ProxyGroupId != nil {
+		setting := addChannelRequest.Channel.GetSetting()
+		setting.Proxy = ""
+		addChannelRequest.Channel.SetSetting(setting)
 	}
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
@@ -681,7 +732,7 @@ func AddChannel(c *gin.Context) {
 		}
 		channels = append(channels, *localChannel)
 	}
-	err = model.BatchInsertChannels(channels)
+	err = model.BatchInsertChannelsWithProxyGroup(channels, addChannelRequest.Channel.ProxyGroupId)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -933,6 +984,10 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	clearChannelReadOnlyFields(&channel, requestData)
+	if err := validateChannelProxyPoolUpdate(channel.Id, channel.ProxyGroupId); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 
 	// 使用统一的校验函数
 	if err := validateChannel(&channel.Channel, false); err != nil {
@@ -1050,6 +1105,13 @@ func UpdateChannel(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if channel.ProxyGroupId != nil {
+		if err := syncChannelProxyPoolSelection(channel.Id, *channel.ProxyGroupId); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		service.InvalidateChannelProxyConfig(channel.Id)
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
@@ -1384,12 +1446,28 @@ func CopyChannel(c *gin.Context) {
 		clone.Balance = 0
 		clone.UsedQuota = 0
 	}
+	proxyGroupId, err := model.GetChannelProxyGroupId(origin.Id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	setting := clone.GetSetting()
+	setting.Proxy = ""
+	clone.SetSetting(setting)
 
 	// insert
 	if err := clone.Insert(); err != nil {
 		common.SysError("failed to clone channel: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败，请稍后重试"})
 		return
+	}
+	if proxyGroupId > 0 {
+		if err := model.SetChannelProxyGroup(clone.Id, proxyGroupId); err != nil {
+			_ = clone.Delete()
+			common.ApiError(c, err)
+			return
+		}
+		service.InvalidateChannelProxyConfig(clone.Id)
 	}
 	model.InitChannelCache()
 	recordManageAudit(c, "channel.copy", map[string]interface{}{

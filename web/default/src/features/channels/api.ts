@@ -55,6 +55,14 @@ export type CodexUsageResponse = {
   data?: Record<string, unknown>
 }
 
+export type ProxyPoolOption = {
+  id: number
+  name: string
+  enabled: boolean
+  status: string
+  proxy_count: number
+}
+
 export type CodexResetCreditsResponse = CodexUsageResponse
 
 export type CodexUsageResetResponse = CodexUsageResponse
@@ -110,6 +118,15 @@ export async function getChannel(id: number): Promise<GetChannelResponse> {
  */
 export async function getChannelOps(): Promise<ChannelOpsResponse> {
   const res = await api.get('/api/channel/ops', channelActionConfig())
+  return res.data
+}
+
+export async function getProxyPoolOptions(): Promise<{
+  success: boolean
+  message?: string
+  data?: ProxyPoolOption[]
+}> {
+  const res = await api.get('/api/proxy-pool/options')
   return res.data
 }
 

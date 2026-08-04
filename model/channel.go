@@ -56,7 +56,8 @@ type Channel struct {
 	OtherSettings string `json:"settings" gorm:"column:settings"` // 其他设置，存储azure版本等不需要检索的信息，详见dto.ChannelOtherSettings
 
 	// cache info
-	Keys []string `json:"-" gorm:"-"`
+	Keys         []string `json:"-" gorm:"-"`
+	ProxyGroupId *int     `json:"proxy_group_id,omitempty" gorm:"-"`
 }
 
 type ChannelInfo struct {
@@ -424,8 +425,15 @@ func GetChannelById(id int, selectAll bool) (*Channel, error) {
 }
 
 func BatchInsertChannels(channels []Channel) error {
+	return BatchInsertChannelsWithProxyGroup(channels, nil)
+}
+
+func BatchInsertChannelsWithProxyGroup(channels []Channel, proxyGroupId *int) error {
 	if len(channels) == 0 {
 		return nil
+	}
+	if proxyGroupId != nil && *proxyGroupId < 0 {
+		return errors.New("invalid proxy group")
 	}
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -447,6 +455,14 @@ func BatchInsertChannels(channels []Channel) error {
 				tx.Rollback()
 				return err
 			}
+			if proxyGroupId != nil && *proxyGroupId > 0 {
+				if err := upsertChannelProxyBinding(tx, &ChannelProxyBinding{
+					ChannelId: channel_.Id, ProxyGroupId: *proxyGroupId, Enabled: true,
+				}); err != nil {
+					tx.Rollback()
+					return err
+				}
+			}
 		}
 	}
 	return tx.Commit().Error
@@ -462,6 +478,10 @@ func BatchDeleteChannels(ids []int) error {
 		return tx.Error
 	}
 	for _, chunk := range lo.Chunk(ids, 200) {
+		if err := tx.Where("channel_id in (?)", chunk).Delete(&ChannelProxyBinding{}).Error; err != nil {
+			tx.Rollback()
+			return err
+		}
 		if err := tx.Where("id in (?)", chunk).Delete(&Channel{}).Error; err != nil {
 			tx.Rollback()
 			return err
@@ -593,13 +613,15 @@ func (channel *Channel) UpdateBalance(balance float64) {
 }
 
 func (channel *Channel) Delete() error {
-	var err error
-	err = DB.Delete(channel).Error
-	if err != nil {
-		return err
-	}
-	err = channel.DeleteAbilities()
-	return err
+	return DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("channel_id = ?", channel.Id).Delete(&ChannelProxyBinding{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(channel).Error; err != nil {
+			return err
+		}
+		return tx.Where("channel_id = ?", channel.Id).Delete(&Ability{}).Error
+	})
 }
 
 var channelStatusLock sync.Mutex

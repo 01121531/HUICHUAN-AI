@@ -9,7 +9,6 @@ import { PerformanceSection } from '../maintenance/performance-section'
 import { UpdateCheckerSection } from '../maintenance/update-checker-section'
 import type { OperationsSettings } from '../types'
 import { createSectionRegistry } from '../utils/section-registry'
-import { ProxyManagementSection } from './proxy-management-section'
 
 const OPERATIONS_SECTIONS = [
   {
@@ -148,11 +147,6 @@ const OPERATIONS_SECTIONS = [
         }}
       />
     ),
-  },
-  {
-    id: 'proxy-management',
-    titleKey: '代理管理',
-    build: (_settings: OperationsSettings) => <ProxyManagementSection />,
   },
   {
     id: 'logs',

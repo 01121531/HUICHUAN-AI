@@ -72,6 +72,15 @@ func ListProxyGroups(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": groups})
 }
 
+func ListProxyPoolOptions(c *gin.Context) {
+	options, err := model.ListProxyPoolOptions()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": options})
+}
+
 func CreateProxyGroup(c *gin.Context) {
 	var req proxyGroupRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

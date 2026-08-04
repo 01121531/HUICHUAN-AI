@@ -4,7 +4,6 @@ import {
   Activity,
   FileText,
   History,
-  Link2,
   Pause,
   Pencil,
   Play,
@@ -42,19 +41,15 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { getChannels } from '@/features/channels/api'
 
-import { SettingsSection } from '../components/settings-section'
 import {
   createManagedProxy,
   createProxyGroup,
   checkManagedProxy,
   deleteManagedProxy,
-  deleteProxyBinding,
   deleteProxyGroup,
   listGroupProxies,
   listProxyLogAnalyses,
-  listProxyBindings,
   listProxyGroups,
   listProxyStateEvents,
   listProxyUpstreamAttempts,
@@ -63,12 +58,10 @@ import {
   switchProxyGroup,
   updateManagedProxy,
   updateProxyGroup,
-  upsertProxyBinding,
 } from './proxy-management-api'
 import type {
   ManagedProxy,
   ManagedProxyInput,
-  ProxyBinding,
   ProxyGroup,
   ProxyGroupInput,
   ProxyLogAnalysis,
@@ -527,82 +520,9 @@ function ProxyDialog(props: {
   )
 }
 
-function BindingDialog(props: {
-  open: boolean
-  groups: ProxyGroup[]
-  channels: Array<{ id: number; name: string }>
-  saving: boolean
-  onOpenChange: (open: boolean) => void
-  onSave: (channelId: number, groupId: number) => void
-}) {
-  const [channelId, setChannelId] = useState(0)
-  const [groupId, setGroupId] = useState(0)
-
-  useEffect(() => {
-    if (!props.open) return
-    setChannelId(props.channels[0]?.id ?? 0)
-    setGroupId(props.groups[0]?.id ?? 0)
-  }, [props.open, props.channels, props.groups])
-
-  return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>绑定渠道到代理组</DialogTitle>
-          <DialogDescription>
-            绑定后，该渠道不再使用列表序号，而是使用具有稳定 ID 的代理实体。
-          </DialogDescription>
-        </DialogHeader>
-        <div className='space-y-4'>
-          <div className='space-y-1.5'>
-            <Label>渠道</Label>
-            <NativeSelect
-              className='w-full'
-              value={String(channelId)}
-              onChange={(e) => setChannelId(Number(e.target.value))}
-            >
-              {props.channels.map((channel) => (
-                <NativeSelectOption key={channel.id} value={channel.id}>
-                  {channel.name}（#{channel.id}）
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
-          <div className='space-y-1.5'>
-            <Label>代理分组</Label>
-            <NativeSelect
-              className='w-full'
-              value={String(groupId)}
-              onChange={(e) => setGroupId(Number(e.target.value))}
-            >
-              {props.groups.map((group) => (
-                <NativeSelectOption key={group.id} value={group.id}>
-                  {group.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant='outline' onClick={() => props.onOpenChange(false)}>
-            取消
-          </Button>
-          <Button
-            disabled={props.saving || channelId <= 0 || groupId <= 0}
-            onClick={() => props.onSave(channelId, groupId)}
-          >
-            {props.saving ? '绑定中…' : '确认绑定'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
 type DeleteTarget =
   | { kind: 'group'; id: number; name: string }
   | { kind: 'proxy'; id: number; name: string }
-  | { kind: 'binding'; id: number; name: string }
 
 export function ProxyManagementSection() {
   const queryClient = useQueryClient()
@@ -613,7 +533,6 @@ export function ProxyManagementSection() {
   const [editingGroup, setEditingGroup] = useState<ProxyGroup | null>(null)
   const [proxyDialogOpen, setProxyDialogOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<ManagedProxy | null>(null)
-  const [bindingDialogOpen, setBindingDialogOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
 
   const groupsQuery = useQuery({
@@ -635,15 +554,6 @@ export function ProxyManagementSection() {
     queryKey: ['managed-proxies', selectedGroupId],
     queryFn: async () => (await listGroupProxies(selectedGroupId)).data ?? [],
     enabled: selectedGroupId > 0,
-  })
-  const bindingsQuery = useQuery({
-    queryKey: ['proxy-bindings'],
-    queryFn: async () => (await listProxyBindings()).data ?? [],
-  })
-  const channelsQuery = useQuery({
-    queryKey: ['proxy-binding-channels'],
-    queryFn: async () =>
-      (await getChannels({ p: 1, page_size: 1000 })).data?.items ?? [],
   })
   const analysesQuery = useQuery({
     queryKey: ['proxy-log-analyses', selectedProxyId],
@@ -667,7 +577,6 @@ export function ProxyManagementSection() {
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['proxy-groups'] })
     queryClient.invalidateQueries({ queryKey: ['managed-proxies'] })
-    queryClient.invalidateQueries({ queryKey: ['proxy-bindings'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-log-analyses'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-state-events'] })
     queryClient.invalidateQueries({ queryKey: ['proxy-upstream-attempts'] })
@@ -731,26 +640,10 @@ export function ProxyManagementSection() {
       refresh()
     },
   })
-  const bindingMutation = useMutation({
-    mutationFn: ({
-      channelId,
-      groupId,
-    }: {
-      channelId: number
-      groupId: number
-    }) =>
-      upsertProxyBinding(channelId, { proxy_group_id: groupId, enabled: true }),
-    onSuccess: () => {
-      toast.success('渠道绑定已保存')
-      setBindingDialogOpen(false)
-      refresh()
-    },
-  })
   const deleteMutation = useMutation({
     mutationFn: async (target: DeleteTarget) => {
       if (target.kind === 'group') return deleteProxyGroup(target.id)
-      if (target.kind === 'proxy') return deleteManagedProxy(target.id)
-      return deleteProxyBinding(target.id)
+      return deleteManagedProxy(target.id)
     },
     onSuccess: () => {
       toast.success('已删除')
@@ -764,7 +657,6 @@ export function ProxyManagementSection() {
     [groups, selectedGroupId]
   )
   const proxies = proxiesQuery.data ?? EMPTY_MANAGED_PROXIES
-  const bindings = bindingsQuery.data ?? []
   const analyses = analysesQuery.data ?? []
   const events = eventsQuery.data ?? []
   const attempts = attemptsQuery.data ?? []
@@ -778,11 +670,11 @@ export function ProxyManagementSection() {
   }, [proxies, selectedProxyId])
 
   return (
-    <SettingsSection title='代理管理与自动切换'>
-      <div className='grid gap-3 sm:grid-cols-3'>
+    <section className='flex flex-col gap-4'>
+      <div className='grid gap-3 sm:grid-cols-2'>
         <Card>
           <CardHeader className='pb-2'>
-            <CardTitle className='text-sm font-medium'>代理分组</CardTitle>
+            <CardTitle className='text-sm font-medium'>代理池分组</CardTitle>
           </CardHeader>
           <CardContent className='text-2xl font-semibold'>
             {groups.length}
@@ -796,14 +688,6 @@ export function ProxyManagementSection() {
             {proxies.length}
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className='pb-2'>
-            <CardTitle className='text-sm font-medium'>已绑定渠道</CardTitle>
-          </CardHeader>
-          <CardContent className='text-2xl font-semibold'>
-            {bindings.length}
-          </CardContent>
-        </Card>
       </div>
 
       <Tabs defaultValue='groups'>
@@ -812,10 +696,6 @@ export function ProxyManagementSection() {
             <TabsTrigger value='groups'>
               <ServerCog />
               分组与代理
-            </TabsTrigger>
-            <TabsTrigger value='bindings'>
-              <Link2 />
-              渠道绑定
             </TabsTrigger>
             <TabsTrigger value='records'>
               <History />
@@ -826,7 +706,7 @@ export function ProxyManagementSection() {
             variant='outline'
             size='sm'
             onClick={refresh}
-            disabled={groupsQuery.isFetching || bindingsQuery.isFetching}
+            disabled={groupsQuery.isFetching}
           >
             <RefreshCw className='mr-1.5 h-4 w-4' />
             刷新
@@ -1129,80 +1009,6 @@ export function ProxyManagementSection() {
           )}
         </TabsContent>
 
-        <TabsContent value='bindings' className='space-y-4 pt-3'>
-          <div className='flex items-center justify-between gap-3'>
-            <p className='text-muted-foreground text-sm'>
-              每个渠道只能绑定一个代理组，重复绑定会更新原设置。
-            </p>
-            <Button
-              size='sm'
-              disabled={!groups.length || !channelsQuery.data?.length}
-              onClick={() => setBindingDialogOpen(true)}
-            >
-              <Plus className='mr-1.5 h-4 w-4' />
-              绑定渠道
-            </Button>
-          </div>
-          <div className='rounded-lg border'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>渠道</TableHead>
-                  <TableHead>代理分组</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className='text-right'>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {!bindings.length ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className='text-muted-foreground py-10 text-center'
-                    >
-                      暂无渠道绑定
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  bindings.map((binding: ProxyBinding) => (
-                    <TableRow key={binding.id}>
-                      <TableCell className='font-medium'>
-                        {binding.channel_name || `渠道 #${binding.channel_id}`}
-                        <div className='text-muted-foreground text-xs'>
-                          ID {binding.channel_id}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {binding.proxy_group_name ||
-                          `分组 #${binding.proxy_group_id}`}
-                      </TableCell>
-                      <TableCell>{binding.enabled ? '启用' : '停用'}</TableCell>
-                      <TableCell className='text-right'>
-                        <Button
-                          variant='ghost'
-                          size='icon-sm'
-                          aria-label='解除绑定'
-                          onClick={() =>
-                            setDeleteTarget({
-                              kind: 'binding',
-                              id: binding.channel_id,
-                              name:
-                                binding.channel_name ||
-                                `渠道 #${binding.channel_id}`,
-                            })
-                          }
-                        >
-                          <Trash2 />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
         <TabsContent value='records' className='space-y-4 pt-3'>
           <div className='flex flex-wrap items-end gap-3'>
             <div className='min-w-64 space-y-1.5'>
@@ -1442,19 +1248,6 @@ export function ProxyManagementSection() {
         onOpenChange={setProxyDialogOpen}
         onSave={(data) => proxyMutation.mutate(data)}
       />
-      <BindingDialog
-        open={bindingDialogOpen}
-        groups={groups}
-        channels={(channelsQuery.data ?? []).map((channel) => ({
-          id: channel.id,
-          name: channel.name,
-        }))}
-        saving={bindingMutation.isPending}
-        onOpenChange={setBindingDialogOpen}
-        onSave={(channelId, groupId) =>
-          bindingMutation.mutate({ channelId, groupId })
-        }
-      />
       <ConfirmDialog
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
@@ -1467,6 +1260,6 @@ export function ProxyManagementSection() {
           deleteTarget && deleteMutation.mutate(deleteTarget)
         }
       />
-    </SettingsSection>
+    </section>
   )
 }

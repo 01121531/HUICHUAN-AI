@@ -7,6 +7,12 @@ import (
 )
 
 func registerProxyRoutes(apiRouter *gin.RouterGroup) {
+	proxyOptionRoute := apiRouter.Group("/proxy-pool")
+	proxyOptionRoute.Use(middleware.AdminAuth())
+	{
+		proxyOptionRoute.GET("/options", controller.ListProxyPoolOptions)
+	}
+
 	proxyRoute := apiRouter.Group("/proxy")
 	proxyRoute.Use(middleware.RootAuth())
 	{

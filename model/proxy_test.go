@@ -124,6 +124,115 @@ func TestMigrateLegacyChannelProxyIsIdempotent(t *testing.T) {
 	require.EqualValues(t, 1, bindingCount)
 }
 
+func TestSetChannelProxyGroupClearsLegacyProxyAndCanUnbind(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Channel{}, &ProxyGroup{}, &ChannelProxyBinding{}))
+
+	group := &ProxyGroup{Name: "pool-selection-test", Enabled: true, Status: ProxyGroupStatusAvailable}
+	require.NoError(t, DB.Create(group).Error)
+	channel := &Channel{Name: "pool-selection-channel", Type: 1, Key: "test-key", Models: "gpt-4o", Group: "default"}
+	channel.SetSetting(dto.ChannelSettings{Proxy: "http://127.0.0.1:8080"})
+	require.NoError(t, DB.Create(channel).Error)
+	t.Cleanup(func() {
+		DB.Where("channel_id = ?", channel.Id).Delete(&ChannelProxyBinding{})
+		DB.Delete(&Channel{}, channel.Id)
+		DB.Delete(&ProxyGroup{}, group.Id)
+	})
+
+	require.NoError(t, SetChannelProxyGroup(channel.Id, group.Id))
+	require.Equal(t, group.Id, mustChannelProxyGroupId(t, channel.Id))
+
+	stored, err := GetChannelById(channel.Id, true)
+	require.NoError(t, err)
+	require.Empty(t, stored.GetSetting().Proxy)
+
+	require.NoError(t, SetChannelProxyGroup(channel.Id, 0))
+	require.Zero(t, mustChannelProxyGroupId(t, channel.Id))
+	stored, err = GetChannelById(channel.Id, true)
+	require.NoError(t, err)
+	require.Empty(t, stored.GetSetting().Proxy)
+}
+
+func TestListProxyPoolOptionsReturnsPoolsAndEnabledProxyCounts(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&ProxyGroup{}, &Proxy{}))
+
+	enabledGroup := &ProxyGroup{Name: "enabled-pool-option", Enabled: true, Status: ProxyGroupStatusAvailable}
+	disabledGroup := &ProxyGroup{Name: "disabled-pool-option", Enabled: false, Status: ProxyGroupStatusDisabled}
+	require.NoError(t, DB.Create(enabledGroup).Error)
+	require.NoError(t, DB.Create(disabledGroup).Error)
+	require.NoError(t, DB.Create(&Proxy{GroupId: enabledGroup.Id, Name: "enabled-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8080, Enabled: true}).Error)
+	require.NoError(t, DB.Create(&Proxy{GroupId: enabledGroup.Id, Name: "disabled-proxy", Protocol: "http", Host: "127.0.0.2", Port: 8080, Enabled: false}).Error)
+	t.Cleanup(func() {
+		DB.Where("group_id IN ?", []int{enabledGroup.Id, disabledGroup.Id}).Delete(&Proxy{})
+		DB.Delete(&ProxyGroup{}, []int{enabledGroup.Id, disabledGroup.Id})
+	})
+
+	options, err := ListProxyPoolOptions()
+	require.NoError(t, err)
+	var selected *ProxyPoolOption
+	var disabled *ProxyPoolOption
+	for _, option := range options {
+		if option.Id == enabledGroup.Id {
+			selected = option
+		}
+		if option.Id == disabledGroup.Id {
+			disabled = option
+		}
+	}
+	require.NotNil(t, selected)
+	require.EqualValues(t, 1, selected.ProxyCount)
+	require.NotNil(t, disabled)
+	require.False(t, disabled.Enabled)
+	require.Zero(t, disabled.ProxyCount)
+}
+
+func TestBatchInsertAndDeleteChannelsKeepsProxyBindingsConsistent(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Channel{}, &Ability{}, &ProxyGroup{}, &ChannelProxyBinding{}))
+
+	group := &ProxyGroup{Name: "batch-channel-pool", Enabled: true, Status: ProxyGroupStatusAvailable}
+	require.NoError(t, DB.Create(group).Error)
+	channels := []Channel{
+		{Name: "batch-pool-channel-1", Type: 1, Key: "key-1", Models: "gpt-4o", Group: "default"},
+		{Name: "batch-pool-channel-2", Type: 1, Key: "key-2", Models: "gpt-4o-mini", Group: "default"},
+	}
+	t.Cleanup(func() {
+		var stored []Channel
+		DB.Where("name IN ?", []string{"batch-pool-channel-1", "batch-pool-channel-2"}).Find(&stored)
+		ids := make([]int, 0, len(stored))
+		for _, channel := range stored {
+			ids = append(ids, channel.Id)
+		}
+		if len(ids) > 0 {
+			DB.Where("channel_id IN ?", ids).Delete(&ChannelProxyBinding{})
+			DB.Where("channel_id IN ?", ids).Delete(&Ability{})
+			DB.Delete(&Channel{}, ids)
+		}
+		DB.Delete(&ProxyGroup{}, group.Id)
+	})
+
+	require.NoError(t, BatchInsertChannelsWithProxyGroup(channels, &group.Id))
+	var stored []Channel
+	require.NoError(t, DB.Where("name IN ?", []string{"batch-pool-channel-1", "batch-pool-channel-2"}).Order("id asc").Find(&stored).Error)
+	require.Len(t, stored, 2)
+	ids := make([]int, 0, len(stored))
+	for _, channel := range stored {
+		require.Positive(t, channel.Id)
+		require.Equal(t, group.Id, mustChannelProxyGroupId(t, channel.Id))
+		ids = append(ids, channel.Id)
+	}
+
+	require.NoError(t, BatchDeleteChannels(ids))
+	var bindingCount int64
+	require.NoError(t, DB.Model(&ChannelProxyBinding{}).Where("channel_id IN ?", ids).Count(&bindingCount).Error)
+	require.Zero(t, bindingCount)
+}
+
+func mustChannelProxyGroupId(t *testing.T, channelId int) int {
+	t.Helper()
+	groupId, err := GetChannelProxyGroupId(channelId)
+	require.NoError(t, err)
+	return groupId
+}
+
 func TestRecordConsumeLogStoresStableProxyIds(t *testing.T) {
 	require.NoError(t, LOG_DB.AutoMigrate(&Log{}))
 	c, _ := gin.CreateTestContext(nil)

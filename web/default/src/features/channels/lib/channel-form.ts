@@ -187,7 +187,7 @@ export const channelFormSchema = z
     // Channel extra settings (stored in setting JSON, not sent directly)
     force_format: z.boolean().optional(),
     thinking_to_content: z.boolean().optional(),
-    proxy: z.string().optional(),
+    proxy_group_id: z.number().min(0).optional(),
     pass_through_body_enabled: z.boolean().optional(),
     system_prompt: z.string().optional(),
     system_prompt_override: z.boolean().optional(),
@@ -327,7 +327,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   // Channel extra settings
   force_format: false,
   thinking_to_content: false,
-  proxy: '',
+  proxy_group_id: 0,
   pass_through_body_enabled: false,
   system_prompt: '',
   system_prompt_override: false,
@@ -365,7 +365,6 @@ export function transformChannelToFormDefaults(
   let extraSettings = {
     force_format: false,
     thinking_to_content: false,
-    proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
     system_prompt_override: false,
@@ -377,7 +376,6 @@ export function transformChannelToFormDefaults(
       extraSettings = {
         force_format: parsed.force_format || false,
         thinking_to_content: parsed.thinking_to_content || false,
-        proxy: parsed.proxy || '',
         pass_through_body_enabled: parsed.pass_through_body_enabled || false,
         system_prompt: parsed.system_prompt || '',
         system_prompt_override: parsed.system_prompt_override || false,
@@ -467,6 +465,7 @@ export function transformChannelToFormDefaults(
     key_mode: 'append', // Default to append mode for editing multi-key channels
     // Channel extra settings
     ...extraSettings,
+    proxy_group_id: channel.proxy_group_id || 0,
     // Type-specific settings
     is_enterprise_account: isEnterpriseAccount,
     vertex_key_type: vertexKeyType,
@@ -494,7 +493,7 @@ function buildSettingJSON(formData: ChannelFormValues): string {
   const settingObj = {
     force_format: formData.force_format || false,
     thinking_to_content: formData.thinking_to_content || false,
-    proxy: formData.proxy || '',
+    proxy: '',
     pass_through_body_enabled: formData.pass_through_body_enabled || false,
     system_prompt: formData.system_prompt || '',
     system_prompt_override: formData.system_prompt_override || false,
@@ -664,6 +663,7 @@ export function transformFormDataToCreatePayload(formData: ChannelFormValues): {
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
     other: formData.other || '',
+    proxy_group_id: formData.proxy_group_id || 0,
   }
 
   // Clean up empty strings to null for optional fields
@@ -711,6 +711,7 @@ export function transformFormDataToUpdatePayload(
     header_override: formData.header_override || null,
     settings: buildSettingsJSON(formData),
     other: formData.other || '',
+    proxy_group_id: formData.proxy_group_id || 0,
   }
 
   // Only include key if it was changed (not empty)

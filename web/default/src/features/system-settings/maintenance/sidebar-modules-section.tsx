@@ -134,6 +134,10 @@ export function SidebarModulesSection({
         title: t('Channels'),
         description: t('Configure upstream providers and routing.'),
       },
+      proxy_pool: {
+        title: '代理池',
+        description: '集中管理代理、健康检测和自动切换。',
+      },
       models: {
         title: t('Models'),
         description: t('Manage catalog visibility and pricing.'),

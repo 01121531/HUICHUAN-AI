@@ -28,6 +28,10 @@ export const Route = createFileRoute(
   '/_authenticated/system-settings/operations/$section'
 )({
   beforeLoad: ({ params }) => {
+    if (params.section === 'proxy-management') {
+      throw redirect({ to: '/proxy-pool' })
+    }
+
     if (params.section === 'monitoring') {
       throw redirect({
         to: '/system-settings/models/$section',

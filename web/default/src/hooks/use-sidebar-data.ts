@@ -28,6 +28,7 @@ import {
   ListTodo,
   MessageSquare,
   Radio,
+  Route,
   ServerCog,
   Settings,
   Ticket,
@@ -136,6 +137,12 @@ export function useSidebarData(): SidebarData {
             title: t('Channels'),
             url: '/channels',
             icon: Radio,
+          },
+          {
+            title: '代理池',
+            url: '/proxy-pool',
+            icon: Route,
+            requiredRole: ROLE.SUPER_ADMIN,
           },
           {
             title: t('Models'),
