@@ -13,6 +13,7 @@ import (
 	"github.com/01121531/HUICHUAN-AI/setting/model_setting"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestApplyParamOverrideTrimPrefix(t *testing.T) {
@@ -1899,6 +1900,34 @@ func TestApplyParamOverrideWithRelayInfoMixedLegacyAndOperations(t *testing.T) {
 	}
 	if info.RuntimeHeadersOverride["originator"] != "Codex CLI" {
 		t.Fatalf("expected originator header to be passed, got: %v", info.RuntimeHeadersOverride["originator"])
+	}
+}
+
+func TestApplyParamOverrideWithRelayInfoStripsGatewayGroupField(t *testing.T) {
+	info := &RelayInfo{
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]interface{}{
+				"group":       "internal-routing-group",
+				"temperature": 0.2,
+			},
+		},
+	}
+
+	out, err := ApplyParamOverrideWithRelayInfo([]byte(`{
+		"model":"gpt-5",
+		"temperature":0.7,
+		"metadata":{"group":"nested-value-must-remain"}
+	}`), info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	assertJSONEqual(t, `{
+		"model":"gpt-5",
+		"temperature":0.2,
+		"metadata":{"group":"nested-value-must-remain"}
+	}`, string(out))
+	if gjson.GetBytes(out, "group").Exists() {
+		t.Fatalf("gateway-only group field must not be forwarded: %s", out)
 	}
 }
 
