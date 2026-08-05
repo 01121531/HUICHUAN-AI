@@ -1931,6 +1931,17 @@ func TestApplyParamOverrideWithRelayInfoStripsGatewayGroupField(t *testing.T) {
 	}
 }
 
+func TestApplyParamOverrideWithRelayInfoStripsGatewayGroupWithoutOverride(t *testing.T) {
+	out, err := ApplyParamOverrideWithRelayInfo([]byte(`{
+		"model":"gpt-5",
+		"group":"internal-routing-group",
+		"metadata":{"group":"nested-value-must-remain"}
+	}`), &RelayInfo{})
+	require.NoError(t, err)
+	require.False(t, gjson.GetBytes(out, "group").Exists())
+	require.Equal(t, "nested-value-must-remain", gjson.GetBytes(out, "metadata.group").String())
+}
+
 func TestApplyParamOverrideWithRelayInfoMoveAndCopyHeaders(t *testing.T) {
 	info := &RelayInfo{
 		ChannelMeta: &ChannelMeta{

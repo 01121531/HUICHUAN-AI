@@ -22,6 +22,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 type ModelRequest struct {
@@ -226,6 +227,20 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	group, err := getJSONStringValue(values[1], "group")
 	if err != nil {
 		return nil, err
+	}
+	if values[1].Exists() {
+		requestBody, err = sjson.DeleteBytes(requestBody, "group")
+		if err != nil {
+			return nil, err
+		}
+		replacement, err := common.CreateBodyStorage(requestBody)
+		if err != nil {
+			return nil, err
+		}
+		_ = storage.Close()
+		storage = replacement
+		c.Set(common.KeyBodyStorage, replacement)
+		c.Request.ContentLength = replacement.Size()
 	}
 
 	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {

@@ -179,7 +179,7 @@ func buildLegacyParamOverride(paramOverride map[string]interface{}) map[string]i
 func ApplyParamOverrideWithRelayInfo(jsonData []byte, info *RelayInfo) ([]byte, error) {
 	paramOverride := getParamOverrideMap(info)
 	if len(paramOverride) == 0 {
-		return jsonData, nil
+		return stripGatewayOnlyRequestFields(jsonData, nil)
 	}
 
 	overrideCtx := BuildParamOverrideContext(info)
