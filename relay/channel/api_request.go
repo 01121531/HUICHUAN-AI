@@ -546,7 +546,7 @@ func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	resp, err := client.Do(req)
 	recordProxyUpstreamAttempt(c, info, proxySelection, attemptSequence, attemptStartedAt, resp, err)
 	if err != nil {
-		if proxySelection.ProxyIndex > 0 {
+		if proxySelection.ProxyIndex > 0 && !errors.Is(err, context.Canceled) {
 			service.MarkChannelProxyFailed(proxySelection)
 		}
 		logger.LogError(c, "do request failed: "+err.Error())

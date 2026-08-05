@@ -305,3 +305,41 @@ func TestSelectChannelProxyRecoversOwnerlessSwitchImmediately(t *testing.T) {
 	require.NoError(t, model.DB.First(group, group.Id).Error)
 	require.Equal(t, model.ProxyGroupStatusAvailable, group.Status)
 }
+
+func TestManagedProxyRequestFailureAutoDisablesAndSelectsNext(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	const channelId = 99110
+	group := &model.ProxyGroup{
+		Name: "runtime-request-failure-disable-test", Enabled: true, Status: model.ProxyGroupStatusAvailable,
+		BaseCooldownSeconds: 60, SwitchWaitSeconds: 2, MaxWaitingRequests: 10,
+	}
+	require.NoError(t, model.DB.Create(group).Error)
+	first := &model.Proxy{GroupId: group.Id, Name: "failed", Protocol: "http", Host: "127.0.0.1", Port: 18090, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 1}
+	second := &model.Proxy{GroupId: group.Id, Name: "next", Protocol: "http", Host: "127.0.0.2", Port: 18091, Enabled: true, Status: model.ProxyStatusAvailable, Sort: 2}
+	require.NoError(t, model.DB.Create(first).Error)
+	require.NoError(t, model.DB.Create(second).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("current_proxy_id", first.Id).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Delete(binding)
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.ProxyStateEvent{})
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.Proxy{})
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	selection, err := SelectChannelProxy(channelId, "")
+	require.NoError(t, err)
+	require.Equal(t, first.Id, selection.ProxyId)
+	MarkChannelProxyFailed(selection)
+
+	require.NoError(t, model.DB.First(first, first.Id).Error)
+	require.Equal(t, model.ProxyStatusCooling, first.Status)
+	require.Greater(t, first.CooldownUntil, time.Now().Unix())
+	next, err := SelectChannelProxy(channelId, "")
+	require.NoError(t, err)
+	require.Equal(t, second.Id, next.ProxyId)
+}

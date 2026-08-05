@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/model"
 )
 
@@ -342,4 +344,15 @@ func MarkChannelProxyFailed(selection ChannelProxySelection) {
 		selection.ProxyIndex,
 		selection.cooldownSeconds,
 	)
+	if selection.ProxyId <= 0 {
+		return
+	}
+	disabled, err := model.AutoDisableProxyAfterRequestFailure(selection.ProxyId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to auto-disable managed proxy #%d: %v", selection.ProxyId, err))
+		return
+	}
+	if disabled {
+		InvalidateChannelProxyConfig(0)
+	}
 }

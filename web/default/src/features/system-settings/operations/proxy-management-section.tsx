@@ -98,9 +98,9 @@ const proxyStatusLabels: Record<string, string> = {
   available: '正常',
   watching: '观察中',
   paused: '已暂停',
-  cooling: '冷却中',
+  cooling: '自动禁用（冷却中）',
   recovering: '恢复测试',
-  unavailable: '不可用',
+  unavailable: '自动禁用（等待复检）',
   disabled: '已停用',
 }
 
@@ -111,11 +111,11 @@ function proxyStatusLabel(proxy: ManagedProxy) {
 
 const proxyEventLabels: Record<string, string> = {
   health_status_changed: '健康状态变化',
-  auto_paused: '自动暂停',
+  auto_paused: '耗时异常，已自动禁用',
   recovery_started: '开始恢复测试',
   recovery_failed: '恢复失败',
   recovery_succeeded: '恢复成功',
-  health_unavailable: '连接检测不可用',
+  health_unavailable: '连接失败，已自动禁用',
   manual_paused: '手动暂停',
   manual_resumed: '手动恢复',
   manual_recovery_requested: '手动恢复检测',
@@ -233,7 +233,7 @@ function GroupDialog(props: {
             {props.group ? '编辑代理分组' : '新增代理分组'}
           </DialogTitle>
           <DialogDescription>
-            设置轮换、红色判定、连接检测和冷却恢复参数。
+            设置轮换、自动禁用、连接检测和冷却恢复参数。
           </DialogDescription>
         </DialogHeader>
         <div className='space-y-4'>
@@ -322,6 +322,9 @@ function GroupDialog(props: {
               onChange={(v) => setNumber('recovery_success_count', v)}
             />
           </div>
+          <p className='text-muted-foreground text-xs leading-5'>
+            连接检测失败或通用日志红色次数达到阈值后，代理会自动禁用并立即退出请求选择；冷却到期后系统会自动复检，确认恢复后再重新参与请求。手动停用的代理不会自动复检。
+          </p>
           <div className='grid gap-3 rounded-lg border p-3 sm:grid-cols-2'>
             <label className='flex items-center justify-between gap-3 text-sm'>
               <span>启用此分组</span>

@@ -168,6 +168,52 @@ func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 	return result, err
 }
 
+// AutoDisableProxyAfterRequestFailure immediately removes a managed proxy from
+// request selection after a real upstream network failure. Manual disablement
+// remains separate so the health task can retest this proxy after cooldown.
+func AutoDisableProxyAfterRequestFailure(proxyId int) (bool, error) {
+	disabled := false
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var proxy Proxy
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&proxy, proxyId).Error; err != nil {
+			return err
+		}
+		if !proxy.Enabled || proxy.Status == ProxyStatusDisabled || proxy.Status == ProxyStatusPaused ||
+			proxy.Status == ProxyStatusCooling || proxy.Status == ProxyStatusUnavailable {
+			return nil
+		}
+		var group ProxyGroup
+		if err := tx.First(&group, proxy.GroupId).Error; err != nil {
+			return err
+		}
+		now := common.GetTimestamp()
+		recoveryFailures := proxy.RecoveryFailures
+		if proxy.Status == ProxyStatusRecovering {
+			recoveryFailures++
+		}
+		if err := tx.Model(&Proxy{}).Where("id = ?", proxy.Id).UpdateColumns(map[string]interface{}{
+			"status":                   ProxyStatusCooling,
+			"cooldown_until":           now + int64(proxyCooldownSeconds(&group, recoveryFailures)),
+			"recovery_failures":        recoveryFailures,
+			"recovery_successes":       0,
+			"recovery_probe_remaining": 0,
+			"last_health_error":        "request_failed",
+			"updated_at":               now,
+		}).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&ProxyStateEvent{
+			ProxyId: proxy.Id, ProxyGroupId: group.Id, EventType: "auto_paused",
+			FromStatus: proxy.Status, ToStatus: ProxyStatusCooling, Reason: "request_failed",
+		}).Error; err != nil {
+			return err
+		}
+		disabled = true
+		return nil
+	})
+	return disabled, err
+}
+
 func proxyCooldownSeconds(group *ProxyGroup, recoveryFailures int) int {
 	base := group.BaseCooldownSeconds
 	if base <= 0 {
