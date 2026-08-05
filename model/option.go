@@ -88,6 +88,8 @@ func InitOptionMap() {
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
+	common.OptionMap["ProxyDailyHealthCheckEnabled"] = "true"
+	common.OptionMap["ProxyDailyHealthCheckTime"] = "08:00"
 	common.OptionMap["LogConsumeEnabled"] = strconv.FormatBool(common.LogConsumeEnabled)
 	common.OptionMap["UsageLogIPCaptureEnabled"] = strconv.FormatBool(common.UsageLogIPCaptureEnabled.Load())
 	common.OptionMap["TrustedProxyCIDRs"] = common.DefaultUsageLogTrustedProxyCIDRs

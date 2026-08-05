@@ -134,6 +134,18 @@ export type ProxyHealthCheckResult = {
   status: string
 }
 
+export type ProxyHealthSettings = {
+  enabled: boolean
+  time: string
+  timezone: string
+}
+
+export type ProxyHealthTaskResult = {
+  task_id: string
+  status: string
+  created: boolean
+}
+
 export type ProxyLogAnalysis = {
   id: number
   request_id: string

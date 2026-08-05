@@ -61,7 +61,44 @@ func HasDueProxyHealthChecks(now int64) bool {
 	return err == nil && len(targets) > 0
 }
 
+// ListAllEnabledProxyHealthChecks returns every proxy that is eligible for an
+// automatic connection test. Manually paused/disabled proxies are excluded,
+// while automatically unavailable proxies remain eligible for recovery tests.
+func ListAllEnabledProxyHealthChecks(groupId int) ([]*ProxyHealthCheckTarget, error) {
+	var groups []*ProxyGroup
+	query := DB.Where("enabled = ? AND status <> ?", true, ProxyGroupStatusDisabled)
+	if groupId > 0 {
+		query = query.Where("id = ?", groupId)
+	}
+	if err := query.Order("id asc").Find(&groups).Error; err != nil {
+		return nil, err
+	}
+	targets := make([]*ProxyHealthCheckTarget, 0)
+	for _, group := range groups {
+		var proxies []*Proxy
+		if err := DB.Where("group_id = ? AND enabled = ? AND status NOT IN ?", group.Id, true, []string{ProxyStatusDisabled, ProxyStatusPaused}).
+			Order("sort asc, id asc").Find(&proxies).Error; err != nil {
+			return nil, err
+		}
+		for _, proxy := range proxies {
+			targets = append(targets, &ProxyHealthCheckTarget{Proxy: proxy, Group: group})
+		}
+	}
+	return targets, nil
+}
+
 func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitIp string, failureReason string) (ProxyHealthTransitionResult, error) {
+	return applyProxyHealthCheckResult(proxyId, success, latencyMs, exitIp, failureReason, false)
+}
+
+// ApplyProxyFullHealthCheckResult immediately marks a failed proxy unavailable.
+// Full scheduled checks and administrator-triggered checks use this stricter
+// behavior so an unreachable address is removed from request selection at once.
+func ApplyProxyFullHealthCheckResult(proxyId int, success bool, latencyMs int, exitIp string, failureReason string) (ProxyHealthTransitionResult, error) {
+	return applyProxyHealthCheckResult(proxyId, success, latencyMs, exitIp, failureReason, true)
+}
+
+func applyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitIp string, failureReason string, disableImmediately bool) (ProxyHealthTransitionResult, error) {
 	result := ProxyHealthTransitionResult{ProxyId: proxyId}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		var proxy Proxy
@@ -123,7 +160,13 @@ func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 			failures := proxy.HealthFailures + 1
 			updates["health_failures"] = failures
 			updates["last_health_error"] = failureReason
-			if proxy.Status == ProxyStatusCooling || proxy.Status == ProxyStatusRecovering {
+			if disableImmediately && proxy.Enabled && proxy.Status != ProxyStatusDisabled && proxy.Status != ProxyStatusPaused {
+				result.ToStatus = ProxyStatusUnavailable
+				updates["status"] = result.ToStatus
+				updates["cooldown_until"] = 0
+				updates["recovery_successes"] = 0
+				updates["recovery_probe_remaining"] = 0
+			} else if proxy.Status == ProxyStatusCooling || proxy.Status == ProxyStatusRecovering {
 				recoveryFailures := proxy.RecoveryFailures + 1
 				result.ToStatus = ProxyStatusCooling
 				updates["status"] = result.ToStatus

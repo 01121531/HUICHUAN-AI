@@ -54,6 +54,11 @@ type proxyBindingRequest struct {
 	Enabled      *bool `json:"enabled"`
 }
 
+type proxyHealthSettingsRequest struct {
+	Enabled bool   `json:"enabled"`
+	Time    string `json:"time"`
+}
+
 func boolValue(value *bool, fallback bool) bool {
 	if value == nil {
 		return fallback
@@ -86,6 +91,27 @@ func ListProxyPoolOptions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": options})
+}
+
+func GetProxyHealthSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": model.GetProxyDailyHealthCheckSettings()})
+}
+
+func UpdateProxyHealthSettings(c *gin.Context) {
+	var req proxyHealthSettingsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	if err := model.UpdateProxyDailyHealthCheckSettings(req.Enabled, req.Time); err != nil {
+		common.ApiErrorMsg(c, "保存每日检测设置失败: "+err.Error())
+		return
+	}
+	settings := model.GetProxyDailyHealthCheckSettings()
+	recordManageAudit(c, "proxy.health_settings.update", map[string]interface{}{
+		"enabled": settings.Enabled, "time": settings.Time, "timezone": settings.Timezone,
+	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": settings})
 }
 
 func CreateProxyGroup(c *gin.Context) {
@@ -406,6 +432,30 @@ func CheckProxyNow(c *gin.Context) {
 	}
 	recordManageAudit(c, "proxy.check", map[string]interface{}{"id": id, "success": result.Success, "failure_reason": result.FailureReason})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": result})
+}
+
+func CheckAllProxiesNow(c *gin.Context) {
+	enqueueProxyFullHealthCheck(c, 0)
+}
+
+func CheckProxyGroupNow(c *gin.Context) {
+	groupId, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	enqueueProxyFullHealthCheck(c, groupId)
+}
+
+func enqueueProxyFullHealthCheck(c *gin.Context, groupId int) {
+	task, created, err := service.EnqueueSystemTask(model.SystemTaskTypeProxyManualCheck, map[string]int{"group_id": groupId})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "proxy.check_all", map[string]interface{}{"group_id": groupId, "task_id": task.TaskID, "created": created})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": gin.H{
+		"task_id": task.TaskID, "status": task.Status, "created": created,
+	}})
 }
 
 func PauseProxy(c *gin.Context) {

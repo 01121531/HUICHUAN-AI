@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import {
   Activity,
+  CalendarClock,
   CheckCircle2,
   FileText,
   Layers3,
@@ -32,7 +33,7 @@ import {
   Trash2,
   TriangleAlert,
 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-menu'
 import { Badge } from '@/components/ui/badge'
@@ -42,7 +43,9 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
 import {
   Table,
   TableBody,
@@ -52,7 +55,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
-import type { ManagedProxy, ProxyGroup } from './proxy-management-types'
+import type {
+  ManagedProxy,
+  ProxyGroup,
+  ProxyHealthSettings,
+} from './proxy-management-types'
 
 const proxyStatusLabels: Record<string, string> = {
   available: '正常',
@@ -60,7 +67,7 @@ const proxyStatusLabels: Record<string, string> = {
   paused: '已暂停',
   cooling: '冷却中',
   recovering: '恢复测试',
-  unavailable: '等待复检',
+  unavailable: '已自动禁用',
   disabled: '已停用',
 }
 
@@ -91,6 +98,9 @@ type ProxyPoolWorkspaceProps = {
   proxies: ManagedProxy[]
   switching: boolean
   checking: boolean
+  checkingAll: boolean
+  savingHealthSettings: boolean
+  healthSettings: ProxyHealthSettings
   pausing: boolean
   resetting: boolean
   onSelectGroup: (groupId: number) => void
@@ -101,6 +111,9 @@ type ProxyPoolWorkspaceProps = {
   onBatchCreateProxy: () => void
   onCreateProxy: () => void
   onCheckProxy: (proxyId: number) => void
+  onCheckGroup: (groupId: number) => void
+  onCheckAll: () => void
+  onSaveHealthSettings: (settings: { enabled: boolean; time: string }) => void
   onToggleProxy: (proxy: ManagedProxy) => void
   onViewProxyLogs: (proxyId: number) => void
   onResetProxy: (proxyId: number) => void
@@ -145,6 +158,17 @@ function SummaryCard(props: {
 }
 
 export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
+  const [dailyCheckEnabled, setDailyCheckEnabled] = useState(
+    props.healthSettings.enabled
+  )
+  const [dailyCheckTime, setDailyCheckTime] = useState(
+    props.healthSettings.time
+  )
+
+  useEffect(() => {
+    setDailyCheckEnabled(props.healthSettings.enabled)
+    setDailyCheckTime(props.healthSettings.time)
+  }, [props.healthSettings.enabled, props.healthSettings.time])
   const totalProxyCount = props.groups.reduce(
     (total, group) => total + (group.proxy_count ?? 0),
     0
@@ -165,6 +189,59 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
 
   return (
     <div className='space-y-4'>
+      <Card className='shadow-none'>
+        <CardContent className='flex flex-col gap-4 p-4 xl:flex-row xl:items-center xl:justify-between'>
+          <div className='flex min-w-0 items-start gap-3'>
+            <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl'>
+              <CalendarClock className='size-5' />
+            </div>
+            <div>
+              <p className='text-sm font-semibold'>代理健康检测</p>
+              <p className='text-muted-foreground mt-1 text-xs leading-5'>
+                每天按北京时间全量检测；连接失败的代理会立即自动禁用。也可随时手动检测全部代理。
+              </p>
+            </div>
+          </div>
+          <div className='flex flex-wrap items-center gap-2'>
+            <label className='flex h-9 items-center gap-2 rounded-md border px-3 text-sm'>
+              <Switch
+                checked={dailyCheckEnabled}
+                onCheckedChange={setDailyCheckEnabled}
+              />
+              每日检测
+            </label>
+            <Input
+              type='time'
+              className='h-9 w-32'
+              value={dailyCheckTime}
+              disabled={!dailyCheckEnabled}
+              aria-label='每日代理检测时间'
+              onChange={(event) => setDailyCheckTime(event.target.value)}
+            />
+            <Button
+              variant='outline'
+              size='sm'
+              disabled={props.savingHealthSettings || !dailyCheckTime}
+              onClick={() =>
+                props.onSaveHealthSettings({
+                  enabled: dailyCheckEnabled,
+                  time: dailyCheckTime,
+                })
+              }
+            >
+              保存时间
+            </Button>
+            <Button
+              size='sm'
+              disabled={props.checkingAll}
+              onClick={props.onCheckAll}
+            >
+              <Activity />
+              {props.checkingAll ? '检测任务启动中…' : '立即检测全部'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
         <SummaryCard
           title='代理分组'
@@ -188,7 +265,7 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
         <SummaryCard
           title='需关注'
           value={unavailableProxyCount}
-          description='停用、冷却或等待复检'
+          description='停用、冷却或已自动禁用'
           icon={<TriangleAlert className='size-5' />}
           tone='warning'
         />
@@ -330,6 +407,19 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                   </p>
                 </div>
                 <div className='flex flex-wrap gap-2'>
+                  <Button
+                    variant='outline'
+                    size='sm'
+                    disabled={props.checkingAll || !props.proxies.length}
+                    onClick={() => {
+                      if (props.selectedGroup) {
+                        props.onCheckGroup(props.selectedGroup.id)
+                      }
+                    }}
+                  >
+                    <Activity />
+                    检测本组
+                  </Button>
                   <Button
                     variant='outline'
                     size='sm'

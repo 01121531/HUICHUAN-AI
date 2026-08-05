@@ -35,6 +35,8 @@ import {
   batchCreateManagedProxies,
   createProxyGroup,
   checkManagedProxy,
+  checkAllManagedProxies,
+  checkProxyGroup,
   deleteManagedProxy,
   deleteProxyGroup,
   listGroupProxies,
@@ -42,11 +44,13 @@ import {
   listProxyGroups,
   listProxyStateEvents,
   listProxyUpstreamAttempts,
+  getProxyHealthSettings,
   resetManagedProxyObservation,
   setManagedProxyPaused,
   switchProxyGroup,
   updateManagedProxy,
   updateProxyGroup,
+  updateProxyHealthSettings,
 } from './proxy-management-api'
 import type {
   ManagedProxy,
@@ -54,6 +58,7 @@ import type {
   ProxyBatchInput,
   ProxyGroup,
   ProxyGroupInput,
+  ProxyHealthSettings,
   ProxyLogAnalysis,
   ProxyStateEvent,
   ProxyUpstreamAttempt,
@@ -80,6 +85,11 @@ const defaultGroupInput = (): ProxyGroupInput => ({
 
 const EMPTY_PROXY_GROUPS: ProxyGroup[] = []
 const EMPTY_MANAGED_PROXIES: ManagedProxy[] = []
+const DEFAULT_PROXY_HEALTH_SETTINGS: ProxyHealthSettings = {
+  enabled: true,
+  time: '08:00',
+  timezone: 'Asia/Shanghai',
+}
 
 const proxyStatusLabels: Record<string, string> = {
   available: '正常',
@@ -87,7 +97,7 @@ const proxyStatusLabels: Record<string, string> = {
   paused: '已暂停',
   cooling: '自动禁用（冷却中）',
   recovering: '恢复测试',
-  unavailable: '自动禁用（等待复检）',
+  unavailable: '已自动禁用',
   disabled: '已停用',
 }
 
@@ -720,6 +730,11 @@ export function ProxyManagementSection() {
     refetchInterval: 2000,
   })
   const groups = groupsQuery.data ?? EMPTY_PROXY_GROUPS
+  const healthSettingsQuery = useQuery({
+    queryKey: ['proxy-health-settings'],
+    queryFn: async () =>
+      (await getProxyHealthSettings()).data ?? DEFAULT_PROXY_HEALTH_SETTINGS,
+  })
 
   useEffect(() => {
     if (!groups.length) {
@@ -733,6 +748,7 @@ export function ProxyManagementSection() {
     queryKey: ['managed-proxies', selectedGroupId],
     queryFn: async () => (await listGroupProxies(selectedGroupId)).data ?? [],
     enabled: selectedGroupId > 0,
+    refetchInterval: 5000,
   })
   const analysesQuery = useQuery({
     queryKey: ['proxy-log-analyses', selectedProxyId],
@@ -814,6 +830,26 @@ export function ProxyManagementSection() {
         toast.error(`检测失败：${result?.failure_reason || '未知原因'}`)
       }
       refresh()
+    },
+  })
+  const checkAllMutation = useMutation({
+    mutationFn: (groupId: number) =>
+      groupId > 0 ? checkProxyGroup(groupId) : checkAllManagedProxies(),
+    onSuccess: (response, groupId) => {
+      let message = '已有代理检测任务正在运行'
+      if (response.data?.created) {
+        message =
+          groupId > 0 ? '本组代理检测任务已启动' : '全部代理检测任务已启动'
+      }
+      toast.success(message)
+      refresh()
+    },
+  })
+  const healthSettingsMutation = useMutation({
+    mutationFn: updateProxyHealthSettings,
+    onSuccess: () => {
+      toast.success('每日代理检测时间已保存')
+      queryClient.invalidateQueries({ queryKey: ['proxy-health-settings'] })
     },
   })
   const pauseMutation = useMutation({
@@ -912,6 +948,11 @@ export function ProxyManagementSection() {
             proxies={proxies}
             switching={switchMutation.isPending}
             checking={checkMutation.isPending}
+            checkingAll={checkAllMutation.isPending}
+            savingHealthSettings={healthSettingsMutation.isPending}
+            healthSettings={
+              healthSettingsQuery.data ?? DEFAULT_PROXY_HEALTH_SETTINGS
+            }
             pausing={pauseMutation.isPending}
             resetting={resetObservationMutation.isPending}
             onSelectGroup={setSelectedGroupId}
@@ -938,6 +979,11 @@ export function ProxyManagementSection() {
               setProxyDialogOpen(true)
             }}
             onCheckProxy={(proxyId) => checkMutation.mutate(proxyId)}
+            onCheckGroup={(groupId) => checkAllMutation.mutate(groupId)}
+            onCheckAll={() => checkAllMutation.mutate(0)}
+            onSaveHealthSettings={(settings) =>
+              healthSettingsMutation.mutate(settings)
+            }
             onToggleProxy={(proxy) =>
               pauseMutation.mutate({
                 proxyId: proxy.id,

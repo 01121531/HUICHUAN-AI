@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/model"
@@ -67,6 +68,71 @@ func TestProxyHealthFailuresMarkUnavailableAndSwitch(t *testing.T) {
 	require.Equal(t, "request_failed", first.LastHealthError)
 	require.NoError(t, model.DB.First(group, group.Id).Error)
 	require.Equal(t, second.Id, group.CurrentProxyId)
+}
+
+func TestFullProxyHealthFailureImmediatelyMarksUnavailable(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, _ := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	require.NoError(t, model.DB.Model(group).UpdateColumn("health_failure_threshold", 9).Error)
+
+	transition, err := model.ApplyProxyFullHealthCheckResult(first.Id, false, 120, "", "request_failed")
+	require.NoError(t, err)
+	require.Equal(t, model.ProxyStatusUnavailable, transition.ToStatus)
+	require.True(t, transition.SwitchRequired)
+	require.NoError(t, model.DB.First(first, first.Id).Error)
+	require.Equal(t, model.ProxyStatusUnavailable, first.Status)
+	require.Equal(t, 1, first.HealthFailures)
+}
+
+func TestListAllEnabledProxyHealthChecksIncludesAutoDisabledOnly(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	require.NoError(t, model.DB.Model(first).UpdateColumn("status", model.ProxyStatusUnavailable).Error)
+	require.NoError(t, model.DB.Model(second).UpdateColumn("status", model.ProxyStatusPaused).Error)
+
+	targets, err := model.ListAllEnabledProxyHealthChecks(group.Id)
+	require.NoError(t, err)
+	require.Len(t, targets, 1)
+	require.Equal(t, first.Id, targets[0].Proxy.Id)
+}
+
+func TestProxyDailyHealthCheckUsesConfiguredTime(t *testing.T) {
+	common.OptionMapRWMutex.Lock()
+	mapWasNil := common.OptionMap == nil
+	if mapWasNil {
+		common.OptionMap = make(map[string]string)
+	}
+	previousEnabled, hadEnabled := common.OptionMap[model.ProxyDailyHealthCheckEnabledOption]
+	previousTime, hadTime := common.OptionMap[model.ProxyDailyHealthCheckTimeOption]
+	common.OptionMap[model.ProxyDailyHealthCheckEnabledOption] = "true"
+	common.OptionMap[model.ProxyDailyHealthCheckTimeOption] = "13:30"
+	common.OptionMapRWMutex.Unlock()
+	t.Cleanup(func() {
+		common.OptionMapRWMutex.Lock()
+		defer common.OptionMapRWMutex.Unlock()
+		if mapWasNil {
+			common.OptionMap = nil
+			return
+		}
+		if hadEnabled {
+			common.OptionMap[model.ProxyDailyHealthCheckEnabledOption] = previousEnabled
+		} else {
+			delete(common.OptionMap, model.ProxyDailyHealthCheckEnabledOption)
+		}
+		if hadTime {
+			common.OptionMap[model.ProxyDailyHealthCheckTimeOption] = previousTime
+		} else {
+			delete(common.OptionMap, model.ProxyDailyHealthCheckTimeOption)
+		}
+	})
+
+	location := time.FixedZone("Asia/Shanghai", 8*60*60)
+	before := time.Date(2026, 8, 6, 13, 29, 0, 0, location)
+	after := time.Date(2026, 8, 6, 13, 31, 0, 0, location)
+	require.False(t, model.IsProxyDailyHealthCheckDue(before, 0))
+	require.True(t, model.IsProxyDailyHealthCheckDue(after, 0))
+	require.False(t, model.IsProxyDailyHealthCheckDue(after, time.Date(2026, 8, 6, 13, 30, 0, 0, location).Unix()))
+	require.True(t, model.IsProxyDailyHealthCheckDue(after, time.Date(2026, 8, 5, 13, 30, 0, 0, location).Unix()))
 }
 
 func TestRunProxyHealthCheckTaskProcessesDueProxy(t *testing.T) {

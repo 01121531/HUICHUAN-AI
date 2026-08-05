@@ -11,6 +11,8 @@ import type {
   ProxyGroup,
   ProxyGroupInput,
   ProxyHealthCheckResult,
+  ProxyHealthSettings,
+  ProxyHealthTaskResult,
   ProxyLogAnalysis,
   ProxyStateEvent,
   ProxyUpstreamAttempt,
@@ -89,6 +91,38 @@ export async function deleteManagedProxy(id: number) {
 export async function checkManagedProxy(id: number) {
   const response = await api.post<ProxyApiResponse<ProxyHealthCheckResult>>(
     `/api/proxy/proxies/${id}/check`
+  )
+  return response.data
+}
+
+export async function getProxyHealthSettings() {
+  const response = await api.get<ProxyApiResponse<ProxyHealthSettings>>(
+    '/api/proxy/health-settings'
+  )
+  return response.data
+}
+
+export async function updateProxyHealthSettings(data: {
+  enabled: boolean
+  time: string
+}) {
+  const response = await api.put<ProxyApiResponse<ProxyHealthSettings>>(
+    '/api/proxy/health-settings',
+    data
+  )
+  return response.data
+}
+
+export async function checkAllManagedProxies() {
+  const response = await api.post<ProxyApiResponse<ProxyHealthTaskResult>>(
+    '/api/proxy/proxies/check-all'
+  )
+  return response.data
+}
+
+export async function checkProxyGroup(groupId: number) {
+  const response = await api.post<ProxyApiResponse<ProxyHealthTaskResult>>(
+    `/api/proxy/groups/${groupId}/check`
   )
   return response.data
 }

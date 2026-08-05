@@ -55,7 +55,7 @@ func CheckManagedProxyNow(ctx context.Context, proxyId int) (ProxyHealthCheckRes
 		return result, err
 	}
 	outcome := checkManagedProxyHealth(ctx, target.Proxy)
-	transition, err := model.ApplyProxyHealthCheckResult(proxyId, outcome.Success, outcome.LatencyMs, outcome.ExitIp, outcome.FailureReason)
+	transition, err := model.ApplyProxyFullHealthCheckResult(proxyId, outcome.Success, outcome.LatencyMs, outcome.ExitIp, outcome.FailureReason)
 	if err != nil {
 		return result, err
 	}
@@ -92,6 +92,23 @@ func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, erro
 	if err != nil {
 		return summary, err
 	}
+	checked, err := runProxyHealthCheckTargets(ctx, targets, false)
+	checked.RecoveredSwitches = summary.RecoveredSwitches
+	return checked, err
+}
+
+// RunProxyFullHealthCheckTask checks every eligible proxy, optionally limited
+// to one group. A failed check immediately removes that proxy from selection.
+func RunProxyFullHealthCheckTask(ctx context.Context, groupId int) (ProxyHealthCheckSummary, error) {
+	targets, err := model.ListAllEnabledProxyHealthChecks(groupId)
+	if err != nil {
+		return ProxyHealthCheckSummary{}, err
+	}
+	return runProxyHealthCheckTargets(ctx, targets, true)
+}
+
+func runProxyHealthCheckTargets(ctx context.Context, targets []*model.ProxyHealthCheckTarget, disableImmediately bool) (ProxyHealthCheckSummary, error) {
+	summary := ProxyHealthCheckSummary{}
 	if len(targets) == 0 {
 		return summary, nil
 	}
@@ -107,9 +124,17 @@ func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, erro
 				return
 			}
 			outcome := checkManagedProxyHealth(ctx, target.Proxy)
-			transition, applyErr := model.ApplyProxyHealthCheckResult(
-				target.Proxy.Id, outcome.Success, outcome.LatencyMs, outcome.ExitIp, outcome.FailureReason,
-			)
+			var transition model.ProxyHealthTransitionResult
+			var applyErr error
+			if disableImmediately {
+				transition, applyErr = model.ApplyProxyFullHealthCheckResult(
+					target.Proxy.Id, outcome.Success, outcome.LatencyMs, outcome.ExitIp, outcome.FailureReason,
+				)
+			} else {
+				transition, applyErr = model.ApplyProxyHealthCheckResult(
+					target.Proxy.Id, outcome.Success, outcome.LatencyMs, outcome.ExitIp, outcome.FailureReason,
+				)
+			}
 			if applyErr == nil && transition.SwitchRequired {
 				var nextProxyId int
 				nextProxyId, applyErr = switchManagedProxyGroup(ctx, transition.ProxyGroupId, transition.ProxyId, transition.SwitchWaitSeconds)

@@ -25,6 +25,8 @@ func RegisterScheduledSystemTasks() {
 	service.RegisterSystemTaskHandler(usageLogExportTaskHandler{})
 	service.RegisterSystemTaskHandler(proxyLogAnalyzeHandler{})
 	service.RegisterSystemTaskHandler(proxyHealthCheckHandler{})
+	service.RegisterSystemTaskHandler(proxyDailyHealthCheckHandler{})
+	service.RegisterSystemTaskHandler(proxyManualHealthCheckHandler{})
 	startUsageLogExportCleaner()
 }
 
@@ -69,6 +71,59 @@ func (proxyHealthCheckHandler) NewPayload() any { return nil }
 
 func (proxyHealthCheckHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
 	summary, err := service.RunProxyHealthCheckTask(ctx)
+	if err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
+		return
+	}
+	finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusSucceeded, summary, nil)
+}
+
+type proxyDailyHealthCheckHandler struct{}
+
+type proxyDailyHealthCheckPayload struct {
+	GroupId int `json:"group_id,omitempty"`
+}
+
+func (proxyDailyHealthCheckHandler) Type() string { return model.SystemTaskTypeProxyDailyCheck }
+
+func (proxyDailyHealthCheckHandler) Enabled() bool {
+	if !model.HasEnabledManagedProxies() {
+		return false
+	}
+	latest, err := model.GetLatestSystemTask(model.SystemTaskTypeProxyDailyCheck)
+	if err != nil {
+		return false
+	}
+	latestAt := int64(0)
+	if latest != nil {
+		latestAt = latest.UpdatedAt
+	}
+	return model.IsProxyDailyHealthCheckDue(time.Now(), latestAt)
+}
+
+func (proxyDailyHealthCheckHandler) Interval() time.Duration { return time.Minute }
+
+func (proxyDailyHealthCheckHandler) NewPayload() any { return proxyDailyHealthCheckPayload{} }
+
+func (proxyDailyHealthCheckHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	runProxyFullHealthCheckSystemTask(ctx, task, runnerID)
+}
+
+type proxyManualHealthCheckHandler struct{}
+
+func (proxyManualHealthCheckHandler) Type() string { return model.SystemTaskTypeProxyManualCheck }
+
+func (proxyManualHealthCheckHandler) Run(ctx context.Context, task *model.SystemTask, runnerID string) {
+	runProxyFullHealthCheckSystemTask(ctx, task, runnerID)
+}
+
+func runProxyFullHealthCheckSystemTask(ctx context.Context, task *model.SystemTask, runnerID string) {
+	payload := proxyDailyHealthCheckPayload{}
+	if err := task.DecodePayload(&payload); err != nil {
+		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
+		return
+	}
+	summary, err := service.RunProxyFullHealthCheckTask(ctx, payload.GroupId)
 	if err != nil {
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
 		return
