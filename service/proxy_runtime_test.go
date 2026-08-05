@@ -266,5 +266,42 @@ func TestSelectChannelProxyTimesOutWhenGroupHasNoAvailableProxy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	_, err := SelectChannelProxyWithContext(ctx, channelId, "")
-	require.ErrorIs(t, err, ErrProxySwitchTimeout)
+	require.ErrorIs(t, err, ErrProxyNoAvailableWaitTimeout)
+}
+
+func TestSelectChannelProxyRecoversOwnerlessSwitchImmediately(t *testing.T) {
+	resetProxyGroupSwitchGatesForTest()
+	const channelId = 99109
+	group := &model.ProxyGroup{
+		Name: "runtime-ownerless-switch-test", Enabled: true, Status: model.ProxyGroupStatusSwitching,
+		SwitchWaitSeconds: 2, MaxWaitingRequests: 10,
+	}
+	require.NoError(t, model.DB.Create(group).Error)
+	proxy := &model.Proxy{GroupId: group.Id, Name: "available", Protocol: "http", Host: "127.0.0.1", Port: 18089, Enabled: true, Status: model.ProxyStatusAvailable}
+	require.NoError(t, model.DB.Create(proxy).Error)
+	require.NoError(t, model.DB.Model(group).UpdateColumns(map[string]interface{}{
+		"current_proxy_id":  proxy.Id,
+		"status":            model.ProxyGroupStatusSwitching,
+		"switch_lock_owner": "",
+		"switch_lock_until": 0,
+	}).Error)
+	binding := &model.ChannelProxyBinding{ChannelId: channelId, ProxyGroupId: group.Id, Enabled: true}
+	require.NoError(t, model.DB.Create(binding).Error)
+	InvalidateChannelProxyConfig(channelId)
+	t.Cleanup(func() {
+		InvalidateChannelProxyConfig(channelId)
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.ProxyGroupWaiter{})
+		model.DB.Delete(binding)
+		model.DB.Delete(proxy)
+		model.DB.Delete(group)
+		resetProxyGroupSwitchGatesForTest()
+	})
+
+	startedAt := time.Now()
+	selection, err := SelectChannelProxyWithContext(context.Background(), channelId, "")
+	require.NoError(t, err)
+	require.Equal(t, proxy.Id, selection.ProxyId)
+	require.Less(t, time.Since(startedAt), time.Second)
+	require.NoError(t, model.DB.First(group, group.Id).Error)
+	require.Equal(t, model.ProxyGroupStatusAvailable, group.Status)
 }

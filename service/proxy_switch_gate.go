@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrProxySwitchQueueFull = errors.New("proxy group switch waiting queue is full")
-	ErrProxySwitchTimeout   = errors.New("timed out waiting for proxy group switch")
+	ErrProxySwitchQueueFull        = errors.New("代理组等待队列已满")
+	ErrProxySwitchTimeout          = errors.New("等待代理组切换完成超时")
+	ErrProxyNoAvailableWaitTimeout = errors.New("代理组内没有可用代理，等待恢复超时")
 )
 
 type proxyGroupSwitchGate struct {

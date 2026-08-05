@@ -354,10 +354,7 @@ func ApplyProxyLogAnalysis(analysis *ProxyLogAnalysis) (ProxyLogAnalysisApplyRes
 			return nil
 		}
 		result.SwitchRequired = true
-		return tx.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(map[string]interface{}{
-			"status":     ProxyGroupStatusSwitching,
-			"updated_at": common.GetTimestamp(),
-		}).Error
+		return nil
 	})
 	return result, err
 }

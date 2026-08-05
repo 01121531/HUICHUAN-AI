@@ -121,6 +121,9 @@ func SelectChannelProxyWithContext(ctx context.Context, channelId int, legacyRaw
 			return current.Group.AllowDirectFallback || hasPotentialRuntimeProxy(current), nil
 		})
 		if err != nil {
+			if errors.Is(err, ErrProxySwitchTimeout) {
+				return ChannelProxySelection{}, ErrProxyNoAvailableWaitTimeout
+			}
 			return ChannelProxySelection{}, err
 		}
 		InvalidateChannelProxyConfig(channelId)
@@ -191,7 +194,7 @@ func acquireManagedProxySelection(ctx context.Context, channelId int, config *mo
 				if current == nil || current.Group == nil {
 					return true, nil
 				}
-				if current.Group.Status == model.ProxyGroupStatusSwitching && current.Group.SwitchLockUntil > 0 && current.Group.SwitchLockUntil <= time.Now().Unix() {
+				if current.Group.Status == model.ProxyGroupStatusSwitching {
 					recovered, recoverErr := model.RecoverExpiredProxyGroupSwitch(current.Group.Id, time.Now().Unix())
 					if recoverErr != nil {
 						return false, recoverErr

@@ -145,12 +145,6 @@ func ApplyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 		if result.ToStatus != result.FromStatus && group.CurrentProxyId == proxy.Id &&
 			(result.ToStatus == ProxyStatusCooling || result.ToStatus == ProxyStatusUnavailable) {
 			result.SwitchRequired = true
-			if err := tx.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(map[string]interface{}{
-				"status":     ProxyGroupStatusSwitching,
-				"updated_at": now,
-			}).Error; err != nil {
-				return err
-			}
 		}
 		if err := tx.Model(&Proxy{}).Where("id = ?", proxy.Id).UpdateColumns(updates).Error; err != nil {
 			return err
@@ -261,11 +255,6 @@ func SetProxyManualPaused(proxyId int, paused bool) (ProxyManualActionResult, er
 		}
 		if paused && group.CurrentProxyId == proxy.Id {
 			result.SwitchRequired = true
-			if err := tx.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(map[string]interface{}{
-				"status": ProxyGroupStatusSwitching, "updated_at": now,
-			}).Error; err != nil {
-				return err
-			}
 		}
 		if proxy.Status != toStatus {
 			return tx.Create(&ProxyStateEvent{
@@ -291,9 +280,7 @@ func PrepareManualProxyGroupSwitch(groupId int) (int, int, error) {
 		if currentProxyId <= 0 {
 			return errors.New("proxy group has no current proxy")
 		}
-		return tx.Model(&ProxyGroup{}).Where("id = ?", groupId).UpdateColumns(map[string]interface{}{
-			"status": ProxyGroupStatusSwitching, "updated_at": common.GetTimestamp(),
-		}).Error
+		return nil
 	})
 	return currentProxyId, waitSeconds, err
 }

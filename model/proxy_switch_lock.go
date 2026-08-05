@@ -161,7 +161,7 @@ func AbortProxyGroupSwitch(groupId int, owner string) error {
 func RecoverExpiredProxyGroupSwitch(groupId int, now int64) (bool, error) {
 	result := DB.Model(&ProxyGroup{}).
 		Where("id = ? AND status = ?", groupId, ProxyGroupStatusSwitching).
-		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR ((switch_lock_owner = '' OR switch_lock_owner IS NULL) AND updated_at <= ?)", now, now-int64(DefaultProxySwitchWaitSeconds)).
+		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR switch_lock_owner = '' OR switch_lock_owner IS NULL", now).
 		UpdateColumns(map[string]interface{}{
 			"status":            ProxyGroupStatusAvailable,
 			"switch_lock_owner": "",
@@ -174,7 +174,7 @@ func RecoverExpiredProxyGroupSwitch(groupId int, now int64) (bool, error) {
 func RecoverExpiredProxyGroupSwitches(now int64) (int64, error) {
 	result := DB.Model(&ProxyGroup{}).
 		Where("status = ?", ProxyGroupStatusSwitching).
-		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR ((switch_lock_owner = '' OR switch_lock_owner IS NULL) AND updated_at <= ?)", now, now-int64(DefaultProxySwitchWaitSeconds)).
+		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR switch_lock_owner = '' OR switch_lock_owner IS NULL", now).
 		UpdateColumns(map[string]interface{}{
 			"status":            ProxyGroupStatusAvailable,
 			"switch_lock_owner": "",
@@ -188,7 +188,7 @@ func HasExpiredProxyGroupSwitches(now int64) bool {
 	var count int64
 	err := DB.Model(&ProxyGroup{}).
 		Where("status = ?", ProxyGroupStatusSwitching).
-		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR ((switch_lock_owner = '' OR switch_lock_owner IS NULL) AND updated_at <= ?)", now, now-int64(DefaultProxySwitchWaitSeconds)).
+		Where("(switch_lock_until > 0 AND switch_lock_until <= ?) OR switch_lock_owner = '' OR switch_lock_owner IS NULL", now).
 		Limit(1).
 		Count(&count).Error
 	return err == nil && count > 0
