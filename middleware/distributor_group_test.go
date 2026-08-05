@@ -8,6 +8,7 @@ import (
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"github.com/01121531/HUICHUAN-AI/constant"
+	"github.com/01121531/HUICHUAN-AI/dto"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -29,6 +30,10 @@ func TestPlaygroundKeepsSelectedGroupUntilRoutingCompletes(t *testing.T) {
 	require.Equal(t, "gpt-5", request.Model)
 	require.Equal(t, "deepseek", request.Group)
 	require.Equal(t, "deepseek", common.GetContextKeyString(c, constant.ContextKeyTokenGroup))
+
+	playgroundRequest := &dto.PlayGroundRequest{}
+	require.NoError(t, common.UnmarshalBodyReusable(c, playgroundRequest))
+	require.Equal(t, "deepseek", playgroundRequest.Group)
 
 	require.NoError(t, stripRoutingGroupAfterSelection(c))
 
