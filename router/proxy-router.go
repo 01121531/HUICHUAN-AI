@@ -22,6 +22,7 @@ func registerProxyRoutes(apiRouter *gin.RouterGroup) {
 		proxyRoute.POST("/groups/:id/switch", controller.SwitchProxyGroupNow)
 		proxyRoute.DELETE("/groups/:id", controller.DeleteProxyGroup)
 		proxyRoute.GET("/groups/:id/proxies", controller.ListGroupProxies)
+		proxyRoute.POST("/groups/:id/proxies/batch", controller.BatchCreateProxies)
 		proxyRoute.POST("/proxies", controller.CreateProxy)
 		proxyRoute.PUT("/proxies/:id", controller.UpdateProxy)
 		proxyRoute.DELETE("/proxies/:id", controller.DeleteProxy)

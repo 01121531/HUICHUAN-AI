@@ -42,6 +42,13 @@ type proxyRequest struct {
 	ExpectedExitIp *string `json:"expected_exit_ip"`
 }
 
+type proxyBatchRequest struct {
+	Proxies         string `json:"proxies"`
+	DefaultProtocol string `json:"default_protocol"`
+	NamePrefix      string `json:"name_prefix"`
+	Enabled         *bool  `json:"enabled"`
+}
+
 type proxyBindingRequest struct {
 	ProxyGroupId int   `json:"proxy_group_id"`
 	Enabled      *bool `json:"enabled"`
@@ -209,6 +216,48 @@ func CreateProxy(c *gin.Context) {
 	service.ResetProxyClientCache()
 	recordManageAudit(c, "proxy.create", map[string]interface{}{"id": proxy.Id, "group_id": proxy.GroupId, "name": proxy.Name})
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": proxy})
+}
+
+func BatchCreateProxies(c *gin.Context) {
+	groupId, ok := parsePositiveId(c, "id")
+	if !ok {
+		return
+	}
+	var req proxyBatchRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		common.ApiErrorMsg(c, "无效的请求参数: "+err.Error())
+		return
+	}
+	defaultProtocol := strings.TrimSpace(req.DefaultProtocol)
+	if defaultProtocol == "" {
+		defaultProtocol = "socks5"
+	}
+	parsed, err := model.ParseProxyBatchList(req.Proxies, defaultProtocol)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	created, skipped, err := model.CreateProxiesBatch(
+		groupId, parsed, boolValue(req.Enabled, true), req.NamePrefix,
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	service.InvalidateChannelProxyConfig(0)
+	service.ResetProxyClientCache()
+	recordManageAudit(c, "proxy.batch_create", map[string]interface{}{
+		"group_id": groupId, "created_count": len(created), "skipped_count": skipped,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"created_count": len(created),
+			"skipped_count": skipped,
+			"proxies":       created,
+		},
+	})
 }
 
 func UpdateProxy(c *gin.Context) {

@@ -4,6 +4,7 @@ import {
   Activity,
   FileText,
   History,
+  ListPlus,
   Pause,
   Pencil,
   Play,
@@ -41,9 +42,11 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 
 import {
   createManagedProxy,
+  batchCreateManagedProxies,
   createProxyGroup,
   checkManagedProxy,
   deleteManagedProxy,
@@ -62,6 +65,7 @@ import {
 import type {
   ManagedProxy,
   ManagedProxyInput,
+  ProxyBatchInput,
   ProxyGroup,
   ProxyGroupInput,
   ProxyLogAnalysis,
@@ -520,6 +524,131 @@ function ProxyDialog(props: {
   )
 }
 
+function BatchProxyDialog(props: {
+  open: boolean
+  saving: boolean
+  onOpenChange: (open: boolean) => void
+  onSave: (data: ProxyBatchInput) => void
+}) {
+  const [form, setForm] = useState<ProxyBatchInput>({
+    proxies: '',
+    default_protocol: 'socks5',
+    name_prefix: '',
+    enabled: true,
+  })
+
+  useEffect(() => {
+    if (props.open) {
+      setForm({
+        proxies: '',
+        default_protocol: 'socks5',
+        name_prefix: '',
+        enabled: true,
+      })
+    }
+  }, [props.open])
+
+  const inputCount = form.proxies
+    .split(/[\n,]+/)
+    .map((item) => item.trim())
+    .filter(Boolean).length
+
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className='sm:max-w-2xl'>
+        <DialogHeader>
+          <DialogTitle>批量添加代理</DialogTitle>
+          <DialogDescription>
+            每行填写一个代理，也可以使用英文逗号分隔。系统会自动去重，全部校验通过后一次写入。
+          </DialogDescription>
+        </DialogHeader>
+        <div className='space-y-4'>
+          <div className='grid gap-4 sm:grid-cols-2'>
+            <div className='space-y-1.5'>
+              <Label>无协议地址的默认协议</Label>
+              <NativeSelect
+                className='w-full'
+                value={form.default_protocol}
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    default_protocol: event.target.value,
+                  }))
+                }
+              >
+                <NativeSelectOption value='http'>HTTP</NativeSelectOption>
+                <NativeSelectOption value='https'>HTTPS</NativeSelectOption>
+                <NativeSelectOption value='socks4'>SOCKS4</NativeSelectOption>
+                <NativeSelectOption value='socks5'>SOCKS5</NativeSelectOption>
+                <NativeSelectOption value='socks5h'>SOCKS5H</NativeSelectOption>
+              </NativeSelect>
+            </div>
+            <div className='space-y-1.5'>
+              <Label>名称前缀（可选）</Label>
+              <Input
+                value={form.name_prefix}
+                placeholder='例如：香港出口'
+                onChange={(event) =>
+                  setForm((value) => ({
+                    ...value,
+                    name_prefix: event.target.value,
+                  }))
+                }
+              />
+            </div>
+          </div>
+          <div className='space-y-1.5'>
+            <div className='flex items-center justify-between gap-3'>
+              <Label>代理地址</Label>
+              <span className='text-muted-foreground text-xs'>
+                已填写 {inputCount} 条
+              </span>
+            </div>
+            <Textarea
+              className='min-h-64 font-mono text-sm'
+              value={form.proxies}
+              placeholder={[
+                'socks5://user:password@127.0.0.1:1080',
+                'http://user:password@127.0.0.2:8080',
+                '127.0.0.3:1080',
+                '127.0.0.4:1080:user:password',
+              ].join('\n')}
+              onChange={(event) =>
+                setForm((value) => ({ ...value, proxies: event.target.value }))
+              }
+            />
+            <p className='text-muted-foreground text-xs'>
+              支持完整
+              URL、主机:端口、用户名:密码@主机:端口、主机:端口:用户名:密码；单次最多
+              1000 条。
+            </p>
+          </div>
+          <label className='flex items-center justify-between gap-3 rounded-lg border p-3 text-sm'>
+            <span>新增后立即启用</span>
+            <Switch
+              checked={form.enabled}
+              onCheckedChange={(enabled) =>
+                setForm((value) => ({ ...value, enabled }))
+              }
+            />
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant='outline' onClick={() => props.onOpenChange(false)}>
+            取消
+          </Button>
+          <Button
+            disabled={props.saving || inputCount === 0 || inputCount > 1000}
+            onClick={() => props.onSave(form)}
+          >
+            {props.saving ? '添加中…' : `批量添加（${inputCount}）`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 type DeleteTarget =
   | { kind: 'group'; id: number; name: string; boundChannelCount: number }
   | { kind: 'proxy'; id: number; name: string }
@@ -532,6 +661,7 @@ export function ProxyManagementSection() {
   const [groupDialogOpen, setGroupDialogOpen] = useState(false)
   const [editingGroup, setEditingGroup] = useState<ProxyGroup | null>(null)
   const [proxyDialogOpen, setProxyDialogOpen] = useState(false)
+  const [batchProxyDialogOpen, setBatchProxyDialogOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<ManagedProxy | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
 
@@ -601,6 +731,22 @@ export function ProxyManagementSection() {
     onSuccess: () => {
       toast.success(editingProxy ? '代理已更新' : '代理已创建')
       setProxyDialogOpen(false)
+      refresh()
+    },
+  })
+  const batchProxyMutation = useMutation({
+    mutationFn: (data: ProxyBatchInput) =>
+      batchCreateManagedProxies(selectedGroupId, data),
+    onSuccess: (response) => {
+      if (!response.success) return
+      const createdCount = response.data?.created_count ?? 0
+      const skippedCount = response.data?.skipped_count ?? 0
+      toast.success(
+        skippedCount > 0
+          ? `批量添加完成：新增 ${createdCount} 个，跳过重复 ${skippedCount} 个`
+          : `批量添加完成：新增 ${createdCount} 个代理`
+      )
+      setBatchProxyDialogOpen(false)
       refresh()
     },
   })
@@ -837,17 +983,28 @@ export function ProxyManagementSection() {
             <p className='text-muted-foreground text-sm'>
               代理密码不会回显；修改时留空即可保留原密码。
             </p>
-            <Button
-              size='sm'
-              disabled={!selectedGroup}
-              onClick={() => {
-                setEditingProxy(null)
-                setProxyDialogOpen(true)
-              }}
-            >
-              <Plus className='mr-1.5 h-4 w-4' />
-              新增代理
-            </Button>
+            <div className='flex gap-2'>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={!selectedGroup}
+                onClick={() => setBatchProxyDialogOpen(true)}
+              >
+                <ListPlus className='mr-1.5 h-4 w-4' />
+                批量添加
+              </Button>
+              <Button
+                size='sm'
+                disabled={!selectedGroup}
+                onClick={() => {
+                  setEditingProxy(null)
+                  setProxyDialogOpen(true)
+                }}
+              >
+                <Plus className='mr-1.5 h-4 w-4' />
+                新增代理
+              </Button>
+            </div>
           </div>
           <div className='overflow-x-auto rounded-lg border'>
             <Table>
@@ -1264,6 +1421,12 @@ export function ProxyManagementSection() {
         saving={proxyMutation.isPending}
         onOpenChange={setProxyDialogOpen}
         onSave={(data) => proxyMutation.mutate(data)}
+      />
+      <BatchProxyDialog
+        open={batchProxyDialogOpen}
+        saving={batchProxyMutation.isPending}
+        onOpenChange={setBatchProxyDialogOpen}
+        onSave={(data) => batchProxyMutation.mutate(data)}
       />
       <ConfirmDialog
         open={!!deleteTarget}

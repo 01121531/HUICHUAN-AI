@@ -336,6 +336,76 @@ func ParseProxyURLList(raw string) ([]*Proxy, error) {
 	return proxies, nil
 }
 
+// ParseProxyBatchList accepts full proxy URLs and common provider exports.
+// Lines without a scheme use defaultProtocol. The supported shorthand forms are
+// host:port, username:password@host:port and host:port:username:password.
+func ParseProxyBatchList(raw string, defaultProtocol string) ([]*Proxy, error) {
+	defaultProtocol = strings.ToLower(strings.TrimSpace(defaultProtocol))
+	switch defaultProtocol {
+	case "http", "https", "socks4", "socks5", "socks5h":
+	default:
+		return nil, errors.New("默认代理协议无效")
+	}
+	parts := strings.FieldsFunc(strings.ReplaceAll(raw, "\r\n", "\n"), func(r rune) bool {
+		return r == '\n' || r == ','
+	})
+	if len(parts) > 1000 {
+		return nil, errors.New("单次最多添加 1000 个代理")
+	}
+	seen := make(map[string]struct{}, len(parts))
+	proxies := make([]*Proxy, 0, len(parts))
+	for index, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		normalized := part
+		if !strings.Contains(normalized, "://") {
+			fields := strings.Split(normalized, ":")
+			if len(fields) == 4 && !strings.Contains(normalized, "@") {
+				port, portErr := strconv.Atoi(fields[1])
+				if portErr == nil && port > 0 && port <= 65535 {
+					normalized = (&url.URL{
+						Scheme: defaultProtocol,
+						Host:   net.JoinHostPort(strings.TrimSpace(fields[0]), fields[1]),
+						User:   url.UserPassword(fields[2], fields[3]),
+					}).String()
+				}
+			}
+			if !strings.Contains(normalized, "://") {
+				normalized = defaultProtocol + "://" + normalized
+			}
+		}
+		proxy, err := ParseProxyURL(normalized)
+		if err != nil {
+			return nil, fmt.Errorf("第 %d 个代理格式错误: %w", index+1, err)
+		}
+		key := proxyIdentityKey(proxy)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		proxies = append(proxies, proxy)
+	}
+	if len(proxies) == 0 {
+		return nil, errors.New("请至少填写一个代理地址")
+	}
+	return proxies, nil
+}
+
+func proxyIdentityKey(proxy *Proxy) string {
+	if proxy == nil {
+		return ""
+	}
+	return strings.Join([]string{
+		strings.ToLower(strings.TrimSpace(proxy.Protocol)),
+		strings.ToLower(strings.TrimSpace(proxy.Host)),
+		strconv.Itoa(proxy.Port),
+		proxy.Username,
+		proxy.Password,
+	}, "\x00")
+}
+
 func GetChannelProxyRuntimeConfig(channelId int) (*ChannelProxyRuntimeConfig, error) {
 	var binding ChannelProxyBinding
 	err := DB.Where("channel_id = ?", channelId).First(&binding).Error
@@ -503,6 +573,76 @@ func CreateProxy(proxy *Proxy) error {
 		return errors.New("proxy group does not exist")
 	}
 	return DB.Create(proxy).Error
+}
+
+func CreateProxiesBatch(groupId int, proxies []*Proxy, enabled bool, namePrefix string) ([]*Proxy, int, error) {
+	if groupId <= 0 {
+		return nil, 0, errors.New("代理分组无效")
+	}
+	if len(proxies) == 0 {
+		return nil, 0, errors.New("请至少填写一个代理地址")
+	}
+	if len(proxies) > 1000 {
+		return nil, 0, errors.New("单次最多添加 1000 个代理")
+	}
+	namePrefix = strings.TrimSpace(namePrefix)
+	created := make([]*Proxy, 0, len(proxies))
+	skipped := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var groupCount int64
+		if err := tx.Model(&ProxyGroup{}).Where("id = ?", groupId).Count(&groupCount).Error; err != nil {
+			return err
+		}
+		if groupCount == 0 {
+			return errors.New("代理分组不存在")
+		}
+
+		var existing []*Proxy
+		if err := tx.Where("group_id = ?", groupId).Find(&existing).Error; err != nil {
+			return err
+		}
+		identities := make(map[string]struct{}, len(existing)+len(proxies))
+		for _, proxy := range existing {
+			identities[proxyIdentityKey(proxy)] = struct{}{}
+		}
+		var maxSort int
+		if err := tx.Model(&Proxy{}).Where("group_id = ?", groupId).
+			Select("COALESCE(MAX(sort), 0)").Scan(&maxSort).Error; err != nil {
+			return err
+		}
+
+		for _, source := range proxies {
+			if source == nil {
+				return errors.New("代理数据无效")
+			}
+			candidate := *source
+			candidate.Id = 0
+			candidate.GroupId = groupId
+			candidate.Enabled = enabled
+			candidate.Status = ProxyStatusAvailable
+			if err := validateProxy(&candidate); err != nil {
+				return err
+			}
+			key := proxyIdentityKey(&candidate)
+			if _, exists := identities[key]; exists {
+				skipped++
+				continue
+			}
+			candidate.Sort = maxSort + len(created) + 1
+			if namePrefix != "" {
+				candidate.Name = fmt.Sprintf("%s %d", namePrefix, len(created)+1)
+			} else {
+				candidate.Name = net.JoinHostPort(candidate.Host, strconv.Itoa(candidate.Port))
+			}
+			if err := tx.Create(&candidate).Error; err != nil {
+				return err
+			}
+			identities[key] = struct{}{}
+			created = append(created, &candidate)
+		}
+		return nil
+	})
+	return created, skipped, err
 }
 
 func UpdateProxy(proxy *Proxy) error {

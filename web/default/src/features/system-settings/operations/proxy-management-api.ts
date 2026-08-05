@@ -6,6 +6,8 @@ import type {
   ProxyApiResponse,
   ProxyBinding,
   ProxyBindingInput,
+  ProxyBatchInput,
+  ProxyBatchResult,
   ProxyGroup,
   ProxyGroupInput,
   ProxyHealthCheckResult,
@@ -53,6 +55,17 @@ export async function listGroupProxies(groupId: number) {
 export async function createManagedProxy(data: ManagedProxyInput) {
   const response = await api.post<ProxyApiResponse<ManagedProxy>>(
     '/api/proxy/proxies',
+    data
+  )
+  return response.data
+}
+
+export async function batchCreateManagedProxies(
+  groupId: number,
+  data: ProxyBatchInput
+) {
+  const response = await api.post<ProxyApiResponse<ProxyBatchResult>>(
+    `/api/proxy/groups/${groupId}/proxies/batch`,
     data
   )
   return response.data

@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +81,56 @@ func TestParseProxyURLRejectsSOCKS4Password(t *testing.T) {
 func TestParseProxyURLRejectsUnsupportedProtocol(t *testing.T) {
 	_, err := ParseProxyURL("socks6://127.0.0.1:1080")
 	require.ErrorContains(t, err, "unsupported proxy protocol")
+}
+
+func TestParseProxyBatchListSupportsCommonFormatsAndDeduplicates(t *testing.T) {
+	proxies, err := ParseProxyBatchList(strings.Join([]string{
+		"socks5://user:password@127.0.0.1:1080",
+		"127.0.0.2:1080",
+		"user2:password2@127.0.0.3:1080",
+		"127.0.0.4:1080:user4:password4",
+		"127.0.0.2:1080",
+	}, "\n"), "socks5")
+	require.NoError(t, err)
+	require.Len(t, proxies, 4)
+	require.Equal(t, "user", proxies[0].Username)
+	require.Equal(t, "127.0.0.2", proxies[1].Host)
+	require.Empty(t, proxies[1].Username)
+	require.Equal(t, "user2", proxies[2].Username)
+	require.Equal(t, "password2", proxies[2].Password)
+	require.Equal(t, "user4", proxies[3].Username)
+	require.Equal(t, "password4", proxies[3].Password)
+}
+
+func TestCreateProxiesBatchSkipsExistingProxy(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&ProxyGroup{}, &Proxy{}))
+	group := &ProxyGroup{Name: "batch-create-pool", Enabled: true, Status: ProxyGroupStatusAvailable}
+	require.NoError(t, DB.Create(group).Error)
+	existing := &Proxy{
+		GroupId: group.Id, Name: "existing", Protocol: "socks5", Host: "127.0.0.1", Port: 1080,
+		Username: "user", Password: "password", Enabled: true, Sort: 5,
+	}
+	require.NoError(t, DB.Create(existing).Error)
+	t.Cleanup(func() {
+		DB.Where("group_id = ?", group.Id).Delete(&Proxy{})
+		DB.Delete(&ProxyGroup{}, group.Id)
+	})
+
+	parsed, err := ParseProxyBatchList(strings.Join([]string{
+		"socks5://user:password@127.0.0.1:1080",
+		"http://127.0.0.2:8080",
+	}, "\n"), "socks5")
+	require.NoError(t, err)
+	created, skipped, err := CreateProxiesBatch(group.Id, parsed, true, "批量节点")
+	require.NoError(t, err)
+	require.Equal(t, 1, skipped)
+	require.Len(t, created, 1)
+	require.Equal(t, "批量节点 1", created[0].Name)
+	require.Equal(t, 6, created[0].Sort)
+
+	var count int64
+	require.NoError(t, DB.Model(&Proxy{}).Where("group_id = ?", group.Id).Count(&count).Error)
+	require.EqualValues(t, 2, count)
 }
 
 func TestProxyJSONNeverContainsPassword(t *testing.T) {

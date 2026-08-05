@@ -101,6 +101,19 @@ export type ManagedProxyInput = {
   expected_exit_ip: string
 }
 
+export type ProxyBatchInput = {
+  proxies: string
+  default_protocol: string
+  name_prefix: string
+  enabled: boolean
+}
+
+export type ProxyBatchResult = {
+  created_count: number
+  skipped_count: number
+  proxies: ManagedProxy[]
+}
+
 export type ProxyBindingInput = {
   proxy_group_id: number
   enabled: boolean

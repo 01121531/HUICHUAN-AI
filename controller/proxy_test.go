@@ -180,3 +180,33 @@ func TestProxyManagementHandlersCreateAndBindWithoutLeakingPassword(t *testing.T
 	SwitchProxyGroupNow(switchContext)
 	require.Equal(t, http.StatusOK, switchRecorder.Code)
 }
+
+func TestBatchCreateProxiesCreatesAllWithoutLeakingPasswords(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupProxyControllerTestDB(t)
+	group := &model.ProxyGroup{Name: "controller-batch-pool", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	require.NoError(t, model.DB.Create(group).Error)
+	t.Cleanup(func() {
+		model.DB.Where("group_id = ?", group.Id).Delete(&model.Proxy{})
+		model.DB.Delete(&model.ProxyGroup{}, group.Id)
+	})
+
+	context, recorder := proxyJSONContext(t, http.MethodPost, map[string]any{
+		"proxies": strings.Join([]string{
+			"socks5://user-a:secret-a@127.0.0.1:1080",
+			"127.0.0.2:8080:user-b:secret-b",
+		}, "\n"),
+		"default_protocol": "http",
+		"name_prefix":      "批量出口",
+		"enabled":          true,
+	}, gin.Param{Key: "id", Value: strconv.Itoa(group.Id)})
+	BatchCreateProxies(context)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"created_count":2`)
+	require.NotContains(t, recorder.Body.String(), "secret-a")
+	require.NotContains(t, recorder.Body.String(), "secret-b")
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.Proxy{}).Where("group_id = ?", group.Id).Count(&count).Error)
+	require.EqualValues(t, 2, count)
+}
