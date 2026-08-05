@@ -39,6 +39,10 @@ func Distribute() func(c *gin.Context) {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
+		if err := stripRoutingGroupAfterSelection(c); err != nil {
+			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
+			return
+		}
 		if ok {
 			id, err := strconv.Atoi(channelId.(string))
 			if err != nil {
@@ -228,20 +232,6 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	if values[1].Exists() {
-		requestBody, err = sjson.DeleteBytes(requestBody, "group")
-		if err != nil {
-			return nil, err
-		}
-		replacement, err := common.CreateBodyStorage(requestBody)
-		if err != nil {
-			return nil, err
-		}
-		_ = storage.Close()
-		storage = replacement
-		c.Set(common.KeyBodyStorage, replacement)
-		c.Request.ContentLength = replacement.Size()
-	}
 
 	if _, seekErr := storage.Seek(0, io.SeekStart); seekErr != nil {
 		return nil, seekErr
@@ -252,6 +242,48 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 		Model: model,
 		Group: group,
 	}, nil
+}
+
+// stripRoutingGroupAfterSelection removes the gateway-only group field only
+// after getModelRequest has completed every routing read. Playground parses the
+// request more than once and must retain the selected group until that point.
+func stripRoutingGroupAfterSelection(c *gin.Context) error {
+	if c == nil || c.Request == nil || !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json") {
+		return nil
+	}
+	storage, err := common.GetBodyStorage(c)
+	if err != nil {
+		return err
+	}
+	requestBody, err := storage.Bytes()
+	if err != nil {
+		return err
+	}
+	if !gjson.GetBytes(requestBody, "group").Exists() {
+		if _, err = storage.Seek(0, io.SeekStart); err != nil {
+			return err
+		}
+		c.Request.ContentLength = storage.Size()
+		c.Request.Body = io.NopCloser(storage)
+		return nil
+	}
+	requestBody, err = sjson.DeleteBytes(requestBody, "group")
+	if err != nil {
+		return err
+	}
+	replacement, err := common.CreateBodyStorage(requestBody)
+	if err != nil {
+		return err
+	}
+	_ = storage.Close()
+	c.Set(common.KeyBodyStorage, replacement)
+	c.Request.ContentLength = replacement.Size()
+	if _, err := replacement.Seek(0, io.SeekStart); err != nil {
+		_ = replacement.Close()
+		return err
+	}
+	c.Request.Body = io.NopCloser(replacement)
+	return nil
 }
 
 func getJSONStringValue(result gjson.Result, field string) (string, error) {
