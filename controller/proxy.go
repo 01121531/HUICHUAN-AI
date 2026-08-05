@@ -158,13 +158,20 @@ func DeleteProxyGroup(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := model.DeleteProxyGroup(id); err != nil {
+	unboundChannelCount, err := model.DeleteProxyGroup(id)
+	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	service.InvalidateChannelProxyConfig(0)
-	recordManageAudit(c, "proxy.group.delete", map[string]interface{}{"id": id})
-	c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+	recordManageAudit(c, "proxy.group.delete", map[string]interface{}{
+		"id": id, "unbound_channel_count": unboundChannelCount,
+	})
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data":    gin.H{"unbound_channel_count": unboundChannelCount},
+	})
 }
 
 func ListGroupProxies(c *gin.Context) {

@@ -521,7 +521,7 @@ function ProxyDialog(props: {
 }
 
 type DeleteTarget =
-  | { kind: 'group'; id: number; name: string }
+  | { kind: 'group'; id: number; name: string; boundChannelCount: number }
   | { kind: 'proxy'; id: number; name: string }
 
 export function ProxyManagementSection() {
@@ -645,8 +645,20 @@ export function ProxyManagementSection() {
       if (target.kind === 'group') return deleteProxyGroup(target.id)
       return deleteManagedProxy(target.id)
     },
-    onSuccess: () => {
-      toast.success('已删除')
+    onSuccess: (response, target) => {
+      if (!response.success) return
+      const unboundChannelCount =
+        target.kind === 'group'
+          ? Number(
+              (response.data as { unbound_channel_count?: number } | undefined)
+                ?.unbound_channel_count ?? 0
+            )
+          : 0
+      toast.success(
+        unboundChannelCount > 0
+          ? `代理分组已删除，同时取消了 ${unboundChannelCount} 个渠道的代理池绑定`
+          : '已删除'
+      )
       setDeleteTarget(null)
       refresh()
     },
@@ -785,6 +797,10 @@ export function ProxyManagementSection() {
               <div>
                 <span className='text-muted-foreground'>直连回退：</span>
                 {selectedGroup.allow_direct_fallback ? '允许' : '禁止'}
+              </div>
+              <div>
+                <span className='text-muted-foreground'>已绑定渠道：</span>
+                {selectedGroup.bound_channel_count}
               </div>
             </div>
           )}
@@ -1001,6 +1017,7 @@ export function ProxyManagementSection() {
                   kind: 'group',
                   id: selectedGroup.id,
                   name: selectedGroup.name,
+                  boundChannelCount: selectedGroup.bound_channel_count,
                 })
               }
             >
@@ -1252,8 +1269,18 @@ export function ProxyManagementSection() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title='确认删除'
-        desc={`确定删除“${deleteTarget?.name ?? ''}”吗？此操作无法撤销。`}
-        confirmText='删除'
+        desc={
+          deleteTarget?.kind === 'group'
+            ? deleteTarget.boundChannelCount > 0
+              ? `“${deleteTarget.name}”当前被 ${deleteTarget.boundChannelCount} 个渠道使用。确认后会自动取消这些渠道的代理池绑定，并删除分组内的全部代理。此操作无法撤销。`
+              : `确定删除“${deleteTarget.name}”及分组内的全部代理吗？此操作无法撤销。`
+            : `确定删除“${deleteTarget?.name ?? ''}”吗？此操作无法撤销。`
+        }
+        confirmText={
+          deleteTarget?.kind === 'group' && deleteTarget.boundChannelCount > 0
+            ? '解绑并删除'
+            : '删除'
+        }
         destructive
         isLoading={deleteMutation.isPending}
         handleConfirm={() =>

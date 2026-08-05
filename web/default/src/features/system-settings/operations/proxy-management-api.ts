@@ -37,7 +37,9 @@ export async function updateProxyGroup(id: number, data: ProxyGroupInput) {
 }
 
 export async function deleteProxyGroup(id: number) {
-  const response = await api.delete<ProxyApiResponse>(`/api/proxy/groups/${id}`)
+  const response = await api.delete<
+    ProxyApiResponse<{ unbound_channel_count: number }>
+  >(`/api/proxy/groups/${id}`)
   return response.data
 }
 

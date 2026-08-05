@@ -25,6 +25,7 @@ export type ProxyGroup = {
   longest_wait_deadline_at: number
   nearest_wait_remaining_seconds: number
   longest_wait_remaining_seconds: number
+  bound_channel_count: number
 }
 
 export type ManagedProxy = {
@@ -84,6 +85,7 @@ export type ProxyGroupInput = Omit<
   | 'longest_wait_deadline_at'
   | 'nearest_wait_remaining_seconds'
   | 'longest_wait_remaining_seconds'
+  | 'bound_channel_count'
 >
 
 export type ManagedProxyInput = {

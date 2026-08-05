@@ -226,6 +226,51 @@ func TestBatchInsertAndDeleteChannelsKeepsProxyBindingsConsistent(t *testing.T) 
 	require.Zero(t, bindingCount)
 }
 
+func TestDeleteProxyGroupAutomaticallyUnbindsChannels(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&Channel{}, &ProxyGroup{}, &Proxy{}, &ChannelProxyBinding{}, &ProxyGroupWaiter{}))
+
+	group := &ProxyGroup{Name: "delete-bound-pool", Enabled: true, Status: ProxyGroupStatusAvailable}
+	require.NoError(t, DB.Create(group).Error)
+	proxy := &Proxy{GroupId: group.Id, Name: "delete-bound-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8080, Enabled: true}
+	require.NoError(t, DB.Create(proxy).Error)
+	channel := &Channel{Name: "delete-bound-channel", Type: 1, Key: "test-key", Models: "gpt-4o", Group: "default"}
+	require.NoError(t, DB.Create(channel).Error)
+	require.NoError(t, SetChannelProxyGroup(channel.Id, group.Id))
+	t.Cleanup(func() {
+		DB.Where("channel_id = ?", channel.Id).Delete(&ChannelProxyBinding{})
+		DB.Where("group_id = ?", group.Id).Delete(&Proxy{})
+		DB.Delete(&ProxyGroup{}, group.Id)
+		DB.Delete(&Channel{}, channel.Id)
+	})
+
+	groups, err := ListProxyGroups()
+	require.NoError(t, err)
+	var listed *ProxyGroup
+	for _, candidate := range groups {
+		if candidate.Id == group.Id {
+			listed = candidate
+			break
+		}
+	}
+	require.NotNil(t, listed)
+	require.EqualValues(t, 1, listed.BoundChannelCount)
+
+	unboundChannelCount, err := DeleteProxyGroup(group.Id)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, unboundChannelCount)
+	require.Zero(t, mustChannelProxyGroupId(t, channel.Id))
+
+	var groupCount int64
+	require.NoError(t, DB.Model(&ProxyGroup{}).Where("id = ?", group.Id).Count(&groupCount).Error)
+	require.Zero(t, groupCount)
+	var proxyCount int64
+	require.NoError(t, DB.Model(&Proxy{}).Where("group_id = ?", group.Id).Count(&proxyCount).Error)
+	require.Zero(t, proxyCount)
+	var channelCount int64
+	require.NoError(t, DB.Model(&Channel{}).Where("id = ?", channel.Id).Count(&channelCount).Error)
+	require.EqualValues(t, 1, channelCount)
+}
+
 func mustChannelProxyGroupId(t *testing.T, channelId int) int {
 	t.Helper()
 	groupId, err := GetChannelProxyGroupId(channelId)

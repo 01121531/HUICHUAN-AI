@@ -72,6 +72,7 @@ type ProxyGroup struct {
 	LongestWaitDeadlineAt       int64   `json:"longest_wait_deadline_at" gorm:"-"`
 	NearestWaitRemainingSeconds int64   `json:"nearest_wait_remaining_seconds" gorm:"-"`
 	LongestWaitRemainingSeconds int64   `json:"longest_wait_remaining_seconds" gorm:"-"`
+	BoundChannelCount           int64   `json:"bound_channel_count" gorm:"-"`
 }
 
 func (ProxyGroup) TableName() string { return "proxy_groups" }
@@ -367,10 +368,40 @@ func ListProxyGroups() ([]*ProxyGroup, error) {
 	if err := DB.Order("id asc").Find(&groups).Error; err != nil {
 		return nil, err
 	}
+	if err := PopulateProxyGroupBindingCounts(groups); err != nil {
+		return nil, err
+	}
 	if err := PopulateProxyGroupWaitMetrics(groups, common.GetTimestamp()); err != nil {
 		return nil, err
 	}
 	return groups, nil
+}
+
+func PopulateProxyGroupBindingCounts(groups []*ProxyGroup) error {
+	if len(groups) == 0 || !DB.Migrator().HasTable(&ChannelProxyBinding{}) {
+		return nil
+	}
+	type bindingCountRow struct {
+		ProxyGroupId int
+		Count        int64
+	}
+	var rows []bindingCountRow
+	if err := DB.Model(&ChannelProxyBinding{}).
+		Select("proxy_group_id, COUNT(*) AS count").
+		Group("proxy_group_id").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+	counts := make(map[int]int64, len(rows))
+	for _, row := range rows {
+		counts[row.ProxyGroupId] = row.Count
+	}
+	for _, group := range groups {
+		if group != nil {
+			group.BoundChannelCount = counts[group.Id]
+		}
+	}
+	return nil
 }
 
 func GetProxyGroupById(id int) (*ProxyGroup, error) {
@@ -426,14 +457,14 @@ func UpdateProxyGroup(group *ProxyGroup) error {
 	return DB.Model(&ProxyGroup{}).Where("id = ?", group.Id).UpdateColumns(updates).Error
 }
 
-func DeleteProxyGroup(id int) error {
-	return DB.Transaction(func(tx *gorm.DB) error {
-		var bindingCount int64
+func DeleteProxyGroup(id int) (int64, error) {
+	var bindingCount int64
+	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&ChannelProxyBinding{}).Where("proxy_group_id = ?", id).Count(&bindingCount).Error; err != nil {
 			return err
 		}
-		if bindingCount > 0 {
-			return errors.New("proxy group is still bound to channels")
+		if err := tx.Where("proxy_group_id = ?", id).Delete(&ChannelProxyBinding{}).Error; err != nil {
+			return err
 		}
 		if err := tx.Where("group_id = ?", id).Delete(&Proxy{}).Error; err != nil {
 			return err
@@ -443,6 +474,7 @@ func DeleteProxyGroup(id int) error {
 		}
 		return tx.Delete(&ProxyGroup{}, id).Error
 	})
+	return bindingCount, err
 }
 
 func ListProxiesByGroup(groupId int) ([]*Proxy, error) {
