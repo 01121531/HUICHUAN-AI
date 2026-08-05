@@ -161,7 +161,7 @@ func Distribute() func(c *gin.Context) {
 				}
 			}
 		}
-		if err := stripRoutingGroupAfterSelection(c); err != nil {
+		if err := stripGatewayOnlyFieldsAfterSelection(c); err != nil {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, i18n.T(c, i18n.MsgDistributorInvalidRequest, map[string]any{"Error": err.Error()}))
 			return
 		}
@@ -244,10 +244,10 @@ func getModelFromJSONBody(c *gin.Context) (*ModelRequest, error) {
 	}, nil
 }
 
-// stripRoutingGroupAfterSelection removes the gateway-only group field only
+// stripGatewayOnlyFieldsAfterSelection removes gateway-only top-level fields
 // after getModelRequest has completed every routing read. Playground parses the
 // request more than once and must retain the selected group until that point.
-func stripRoutingGroupAfterSelection(c *gin.Context) error {
+func stripGatewayOnlyFieldsAfterSelection(c *gin.Context) error {
 	if c == nil || c.Request == nil || !strings.HasPrefix(c.Request.Header.Get("Content-Type"), "application/json") {
 		return nil
 	}
@@ -259,17 +259,24 @@ func stripRoutingGroupAfterSelection(c *gin.Context) error {
 	if err != nil {
 		return err
 	}
-	if !gjson.GetBytes(requestBody, "group").Exists() {
+	changed := false
+	for _, field := range []string{"group", "conversation_id"} {
+		if !gjson.GetBytes(requestBody, field).Exists() {
+			continue
+		}
+		requestBody, err = sjson.DeleteBytes(requestBody, field)
+		if err != nil {
+			return err
+		}
+		changed = true
+	}
+	if !changed {
 		if _, err = storage.Seek(0, io.SeekStart); err != nil {
 			return err
 		}
 		c.Request.ContentLength = storage.Size()
 		c.Request.Body = io.NopCloser(storage)
 		return nil
-	}
-	requestBody, err = sjson.DeleteBytes(requestBody, "group")
-	if err != nil {
-		return err
 	}
 	replacement, err := common.CreateBodyStorage(requestBody)
 	if err != nil {

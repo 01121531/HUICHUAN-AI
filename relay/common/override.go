@@ -207,19 +207,22 @@ func ApplyParamOverrideWithRelayInfo(jsonData []byte, info *RelayInfo) ([]byte, 
 	return result, nil
 }
 
-// stripGatewayOnlyRequestFields prevents internal routing concepts from being
-// forwarded to OpenAI-compatible upstream APIs. A top-level group value belongs
-// to the gateway's user/token/channel routing configuration, not the model
-// request body. Nested fields named group remain untouched.
+// stripGatewayOnlyRequestFields prevents internal routing and conversation
+// state from being forwarded to OpenAI-compatible upstream APIs. Nested fields
+// with the same names remain untouched.
 func stripGatewayOnlyRequestFields(jsonData []byte, recorder *paramOverrideAuditRecorder) ([]byte, error) {
-	if !gjson.GetBytes(jsonData, "group").Exists() {
-		return jsonData, nil
+	result := jsonData
+	for _, field := range []string{"group", "conversation_id"} {
+		if !gjson.GetBytes(result, field).Exists() {
+			continue
+		}
+		var err error
+		result, err = sjson.DeleteBytes(result, field)
+		if err != nil {
+			return nil, err
+		}
+		recorder.recordOperation("delete", field, "", "", nil)
 	}
-	result, err := sjson.DeleteBytes(jsonData, "group")
-	if err != nil {
-		return nil, err
-	}
-	recorder.recordOperation("delete", "group", "", "", nil)
 	return result, nil
 }
 

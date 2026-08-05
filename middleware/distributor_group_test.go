@@ -20,7 +20,8 @@ func TestPlaygroundKeepsSelectedGroupUntilRoutingCompletes(t *testing.T) {
 	c.Request = httptest.NewRequest("POST", "/pg/chat/completions", strings.NewReader(`{
 		"model":"gpt-5",
 		"group":"deepseek",
-		"metadata":{"group":"nested-value-must-remain"}
+		"conversation_id":"gateway-conversation",
+		"metadata":{"group":"nested-value-must-remain","conversation_id":"nested-conversation-must-remain"}
 	}`))
 	c.Request.Header.Set("Content-Type", "application/json")
 	t.Cleanup(func() { common.CleanupBodyStorage(c) })
@@ -35,7 +36,7 @@ func TestPlaygroundKeepsSelectedGroupUntilRoutingCompletes(t *testing.T) {
 	require.NoError(t, common.UnmarshalBodyReusable(c, playgroundRequest))
 	require.Equal(t, "deepseek", playgroundRequest.Group)
 
-	require.NoError(t, stripRoutingGroupAfterSelection(c))
+	require.NoError(t, stripGatewayOnlyFieldsAfterSelection(c))
 
 	storage, err := common.GetBodyStorage(c)
 	require.NoError(t, err)
@@ -44,11 +45,13 @@ func TestPlaygroundKeepsSelectedGroupUntilRoutingCompletes(t *testing.T) {
 	out, err := io.ReadAll(storage)
 	require.NoError(t, err)
 	require.False(t, gjson.GetBytes(out, "group").Exists())
+	require.False(t, gjson.GetBytes(out, "conversation_id").Exists())
 	require.Equal(t, "nested-value-must-remain", gjson.GetBytes(out, "metadata.group").String())
+	require.Equal(t, "nested-conversation-must-remain", gjson.GetBytes(out, "metadata.conversation_id").String())
 	require.EqualValues(t, len(out), c.Request.ContentLength)
 }
 
-func TestStripRoutingGroupAfterSelectionKeepsJSONBodyWithoutGroupReadable(t *testing.T) {
+func TestStripGatewayOnlyFieldsAfterSelectionKeepsCleanJSONBodyReadable(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(httptest.NewRecorder())
 	original := `{"model":"gemini-2.5-pro","contents":[]}`
@@ -56,7 +59,7 @@ func TestStripRoutingGroupAfterSelectionKeepsJSONBodyWithoutGroupReadable(t *tes
 	c.Request.Header.Set("Content-Type", "application/json")
 	t.Cleanup(func() { common.CleanupBodyStorage(c) })
 
-	require.NoError(t, stripRoutingGroupAfterSelection(c))
+	require.NoError(t, stripGatewayOnlyFieldsAfterSelection(c))
 	out, err := io.ReadAll(c.Request.Body)
 	require.NoError(t, err)
 	require.JSONEq(t, original, string(out))
