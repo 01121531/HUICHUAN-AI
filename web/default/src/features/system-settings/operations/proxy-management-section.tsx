@@ -1,20 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  Activity,
-  FileText,
-  History,
-  ListPlus,
-  Pause,
-  Pencil,
-  Play,
-  Plus,
-  RefreshCw,
-  RotateCcw,
-  ServerCog,
-  Shuffle,
-  Trash2,
-} from 'lucide-react'
+import { History, RefreshCw, ServerCog } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 
@@ -72,6 +58,7 @@ import type {
   ProxyStateEvent,
   ProxyUpstreamAttempt,
 } from './proxy-management-types'
+import { ProxyPoolWorkspace } from './proxy-pool-workspace'
 
 const defaultGroupInput = (): ProxyGroupInput => ({
   name: '',
@@ -102,11 +89,6 @@ const proxyStatusLabels: Record<string, string> = {
   recovering: '恢复测试',
   unavailable: '自动禁用（等待复检）',
   disabled: '已停用',
-}
-
-function proxyStatusLabel(proxy: ManagedProxy) {
-  if (!proxy.enabled) return '手动停用'
-  return proxyStatusLabels[proxy.status] ?? proxy.status ?? '正常'
 }
 
 const proxyEventLabels: Record<string, string> = {
@@ -227,7 +209,7 @@ function GroupDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={props.onOpenChange}>
-      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-2xl'>
+      <DialogContent className='max-h-[90vh] overflow-y-auto sm:max-w-3xl'>
         <DialogHeader>
           <DialogTitle>
             {props.group ? '编辑代理分组' : '新增代理分组'}
@@ -236,115 +218,168 @@ function GroupDialog(props: {
             设置轮换、自动禁用、连接检测和冷却恢复参数。
           </DialogDescription>
         </DialogHeader>
-        <div className='space-y-4'>
-          <div className='space-y-1.5'>
-            <Label>分组名称</Label>
-            <Input
-              value={form.name}
-              placeholder='例如：海外高速代理'
-              onChange={(event) =>
-                setForm((current) => ({ ...current, name: event.target.value }))
-              }
-            />
-          </div>
-          <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-3'>
-            <NumberField
-              label='单代理最大请求数'
-              value={form.max_requests}
-              min={1}
-              onChange={(v) => setNumber('max_requests', v)}
-            />
-            <NumberField
-              label='单代理最长使用时间（秒）'
-              value={form.max_duration_seconds}
-              min={1}
-              onChange={(v) => setNumber('max_duration_seconds', v)}
-            />
-            <NumberField
-              label='切换等待上限（秒）'
-              value={form.switch_wait_seconds}
-              min={1}
-              onChange={(v) => setNumber('switch_wait_seconds', v)}
-            />
-            <NumberField
-              label='最大等待请求数'
-              value={form.max_waiting_requests}
-              min={1}
-              onChange={(v) => setNumber('max_waiting_requests', v)}
-            />
-            <NumberField
-              label='健康检测周期（秒）'
-              value={form.health_check_interval}
-              min={1}
-              onChange={(v) => setNumber('health_check_interval', v)}
-            />
-            <NumberField
-              label='连续检测失败阈值'
-              value={form.health_failure_threshold}
-              min={1}
-              onChange={(v) => setNumber('health_failure_threshold', v)}
-            />
-            <NumberField
-              label='连续超时阈值'
-              value={form.consecutive_timeout_threshold}
-              min={1}
-              onChange={(v) => setNumber('consecutive_timeout_threshold', v)}
-            />
-            <NumberField
-              label='滑动窗口大小'
-              value={form.window_size}
-              min={1}
-              onChange={(v) => setNumber('window_size', v)}
-            />
-            <NumberField
-              label='窗口超时比例'
-              value={form.window_timeout_ratio}
-              min={0.01}
-              step={0.01}
-              onChange={(v) => setNumber('window_timeout_ratio', v)}
-            />
-            <NumberField
-              label='基础冷却时间（秒）'
-              value={form.base_cooldown_seconds}
-              min={1}
-              onChange={(v) => setNumber('base_cooldown_seconds', v)}
-            />
-            <NumberField
-              label='最大冷却时间（秒）'
-              value={form.max_cooldown_seconds}
-              min={1}
-              onChange={(v) => setNumber('max_cooldown_seconds', v)}
-            />
-            <NumberField
-              label='恢复所需成功次数'
-              value={form.recovery_success_count}
-              min={1}
-              onChange={(v) => setNumber('recovery_success_count', v)}
-            />
-          </div>
-          <p className='text-muted-foreground text-xs leading-5'>
-            连接检测失败或通用日志红色次数达到阈值后，代理会自动禁用并立即退出请求选择；冷却到期后系统会自动复检，确认恢复后再重新参与请求。手动停用的代理不会自动复检。
-          </p>
-          <div className='grid gap-3 rounded-lg border p-3 sm:grid-cols-2'>
-            <label className='flex items-center justify-between gap-3 text-sm'>
-              <span>启用此分组</span>
-              <Switch
-                checked={form.enabled}
-                onCheckedChange={(enabled) =>
-                  setForm((current) => ({ ...current, enabled }))
+        <div className='space-y-5'>
+          <section className='space-y-3 rounded-xl border p-4'>
+            <div>
+              <h3 className='text-sm font-semibold'>基础信息</h3>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                用清晰的名称区分地区、供应商或用途。
+              </p>
+            </div>
+            <div className='space-y-1.5'>
+              <Label>分组名称</Label>
+              <Input
+                autoFocus
+                value={form.name}
+                placeholder='例如：海外高速代理'
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
               />
-            </label>
-            <label className='flex items-center justify-between gap-3 text-sm'>
-              <span>无代理时允许直连</span>
-              <Switch
-                checked={form.allow_direct_fallback}
-                onCheckedChange={(allow_direct_fallback) =>
-                  setForm((current) => ({ ...current, allow_direct_fallback }))
-                }
+            </div>
+            <div className='grid gap-3 sm:grid-cols-2'>
+              <label className='bg-muted/30 flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3 text-sm'>
+                <span>
+                  <span className='block font-medium'>启用此分组</span>
+                  <span className='text-muted-foreground text-xs'>
+                    停用后不参与渠道请求
+                  </span>
+                </span>
+                <Switch
+                  checked={form.enabled}
+                  onCheckedChange={(enabled) =>
+                    setForm((current) => ({ ...current, enabled }))
+                  }
+                />
+              </label>
+              <label className='bg-muted/30 flex min-h-12 items-center justify-between gap-3 rounded-lg border px-3 text-sm'>
+                <span>
+                  <span className='block font-medium'>无代理时允许直连</span>
+                  <span className='text-muted-foreground text-xs'>
+                    建议仅在可接受直连时开启
+                  </span>
+                </span>
+                <Switch
+                  checked={form.allow_direct_fallback}
+                  onCheckedChange={(allow_direct_fallback) =>
+                    setForm((current) => ({
+                      ...current,
+                      allow_direct_fallback,
+                    }))
+                  }
+                />
+              </label>
+            </div>
+          </section>
+
+          <section className='space-y-3 rounded-xl border p-4'>
+            <div>
+              <h3 className='text-sm font-semibold'>轮换与请求等待</h3>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                达到请求次数或使用时长后自动切换，切换期间阻塞新请求。
+              </p>
+            </div>
+            <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+              <NumberField
+                label='单代理最大请求数'
+                value={form.max_requests}
+                min={1}
+                onChange={(v) => setNumber('max_requests', v)}
               />
-            </label>
-          </div>
+              <NumberField
+                label='最长使用时间（秒）'
+                value={form.max_duration_seconds}
+                min={1}
+                onChange={(v) => setNumber('max_duration_seconds', v)}
+              />
+              <NumberField
+                label='切换等待上限（秒）'
+                value={form.switch_wait_seconds}
+                min={1}
+                onChange={(v) => setNumber('switch_wait_seconds', v)}
+              />
+              <NumberField
+                label='最大等待请求数'
+                value={form.max_waiting_requests}
+                min={1}
+                onChange={(v) => setNumber('max_waiting_requests', v)}
+              />
+            </div>
+          </section>
+
+          <section className='space-y-3 rounded-xl border p-4'>
+            <div>
+              <h3 className='text-sm font-semibold'>健康检测与超时判定</h3>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                连接检测失败或通用日志红色次数达到阈值后自动停用代理。
+              </p>
+            </div>
+            <div className='grid gap-4 sm:grid-cols-2 lg:grid-cols-4'>
+              <NumberField
+                label='检测周期（秒）'
+                value={form.health_check_interval}
+                min={1}
+                onChange={(v) => setNumber('health_check_interval', v)}
+              />
+              <NumberField
+                label='检测失败阈值'
+                value={form.health_failure_threshold}
+                min={1}
+                onChange={(v) => setNumber('health_failure_threshold', v)}
+              />
+              <NumberField
+                label='连续红色阈值'
+                value={form.consecutive_timeout_threshold}
+                min={1}
+                onChange={(v) => setNumber('consecutive_timeout_threshold', v)}
+              />
+              <NumberField
+                label='滑动窗口大小'
+                value={form.window_size}
+                min={1}
+                onChange={(v) => setNumber('window_size', v)}
+              />
+              <NumberField
+                label='窗口红色比例'
+                value={form.window_timeout_ratio}
+                min={0.01}
+                step={0.01}
+                onChange={(v) => setNumber('window_timeout_ratio', v)}
+              />
+            </div>
+          </section>
+
+          <section className='space-y-3 rounded-xl border p-4'>
+            <div>
+              <h3 className='text-sm font-semibold'>冷却与自动恢复</h3>
+              <p className='text-muted-foreground mt-1 text-xs'>
+                冷却到期后自动复检，连续通过指定次数后重新参与请求。
+              </p>
+            </div>
+            <div className='grid gap-4 sm:grid-cols-3'>
+              <NumberField
+                label='基础冷却时间（秒）'
+                value={form.base_cooldown_seconds}
+                min={1}
+                onChange={(v) => setNumber('base_cooldown_seconds', v)}
+              />
+              <NumberField
+                label='最大冷却时间（秒）'
+                value={form.max_cooldown_seconds}
+                min={1}
+                onChange={(v) => setNumber('max_cooldown_seconds', v)}
+              />
+              <NumberField
+                label='恢复所需成功次数'
+                value={form.recovery_success_count}
+                min={1}
+                onChange={(v) => setNumber('recovery_success_count', v)}
+              />
+            </div>
+          </section>
         </div>
         <DialogFooter>
           <Button variant='outline' onClick={() => props.onOpenChange(false)}>
@@ -656,6 +691,17 @@ type DeleteTarget =
   | { kind: 'group'; id: number; name: string; boundChannelCount: number }
   | { kind: 'proxy'; id: number; name: string }
 
+function deleteTargetDescription(target: DeleteTarget | null) {
+  if (!target) return ''
+  if (target.kind === 'proxy') {
+    return `确定删除“${target.name}”吗？此操作无法撤销。`
+  }
+  if (target.boundChannelCount > 0) {
+    return `“${target.name}”当前被 ${target.boundChannelCount} 个渠道使用。确认后会自动取消这些渠道的代理池绑定，并删除分组内的全部代理。此操作无法撤销。`
+  }
+  return `确定删除“${target.name}”及分组内的全部代理吗？此操作无法撤销。`
+}
+
 export function ProxyManagementSection() {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
@@ -720,8 +766,11 @@ export function ProxyManagementSection() {
       editingGroup
         ? updateProxyGroup(editingGroup.id, data)
         : createProxyGroup(data),
-    onSuccess: () => {
+    onSuccess: (response) => {
       toast.success(editingGroup ? '代理分组已更新' : '代理分组已创建')
+      if (!editingGroup && response.data?.id) {
+        setSelectedGroupId(response.data.id)
+      }
       setGroupDialogOpen(false)
       refresh()
     },
@@ -832,25 +881,6 @@ export function ProxyManagementSection() {
 
   return (
     <section className='flex flex-col gap-4'>
-      <div className='grid gap-3 sm:grid-cols-2'>
-        <Card>
-          <CardHeader className='pb-2'>
-            <CardTitle className='text-sm font-medium'>代理池分组</CardTitle>
-          </CardHeader>
-          <CardContent className='text-2xl font-semibold'>
-            {groups.length}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className='pb-2'>
-            <CardTitle className='text-sm font-medium'>当前分组代理</CardTitle>
-          </CardHeader>
-          <CardContent className='text-2xl font-semibold'>
-            {proxies.length}
-          </CardContent>
-        </Card>
-      </div>
-
       <Tabs defaultValue='groups'>
         <div className='flex flex-wrap items-center justify-between gap-2'>
           <TabsList>
@@ -874,316 +904,66 @@ export function ProxyManagementSection() {
           </Button>
         </div>
 
-        <TabsContent value='groups' className='space-y-4 pt-3'>
-          <div className='flex flex-wrap items-center justify-between gap-2'>
-            <NativeSelect
-              className='min-w-64'
-              value={String(selectedGroupId)}
-              onChange={(e) => setSelectedGroupId(Number(e.target.value))}
-            >
-              {!groups.length && (
-                <NativeSelectOption value='0'>暂无代理分组</NativeSelectOption>
-              )}
-              {groups.map((group) => (
-                <NativeSelectOption key={group.id} value={group.id}>
-                  {group.name}
-                </NativeSelectOption>
-              ))}
-            </NativeSelect>
-            <div className='flex gap-2'>
-              {selectedGroup && (
-                <>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    disabled={switchMutation.isPending || proxies.length < 2}
-                    onClick={() => switchMutation.mutate(selectedGroup.id)}
-                  >
-                    <Shuffle className='mr-1.5 h-4 w-4' />
-                    立即切换
-                  </Button>
-                  <Button
-                    variant='outline'
-                    size='sm'
-                    onClick={() => {
-                      setEditingGroup(selectedGroup)
-                      setGroupDialogOpen(true)
-                    }}
-                  >
-                    <Pencil className='mr-1.5 h-4 w-4' />
-                    编辑分组
-                  </Button>
-                </>
-              )}
-              <Button
-                size='sm'
-                onClick={() => {
-                  setEditingGroup(null)
-                  setGroupDialogOpen(true)
-                }}
-              >
-                <Plus className='mr-1.5 h-4 w-4' />
-                新增分组
-              </Button>
-            </div>
-          </div>
-
-          {selectedGroup && (
-            <div className='grid gap-3 rounded-lg border p-3 text-sm sm:grid-cols-2 lg:grid-cols-4'>
-              <div>
-                <span className='text-muted-foreground'>状态：</span>
-                {selectedGroup.enabled ? '启用' : '停用'}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>当前代理 ID：</span>
-                {selectedGroup.current_proxy_id || '尚未选择'}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>轮换：</span>
-                {selectedGroup.max_requests} 次 /{' '}
-                {selectedGroup.max_duration_seconds} 秒
-              </div>
-              <div>
-                <span className='text-muted-foreground'>直连回退：</span>
-                {selectedGroup.allow_direct_fallback ? '允许' : '禁止'}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>已绑定渠道：</span>
-                {selectedGroup.bound_channel_count}
-              </div>
-            </div>
-          )}
-
-          {selectedGroup && (
-            <div className='grid gap-3 rounded-lg border border-dashed p-3 text-sm sm:grid-cols-2 lg:grid-cols-4'>
-              <div>
-                <span className='text-muted-foreground'>全局等待请求：</span>
-                {selectedGroup.waiting_requests} /{' '}
-                {selectedGroup.max_waiting_requests}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>最近等待超时：</span>
-                {selectedGroup.nearest_wait_remaining_seconds > 0
-                  ? `${selectedGroup.nearest_wait_remaining_seconds} 秒`
-                  : '无等待请求'}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>最长剩余等待：</span>
-                {selectedGroup.longest_wait_remaining_seconds > 0
-                  ? `${selectedGroup.longest_wait_remaining_seconds} 秒`
-                  : '—'}
-              </div>
-              <div>
-                <span className='text-muted-foreground'>切换状态：</span>
-                {selectedGroup.status === 'switching'
-                  ? '正在切换'
-                  : '可接收请求'}
-              </div>
-            </div>
-          )}
-
-          <div className='flex items-center justify-between'>
-            <p className='text-muted-foreground text-sm'>
-              代理密码不会回显；修改时留空即可保留原密码。
-            </p>
-            <div className='flex gap-2'>
-              <Button
-                variant='outline'
-                size='sm'
-                disabled={!selectedGroup}
-                onClick={() => setBatchProxyDialogOpen(true)}
-              >
-                <ListPlus className='mr-1.5 h-4 w-4' />
-                批量添加
-              </Button>
-              <Button
-                size='sm'
-                disabled={!selectedGroup}
-                onClick={() => {
-                  setEditingProxy(null)
-                  setProxyDialogOpen(true)
-                }}
-              >
-                <Plus className='mr-1.5 h-4 w-4' />
-                新增代理
-              </Button>
-            </div>
-          </div>
-          <div className='overflow-x-auto rounded-lg border'>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>协议</TableHead>
-                  <TableHead>地址</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead>连续红色</TableHead>
-                  <TableHead>窗口红色率</TableHead>
-                  <TableHead>最近指标</TableHead>
-                  <TableHead>累计请求 / 红色</TableHead>
-                  <TableHead className='text-right'>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {!proxies.length ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={9}
-                      className='text-muted-foreground py-10 text-center'
-                    >
-                      当前分组还没有代理
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  proxies.map((proxy) => (
-                    <TableRow key={proxy.id}>
-                      <TableCell className='font-medium'>
-                        {proxy.name}
-                        <div className='text-muted-foreground text-xs'>
-                          ID {proxy.id}
-                        </div>
-                      </TableCell>
-                      <TableCell className='uppercase'>
-                        {proxy.protocol}
-                      </TableCell>
-                      <TableCell className='font-mono'>
-                        {proxy.host}:{proxy.port}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap'>
-                        {proxyStatusLabel(proxy)}
-                        <div className='text-muted-foreground text-xs'>
-                          {proxy.last_check_at > 0
-                            ? `检测 ${proxy.last_check_latency_ms} ms`
-                            : '尚未检测'}
-                        </div>
-                        {proxy.last_exit_ip && (
-                          <div className='text-muted-foreground font-mono text-xs'>
-                            {proxy.last_exit_ip}
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>{proxy.consecutive_timeouts}</TableCell>
-                      <TableCell>
-                        {proxy.window_samples > 0
-                          ? `${Math.round(proxy.window_timeout_ratio * 100)}%（${proxy.window_timeouts}/${proxy.window_samples}）`
-                          : '暂无样本'}
-                      </TableCell>
-                      <TableCell className='whitespace-nowrap'>
-                        {proxy.last_frt_ms > 0
-                          ? `首字 ${proxy.last_frt_ms} ms`
-                          : '首字 —'}
-                        <div className='text-muted-foreground text-xs'>
-                          {proxy.last_tps > 0
-                            ? `TPS ${proxy.last_tps.toFixed(1)}`
-                            : 'TPS —'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        {proxy.total_requests} / {proxy.total_timeouts}
-                      </TableCell>
-                      <TableCell className='text-right'>
-                        <div className='flex justify-end gap-1'>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label='立即检测代理'
-                            disabled={checkMutation.isPending}
-                            onClick={() => checkMutation.mutate(proxy.id)}
-                          >
-                            <Activity />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label={
-                              proxy.status === 'paused'
-                                ? '恢复代理'
-                                : '暂停代理'
-                            }
-                            disabled={pauseMutation.isPending}
-                            onClick={() =>
-                              pauseMutation.mutate({
-                                proxyId: proxy.id,
-                                paused: proxy.status !== 'paused',
-                              })
-                            }
-                          >
-                            {proxy.status === 'paused' ? <Play /> : <Pause />}
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label='查看该代理的通用日志'
-                            onClick={() =>
-                              navigate({
-                                to: '/usage-logs/$section',
-                                params: { section: 'common' },
-                                search: { page: 1, proxyId: String(proxy.id) },
-                              })
-                            }
-                          >
-                            <FileText />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label='清空当前观察计数'
-                            disabled={resetObservationMutation.isPending}
-                            onClick={() =>
-                              resetObservationMutation.mutate(proxy.id)
-                            }
-                          >
-                            <RotateCcw />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label='编辑代理'
-                            onClick={() => {
-                              setEditingProxy(proxy)
-                              setProxyDialogOpen(true)
-                            }}
-                          >
-                            <Pencil />
-                          </Button>
-                          <Button
-                            variant='ghost'
-                            size='icon-sm'
-                            aria-label='删除代理'
-                            onClick={() =>
-                              setDeleteTarget({
-                                kind: 'proxy',
-                                id: proxy.id,
-                                name: proxy.name,
-                              })
-                            }
-                          >
-                            <Trash2 />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-          {selectedGroup && (
-            <Button
-              variant='destructive'
-              size='sm'
-              onClick={() =>
-                setDeleteTarget({
-                  kind: 'group',
-                  id: selectedGroup.id,
-                  name: selectedGroup.name,
-                  boundChannelCount: selectedGroup.bound_channel_count,
-                })
-              }
-            >
-              删除当前分组
-            </Button>
-          )}
+        <TabsContent value='groups' className='pt-3'>
+          <ProxyPoolWorkspace
+            groups={groups}
+            selectedGroupId={selectedGroupId}
+            selectedGroup={selectedGroup}
+            proxies={proxies}
+            switching={switchMutation.isPending}
+            checking={checkMutation.isPending}
+            pausing={pauseMutation.isPending}
+            resetting={resetObservationMutation.isPending}
+            onSelectGroup={setSelectedGroupId}
+            onCreateGroup={() => {
+              setEditingGroup(null)
+              setGroupDialogOpen(true)
+            }}
+            onEditGroup={(group) => {
+              setEditingGroup(group)
+              setGroupDialogOpen(true)
+            }}
+            onDeleteGroup={(group) =>
+              setDeleteTarget({
+                kind: 'group',
+                id: group.id,
+                name: group.name,
+                boundChannelCount: group.bound_channel_count,
+              })
+            }
+            onSwitchGroup={(groupId) => switchMutation.mutate(groupId)}
+            onBatchCreateProxy={() => setBatchProxyDialogOpen(true)}
+            onCreateProxy={() => {
+              setEditingProxy(null)
+              setProxyDialogOpen(true)
+            }}
+            onCheckProxy={(proxyId) => checkMutation.mutate(proxyId)}
+            onToggleProxy={(proxy) =>
+              pauseMutation.mutate({
+                proxyId: proxy.id,
+                paused: proxy.status !== 'paused',
+              })
+            }
+            onViewProxyLogs={(proxyId) =>
+              navigate({
+                to: '/usage-logs/$section',
+                params: { section: 'common' },
+                search: { page: 1, proxyId: String(proxyId) },
+              })
+            }
+            onResetProxy={(proxyId) => resetObservationMutation.mutate(proxyId)}
+            onEditProxy={(proxy) => {
+              setEditingProxy(proxy)
+              setProxyDialogOpen(true)
+            }}
+            onDeleteProxy={(proxy) =>
+              setDeleteTarget({
+                kind: 'proxy',
+                id: proxy.id,
+                name: proxy.name,
+              })
+            }
+          />
         </TabsContent>
 
         <TabsContent value='records' className='space-y-4 pt-3'>
@@ -1435,13 +1215,7 @@ export function ProxyManagementSection() {
         open={!!deleteTarget}
         onOpenChange={(open) => !open && setDeleteTarget(null)}
         title='确认删除'
-        desc={
-          deleteTarget?.kind === 'group'
-            ? deleteTarget.boundChannelCount > 0
-              ? `“${deleteTarget.name}”当前被 ${deleteTarget.boundChannelCount} 个渠道使用。确认后会自动取消这些渠道的代理池绑定，并删除分组内的全部代理。此操作无法撤销。`
-              : `确定删除“${deleteTarget.name}”及分组内的全部代理吗？此操作无法撤销。`
-            : `确定删除“${deleteTarget?.name ?? ''}”吗？此操作无法撤销。`
-        }
+        desc={deleteTargetDescription(deleteTarget)}
         confirmText={
           deleteTarget?.kind === 'group' && deleteTarget.boundChannelCount > 0
             ? '解绑并删除'

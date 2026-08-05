@@ -284,6 +284,8 @@ func TestDeleteProxyGroupAutomaticallyUnbindsChannels(t *testing.T) {
 	require.NoError(t, DB.Create(group).Error)
 	proxy := &Proxy{GroupId: group.Id, Name: "delete-bound-proxy", Protocol: "http", Host: "127.0.0.1", Port: 8080, Enabled: true}
 	require.NoError(t, DB.Create(proxy).Error)
+	disabledProxy := &Proxy{GroupId: group.Id, Name: "delete-bound-disabled-proxy", Protocol: "http", Host: "127.0.0.2", Port: 8080, Enabled: false}
+	require.NoError(t, DB.Create(disabledProxy).Error)
 	channel := &Channel{Name: "delete-bound-channel", Type: 1, Key: "test-key", Models: "gpt-4o", Group: "default"}
 	require.NoError(t, DB.Create(channel).Error)
 	require.NoError(t, SetChannelProxyGroup(channel.Id, group.Id))
@@ -305,6 +307,9 @@ func TestDeleteProxyGroupAutomaticallyUnbindsChannels(t *testing.T) {
 	}
 	require.NotNil(t, listed)
 	require.EqualValues(t, 1, listed.BoundChannelCount)
+	require.EqualValues(t, 2, listed.ProxyCount)
+	require.EqualValues(t, 1, listed.AvailableProxyCount)
+	require.EqualValues(t, 1, listed.UnavailableProxyCount)
 
 	unboundChannelCount, err := DeleteProxyGroup(group.Id)
 	require.NoError(t, err)

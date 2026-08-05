@@ -73,6 +73,9 @@ type ProxyGroup struct {
 	NearestWaitRemainingSeconds int64   `json:"nearest_wait_remaining_seconds" gorm:"-"`
 	LongestWaitRemainingSeconds int64   `json:"longest_wait_remaining_seconds" gorm:"-"`
 	BoundChannelCount           int64   `json:"bound_channel_count" gorm:"-"`
+	ProxyCount                  int64   `json:"proxy_count" gorm:"-"`
+	AvailableProxyCount         int64   `json:"available_proxy_count" gorm:"-"`
+	UnavailableProxyCount       int64   `json:"unavailable_proxy_count" gorm:"-"`
 }
 
 func (ProxyGroup) TableName() string { return "proxy_groups" }
@@ -441,10 +444,45 @@ func ListProxyGroups() ([]*ProxyGroup, error) {
 	if err := PopulateProxyGroupBindingCounts(groups); err != nil {
 		return nil, err
 	}
+	if err := PopulateProxyGroupProxyCounts(groups); err != nil {
+		return nil, err
+	}
 	if err := PopulateProxyGroupWaitMetrics(groups, common.GetTimestamp()); err != nil {
 		return nil, err
 	}
 	return groups, nil
+}
+
+func PopulateProxyGroupProxyCounts(groups []*ProxyGroup) error {
+	if len(groups) == 0 || !DB.Migrator().HasTable(&Proxy{}) {
+		return nil
+	}
+	type proxyCountRow struct {
+		GroupId        int
+		Count          int64
+		AvailableCount int64
+	}
+	var rows []proxyCountRow
+	if err := DB.Model(&Proxy{}).
+		Select("group_id, COUNT(*) AS count, SUM(CASE WHEN enabled = ? AND (status = '' OR status IN ?) THEN 1 ELSE 0 END) AS available_count", true, []string{ProxyStatusAvailable, ProxyStatusWatching}).
+		Group("group_id").
+		Scan(&rows).Error; err != nil {
+		return err
+	}
+	counts := make(map[int]proxyCountRow, len(rows))
+	for _, row := range rows {
+		counts[row.GroupId] = row
+	}
+	for _, group := range groups {
+		if group == nil {
+			continue
+		}
+		row := counts[group.Id]
+		group.ProxyCount = row.Count
+		group.AvailableProxyCount = row.AvailableCount
+		group.UnavailableProxyCount = row.Count - row.AvailableCount
+	}
+	return nil
 }
 
 func PopulateProxyGroupBindingCounts(groups []*ProxyGroup) error {
