@@ -133,6 +133,54 @@ func TestCreateProxiesBatchSkipsExistingProxy(t *testing.T) {
 	require.EqualValues(t, 2, count)
 }
 
+func TestProxyWritesRejectDuplicatesInsideSameGroup(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&ProxyGroup{}, &Proxy{}))
+	firstGroup := &ProxyGroup{Name: "proxy-deduplicate-write-a", Enabled: true}
+	secondGroup := &ProxyGroup{Name: "proxy-deduplicate-write-b", Enabled: true}
+	require.NoError(t, DB.Create(firstGroup).Error)
+	require.NoError(t, DB.Create(secondGroup).Error)
+	t.Cleanup(func() {
+		DB.Where("group_id IN ?", []int{firstGroup.Id, secondGroup.Id}).Delete(&Proxy{})
+		DB.Delete(&ProxyGroup{}, []int{firstGroup.Id, secondGroup.Id})
+	})
+
+	first := &Proxy{GroupId: firstGroup.Id, Name: "first", Protocol: "socks5", Host: "192.0.2.10", Port: 1080, Username: "user", Password: "pass", Enabled: true}
+	require.NoError(t, CreateProxy(first))
+	duplicate := &Proxy{GroupId: firstGroup.Id, Name: "duplicate", Protocol: "SOCKS5", Host: "192.0.2.10", Port: 1080, Username: "user", Password: "pass", Enabled: true}
+	require.EqualError(t, CreateProxy(duplicate), "该代理已存在于当前分组")
+
+	sameConnectionOtherGroup := &Proxy{GroupId: secondGroup.Id, Name: "other-group", Protocol: "socks5", Host: "192.0.2.10", Port: 1080, Username: "user", Password: "pass", Enabled: true}
+	require.NoError(t, CreateProxy(sameConnectionOtherGroup))
+	sameConnectionOtherGroup.GroupId = firstGroup.Id
+	require.EqualError(t, UpdateProxy(sameConnectionOtherGroup), "该代理已存在于当前分组")
+}
+
+func TestDeduplicateProxiesKeepsOldestAndRepairsCurrentProxy(t *testing.T) {
+	require.NoError(t, DB.AutoMigrate(&ProxyGroup{}, &Proxy{}))
+	group := &ProxyGroup{Name: "proxy-deduplicate-existing", Enabled: true}
+	require.NoError(t, DB.Create(group).Error)
+	t.Cleanup(func() {
+		DB.Where("group_id = ?", group.Id).Delete(&Proxy{})
+		DB.Delete(&ProxyGroup{}, group.Id)
+	})
+
+	keeper := &Proxy{GroupId: group.Id, Name: "keeper", Protocol: "http", Host: "192.0.2.20", Port: 8080, Enabled: true}
+	duplicate := &Proxy{GroupId: group.Id, Name: "duplicate", Protocol: "HTTP", Host: "192.0.2.20", Port: 8080, Enabled: true}
+	require.NoError(t, DB.Create(keeper).Error)
+	require.NoError(t, DB.Create(duplicate).Error)
+	require.NoError(t, DB.Model(group).Update("current_proxy_id", duplicate.Id).Error)
+
+	removed, err := DeduplicateProxies()
+	require.NoError(t, err)
+	require.Equal(t, 1, removed)
+	var proxies []*Proxy
+	require.NoError(t, DB.Where("group_id = ?", group.Id).Find(&proxies).Error)
+	require.Len(t, proxies, 1)
+	require.Equal(t, keeper.Id, proxies[0].Id)
+	require.NoError(t, DB.First(group, group.Id).Error)
+	require.Equal(t, keeper.Id, group.CurrentProxyId)
+}
+
 func TestProxyJSONNeverContainsPassword(t *testing.T) {
 	data, err := json.Marshal(&Proxy{Id: 1, Username: "visible-user", Password: "secret-password"})
 	require.NoError(t, err)

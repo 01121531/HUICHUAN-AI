@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/01121531/HUICHUAN-AI/common"
 	"gorm.io/gorm"
@@ -26,6 +27,8 @@ const (
 	ProxyStatusUnavailable = "unavailable"
 	ProxyStatusDisabled    = "disabled"
 )
+
+var proxyWriteMutex sync.Mutex
 
 const (
 	DefaultProxyMaxRequests            = 500
@@ -600,6 +603,8 @@ func GetProxyById(id int) (*Proxy, error) {
 }
 
 func CreateProxy(proxy *Proxy) error {
+	proxyWriteMutex.Lock()
+	defer proxyWriteMutex.Unlock()
 	if proxy == nil || proxy.GroupId <= 0 {
 		return errors.New("proxy group is required")
 	}
@@ -610,10 +615,19 @@ func CreateProxy(proxy *Proxy) error {
 	if groupCount == 0 {
 		return errors.New("proxy group does not exist")
 	}
+	duplicate, err := hasProxyIdentityDuplicate(DB, proxy, 0)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return errors.New("该代理已存在于当前分组")
+	}
 	return DB.Create(proxy).Error
 }
 
 func CreateProxiesBatch(groupId int, proxies []*Proxy, enabled bool, namePrefix string) ([]*Proxy, int, error) {
+	proxyWriteMutex.Lock()
+	defer proxyWriteMutex.Unlock()
 	if groupId <= 0 {
 		return nil, 0, errors.New("代理分组无效")
 	}
@@ -684,6 +698,8 @@ func CreateProxiesBatch(groupId int, proxies []*Proxy, enabled bool, namePrefix 
 }
 
 func UpdateProxy(proxy *Proxy) error {
+	proxyWriteMutex.Lock()
+	defer proxyWriteMutex.Unlock()
 	if proxy == nil || proxy.Id <= 0 {
 		return errors.New("invalid proxy")
 	}
@@ -694,7 +710,70 @@ func UpdateProxy(proxy *Proxy) error {
 	if groupCount == 0 {
 		return errors.New("proxy group does not exist")
 	}
+	duplicate, err := hasProxyIdentityDuplicate(DB, proxy, proxy.Id)
+	if err != nil {
+		return err
+	}
+	if duplicate {
+		return errors.New("该代理已存在于当前分组")
+	}
 	return DB.Save(proxy).Error
+}
+
+func hasProxyIdentityDuplicate(tx *gorm.DB, candidate *Proxy, excludeId int) (bool, error) {
+	var existing []*Proxy
+	query := tx.Where("group_id = ?", candidate.GroupId)
+	if excludeId > 0 {
+		query = query.Where("id <> ?", excludeId)
+	}
+	if err := query.Find(&existing).Error; err != nil {
+		return false, err
+	}
+	identity := proxyIdentityKey(candidate)
+	for _, proxy := range existing {
+		if proxyIdentityKey(proxy) == identity {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// DeduplicateProxies removes exact duplicate connection configurations inside
+// each group. The oldest stable proxy ID is kept so cross-group reuse remains
+// valid and existing channel bindings are not changed.
+func DeduplicateProxies() (int, error) {
+	proxyWriteMutex.Lock()
+	defer proxyWriteMutex.Unlock()
+	removed := 0
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		var proxies []*Proxy
+		if err := tx.Order("group_id asc, id asc").Find(&proxies).Error; err != nil {
+			return err
+		}
+		keepers := make(map[string]*Proxy, len(proxies))
+		for _, proxy := range proxies {
+			key := strconv.Itoa(proxy.GroupId) + "\x00" + proxyIdentityKey(proxy)
+			keeper, exists := keepers[key]
+			if !exists {
+				keepers[key] = proxy
+				continue
+			}
+			if err := tx.Model(&ProxyGroup{}).
+				Where("id = ? AND current_proxy_id = ?", proxy.GroupId, proxy.Id).
+				UpdateColumns(map[string]interface{}{
+					"current_proxy_id": keeper.Id,
+					"updated_at":       common.GetTimestamp(),
+				}).Error; err != nil {
+				return err
+			}
+			if err := tx.Delete(proxy).Error; err != nil {
+				return err
+			}
+			removed++
+		}
+		return nil
+	})
+	return removed, err
 }
 
 func DeleteProxy(id int) error {

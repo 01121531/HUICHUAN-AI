@@ -123,7 +123,11 @@ func runProxyFullHealthCheckSystemTask(ctx context.Context, task *model.SystemTa
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, nil, err)
 		return
 	}
-	summary, err := service.RunProxyFullHealthCheckTask(ctx, payload.GroupId)
+	summary, err := service.RunProxyFullHealthCheckTaskWithProgress(
+		ctx,
+		payload.GroupId,
+		service.NewSystemTaskProgressReporter(task, runnerID),
+	)
 	if err != nil {
 		finishSystemTaskHandler(task, runnerID, model.SystemTaskStatusFailed, summary, err)
 		return

@@ -92,7 +92,7 @@ func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, erro
 	if err != nil {
 		return summary, err
 	}
-	checked, err := runProxyHealthCheckTargets(ctx, targets, false)
+	checked, err := runProxyHealthCheckTargets(ctx, targets, false, nil)
 	checked.RecoveredSwitches = summary.RecoveredSwitches
 	return checked, err
 }
@@ -100,15 +100,22 @@ func RunProxyHealthCheckTask(ctx context.Context) (ProxyHealthCheckSummary, erro
 // RunProxyFullHealthCheckTask checks every eligible proxy, optionally limited
 // to one group. A failed check immediately removes that proxy from selection.
 func RunProxyFullHealthCheckTask(ctx context.Context, groupId int) (ProxyHealthCheckSummary, error) {
+	return RunProxyFullHealthCheckTaskWithProgress(ctx, groupId, nil)
+}
+
+func RunProxyFullHealthCheckTaskWithProgress(ctx context.Context, groupId int, reportProgress func(processed, total int)) (ProxyHealthCheckSummary, error) {
 	targets, err := model.ListAllEnabledProxyHealthChecks(groupId)
 	if err != nil {
 		return ProxyHealthCheckSummary{}, err
 	}
-	return runProxyHealthCheckTargets(ctx, targets, true)
+	return runProxyHealthCheckTargets(ctx, targets, true, reportProgress)
 }
 
-func runProxyHealthCheckTargets(ctx context.Context, targets []*model.ProxyHealthCheckTarget, disableImmediately bool) (ProxyHealthCheckSummary, error) {
+func runProxyHealthCheckTargets(ctx context.Context, targets []*model.ProxyHealthCheckTarget, disableImmediately bool, reportProgress func(processed, total int)) (ProxyHealthCheckSummary, error) {
 	summary := ProxyHealthCheckSummary{}
+	if reportProgress != nil {
+		reportProgress(0, len(targets))
+	}
 	if len(targets) == 0 {
 		return summary, nil
 	}
@@ -163,6 +170,9 @@ func runProxyHealthCheckTargets(ctx context.Context, targets []*model.ProxyHealt
 			}
 			if applyErr != nil && firstErr == nil {
 				firstErr = applyErr
+			}
+			if reportProgress != nil {
+				reportProgress(summary.Checked, len(targets))
 			}
 			mu.Unlock()
 		}

@@ -12,6 +12,7 @@ import type {
   ProxyGroupInput,
   ProxyHealthCheckResult,
   ProxyHealthSettings,
+  ProxyHealthSystemTask,
   ProxyHealthTaskResult,
   ProxyLogAnalysis,
   ProxyTrendResponse,
@@ -124,6 +125,22 @@ export async function checkAllManagedProxies() {
 export async function checkProxyGroup(groupId: number) {
   const response = await api.post<ProxyApiResponse<ProxyHealthTaskResult>>(
     `/api/proxy/groups/${groupId}/check`
+  )
+  return response.data
+}
+
+export async function getCurrentProxyHealthTask() {
+  const response = await api.get<
+    ProxyApiResponse<ProxyHealthSystemTask | null>
+  >('/api/system-task/current', {
+    params: { type: 'proxy_manual_health_check' },
+  })
+  return response.data
+}
+
+export async function getProxyHealthTask(taskId: string) {
+  const response = await api.get<ProxyApiResponse<ProxyHealthSystemTask>>(
+    `/api/system-task/${taskId}`
   )
   return response.data
 }

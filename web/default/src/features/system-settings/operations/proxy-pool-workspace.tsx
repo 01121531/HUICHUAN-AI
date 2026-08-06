@@ -22,7 +22,9 @@ import {
   CheckCircle2,
   FileText,
   Layers3,
+  ListChecks,
   ListPlus,
+  LoaderCircle,
   Network,
   Pause,
   Pencil,
@@ -32,6 +34,7 @@ import {
   Shuffle,
   Trash2,
   TriangleAlert,
+  X,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
@@ -39,6 +42,7 @@ import { DataTableRowActionMenu } from '@/components/data-table/core/row-action-
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -52,6 +56,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
+import { Progress } from '@/components/ui/progress'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -68,6 +73,7 @@ import type {
   ManagedProxy,
   ProxyGroup,
   ProxyHealthSettings,
+  ProxyHealthSystemTask,
 } from './proxy-management-types'
 
 const proxyStatusLabels: Record<string, string> = {
@@ -114,10 +120,12 @@ type ProxyPoolWorkspaceProps = {
   switching: boolean
   checking: boolean
   checkingAll: boolean
+  healthCheckTask: ProxyHealthSystemTask | null | undefined
   savingHealthSettings: boolean
   healthSettings: ProxyHealthSettings
   pausing: boolean
   resetting: boolean
+  batchOperating: boolean
   onSelectGroup: (groupId: number) => void
   onCreateGroup: () => void
   onEditGroup: (group: ProxyGroup) => void
@@ -134,6 +142,10 @@ type ProxyPoolWorkspaceProps = {
   onResetProxy: (proxyId: number) => void
   onEditProxy: (proxy: ManagedProxy) => void
   onDeleteProxy: (proxy: ManagedProxy) => void
+  onBatchCheck: (proxies: ManagedProxy[]) => void
+  onBatchSetPaused: (proxies: ManagedProxy[], paused: boolean) => void
+  onBatchReset: (proxies: ManagedProxy[]) => void
+  onBatchDelete: (proxies: ManagedProxy[]) => void
 }
 
 function SummaryCard(props: {
@@ -303,6 +315,10 @@ function ProxyGroupManagerDialog(props: {
 
 export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedProxyIds, setSelectedProxyIds] = useState<Set<number>>(
+    new Set()
+  )
   const [dailyCheckEnabled, setDailyCheckEnabled] = useState(
     props.healthSettings.enabled
   )
@@ -314,6 +330,20 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
     setDailyCheckEnabled(props.healthSettings.enabled)
     setDailyCheckTime(props.healthSettings.time)
   }, [props.healthSettings.enabled, props.healthSettings.time])
+  useEffect(() => {
+    setSelectionMode(false)
+    setSelectedProxyIds(new Set())
+  }, [props.selectedGroupId])
+  useEffect(() => {
+    const availableIds = new Set(props.proxies.map((proxy) => proxy.id))
+    setSelectedProxyIds((current) => {
+      const next = new Set(
+        [...current].filter((proxyId) => availableIds.has(proxyId))
+      )
+      if (next.size === current.size) return current
+      return next
+    })
+  }, [props.proxies])
   const totalProxyCount = props.groups.reduce(
     (total, group) => total + (group.proxy_count ?? 0),
     0
@@ -326,65 +356,146 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
     (total, group) => total + (group.unavailable_proxy_count ?? 0),
     0
   )
+  const healthCheckProgress = Math.min(
+    100,
+    Math.max(
+      0,
+      props.healthCheckTask?.status === 'succeeded'
+        ? 100
+        : (props.healthCheckTask?.state?.progress ?? 0)
+    )
+  )
+  const healthCheckProcessed =
+    props.healthCheckTask?.state?.processed ??
+    props.healthCheckTask?.result?.checked ??
+    0
+  const healthCheckTotal = props.healthCheckTask?.state?.total ?? 0
+  const healthCheckScope =
+    (props.healthCheckTask?.payload?.group_id ?? 0) > 0
+      ? '分组代理检测'
+      : '全部代理检测'
+  let healthCheckButtonLabel = '立即检测全部'
+  if (props.checkingAll) {
+    healthCheckButtonLabel =
+      props.healthCheckTask?.status === 'running'
+        ? `检测中 ${healthCheckProgress}%`
+        : '等待检测任务…'
+  }
+  let healthCheckStatusLabel = `${healthCheckProcessed} / ${healthCheckTotal || healthCheckProcessed}，${healthCheckProgress}%`
+  if (props.healthCheckTask?.status === 'pending') {
+    healthCheckStatusLabel = '等待执行'
+  } else if (props.healthCheckTask?.status === 'failed') {
+    healthCheckStatusLabel = `检测失败：${props.healthCheckTask.error || '未知原因'}`
+  }
   const currentProxy = props.selectedGroup
     ? (props.proxies.find(
         (proxy) => proxy.id === props.selectedGroup?.current_proxy_id
       ) ?? null)
     : null
+  const selectedProxies = props.proxies.filter((proxy) =>
+    selectedProxyIds.has(proxy.id)
+  )
+  const connectionFailedProxies = props.proxies.filter(
+    (proxy) => proxy.last_health_error.trim() !== ''
+  )
+  const allProxiesSelected =
+    props.proxies.length > 0 && selectedProxyIds.size === props.proxies.length
+
+  const toggleProxySelection = (proxyId: number, selected: boolean) => {
+    setSelectedProxyIds((current) => {
+      const next = new Set(current)
+      if (selected) {
+        next.add(proxyId)
+      } else {
+        next.delete(proxyId)
+      }
+      return next
+    })
+  }
+
+  const closeSelectionMode = () => {
+    setSelectionMode(false)
+    setSelectedProxyIds(new Set())
+  }
 
   return (
     <div className='space-y-4'>
       <Card className='shadow-none'>
-        <CardContent className='flex flex-col gap-4 p-4 xl:flex-row xl:items-center xl:justify-between'>
-          <div className='flex min-w-0 items-start gap-3'>
-            <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl'>
-              <CalendarClock className='size-5' />
+        <CardContent className='space-y-4 p-4'>
+          <div className='flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between'>
+            <div className='flex min-w-0 items-start gap-3'>
+              <div className='bg-primary/10 text-primary flex size-10 shrink-0 items-center justify-center rounded-xl'>
+                <CalendarClock className='size-5' />
+              </div>
+              <div>
+                <p className='text-sm font-semibold'>代理健康检测</p>
+                <p className='text-muted-foreground mt-1 text-xs leading-5'>
+                  每天按北京时间全量检测；连接失败的代理会立即自动禁用。也可随时手动检测全部代理。
+                </p>
+              </div>
             </div>
-            <div>
-              <p className='text-sm font-semibold'>代理健康检测</p>
-              <p className='text-muted-foreground mt-1 text-xs leading-5'>
-                每天按北京时间全量检测；连接失败的代理会立即自动禁用。也可随时手动检测全部代理。
-              </p>
-            </div>
-          </div>
-          <div className='flex flex-wrap items-center gap-2'>
-            <label className='flex h-9 items-center gap-2 rounded-md border px-3 text-sm'>
-              <Switch
-                checked={dailyCheckEnabled}
-                onCheckedChange={setDailyCheckEnabled}
+            <div className='flex flex-wrap items-center gap-2'>
+              <label className='flex h-9 items-center gap-2 rounded-md border px-3 text-sm'>
+                <Switch
+                  checked={dailyCheckEnabled}
+                  onCheckedChange={setDailyCheckEnabled}
+                />
+                每日检测
+              </label>
+              <Input
+                type='time'
+                className='h-9 w-32'
+                value={dailyCheckTime}
+                disabled={!dailyCheckEnabled}
+                aria-label='每日代理检测时间'
+                onChange={(event) => setDailyCheckTime(event.target.value)}
               />
-              每日检测
-            </label>
-            <Input
-              type='time'
-              className='h-9 w-32'
-              value={dailyCheckTime}
-              disabled={!dailyCheckEnabled}
-              aria-label='每日代理检测时间'
-              onChange={(event) => setDailyCheckTime(event.target.value)}
-            />
-            <Button
-              variant='outline'
-              size='sm'
-              disabled={props.savingHealthSettings || !dailyCheckTime}
-              onClick={() =>
-                props.onSaveHealthSettings({
-                  enabled: dailyCheckEnabled,
-                  time: dailyCheckTime,
-                })
-              }
-            >
-              保存时间
-            </Button>
-            <Button
-              size='sm'
-              disabled={props.checkingAll}
-              onClick={props.onCheckAll}
-            >
-              <Activity />
-              {props.checkingAll ? '检测任务启动中…' : '立即检测全部'}
-            </Button>
+              <Button
+                variant='outline'
+                size='sm'
+                disabled={props.savingHealthSettings || !dailyCheckTime}
+                onClick={() =>
+                  props.onSaveHealthSettings({
+                    enabled: dailyCheckEnabled,
+                    time: dailyCheckTime,
+                  })
+                }
+              >
+                保存时间
+              </Button>
+              <Button
+                size='sm'
+                disabled={props.checkingAll}
+                onClick={props.onCheckAll}
+              >
+                {props.checkingAll ? (
+                  <LoaderCircle className='animate-spin' />
+                ) : (
+                  <Activity />
+                )}
+                {healthCheckButtonLabel}
+              </Button>
+            </div>
           </div>
+          {props.healthCheckTask && (
+            <div className='bg-muted/40 rounded-lg border px-3 py-3'>
+              <div className='mb-2 flex flex-wrap items-center justify-between gap-2 text-xs'>
+                <span className='font-medium'>{healthCheckScope}</span>
+                <span className='text-muted-foreground tabular-nums'>
+                  {healthCheckStatusLabel}
+                </span>
+              </div>
+              <Progress value={healthCheckProgress} />
+              {props.healthCheckTask.status === 'succeeded' &&
+                props.healthCheckTask.result && (
+                  <p className='text-muted-foreground mt-2 text-xs tabular-nums'>
+                    检测完成：正常 {props.healthCheckTask.result.healthy}{' '}
+                    个，失败 {props.healthCheckTask.result.failed} 个，自动禁用{' '}
+                    {props.healthCheckTask.result.unavailable} 个。
+                  </p>
+                )}
+            </div>
+          )}
         </CardContent>
       </Card>
       <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
@@ -512,6 +623,21 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                 </div>
                 <div className='flex flex-wrap gap-2'>
                   <Button
+                    variant={selectionMode ? 'secondary' : 'outline'}
+                    size='sm'
+                    disabled={!props.proxies.length || props.batchOperating}
+                    onClick={() => {
+                      if (selectionMode) {
+                        closeSelectionMode()
+                      } else {
+                        setSelectionMode(true)
+                      }
+                    }}
+                  >
+                    {selectionMode ? <X /> : <ListChecks />}
+                    {selectionMode ? '退出选择' : '选择代理'}
+                  </Button>
+                  <Button
                     variant='outline'
                     size='sm'
                     disabled={props.checkingAll || !props.proxies.length}
@@ -521,8 +647,12 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                       }
                     }}
                   >
-                    <Activity />
-                    检测本组
+                    {props.checkingAll ? (
+                      <LoaderCircle className='animate-spin' />
+                    ) : (
+                      <Activity />
+                    )}
+                    {props.checkingAll ? '等待检测完成…' : '检测本组'}
                   </Button>
                   <Button
                     variant='outline'
@@ -611,10 +741,131 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                 </div>
               </div>
 
+              {selectionMode && (
+                <div className='border-primary/20 bg-primary/5 flex flex-col gap-3 rounded-xl border px-4 py-3 lg:flex-row lg:items-center lg:justify-between'>
+                  <div className='flex items-center gap-3'>
+                    <Checkbox
+                      checked={allProxiesSelected}
+                      indeterminate={
+                        selectedProxyIds.size > 0 && !allProxiesSelected
+                      }
+                      disabled={props.batchOperating}
+                      aria-label='选择当前分组全部代理'
+                      onCheckedChange={(checked) =>
+                        setSelectedProxyIds(
+                          checked
+                            ? new Set(props.proxies.map((proxy) => proxy.id))
+                            : new Set()
+                        )
+                      }
+                    />
+                    <div>
+                      <p className='text-sm font-medium'>
+                        {props.batchOperating
+                          ? '正在处理批量操作…'
+                          : `已选择 ${selectedProxyIds.size} 个代理`}
+                      </p>
+                      <p className='text-muted-foreground text-xs'>
+                        可批量检测、恢复正常、暂停、清空观察计数或删除。
+                      </p>
+                      <Button
+                        variant='link'
+                        size='sm'
+                        className='mt-1 h-auto px-0 py-1'
+                        disabled={
+                          !connectionFailedProxies.length ||
+                          props.batchOperating
+                        }
+                        onClick={() =>
+                          setSelectedProxyIds(
+                            new Set(
+                              connectionFailedProxies.map((proxy) => proxy.id)
+                            )
+                          )
+                        }
+                      >
+                        选择连接失败的代理（{connectionFailedProxies.length}）
+                      </Button>
+                    </div>
+                  </div>
+                  <div className='flex flex-wrap gap-2'>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={!selectedProxies.length || props.batchOperating}
+                      onClick={() => props.onBatchCheck(selectedProxies)}
+                    >
+                      <Activity />
+                      检测
+                    </Button>
+                    <Button
+                      size='sm'
+                      disabled={!selectedProxies.length || props.batchOperating}
+                      onClick={() =>
+                        props.onBatchSetPaused(selectedProxies, false)
+                      }
+                    >
+                      <Play />
+                      恢复正常
+                    </Button>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={!selectedProxies.length || props.batchOperating}
+                      onClick={() =>
+                        props.onBatchSetPaused(selectedProxies, true)
+                      }
+                    >
+                      <Pause />
+                      暂停
+                    </Button>
+                    <Button
+                      variant='outline'
+                      size='sm'
+                      disabled={!selectedProxies.length || props.batchOperating}
+                      onClick={() => props.onBatchReset(selectedProxies)}
+                    >
+                      <RotateCcw />
+                      清空计数
+                    </Button>
+                    <Button
+                      variant='destructive'
+                      size='sm'
+                      disabled={!selectedProxies.length || props.batchOperating}
+                      onClick={() => props.onBatchDelete(selectedProxies)}
+                    >
+                      <Trash2 />
+                      删除
+                    </Button>
+                  </div>
+                </div>
+              )}
+
               <div className='overflow-x-auto rounded-xl border'>
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      {selectionMode && (
+                        <TableHead className='w-12'>
+                          <Checkbox
+                            checked={allProxiesSelected}
+                            indeterminate={
+                              selectedProxyIds.size > 0 && !allProxiesSelected
+                            }
+                            disabled={props.batchOperating}
+                            aria-label='选择当前分组全部代理'
+                            onCheckedChange={(checked) =>
+                              setSelectedProxyIds(
+                                checked
+                                  ? new Set(
+                                      props.proxies.map((proxy) => proxy.id)
+                                    )
+                                  : new Set()
+                              )
+                            }
+                          />
+                        </TableHead>
+                      )}
                       <TableHead>代理</TableHead>
                       <TableHead>连接地址</TableHead>
                       <TableHead>运行状态</TableHead>
@@ -626,7 +877,10 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                   <TableBody>
                     {!props.proxies.length ? (
                       <TableRow>
-                        <TableCell colSpan={6} className='h-64 text-center'>
+                        <TableCell
+                          colSpan={selectionMode ? 7 : 6}
+                          className='h-64 text-center'
+                        >
                           <div className='flex flex-col items-center'>
                             <div className='bg-muted flex size-11 items-center justify-center rounded-xl'>
                               <Network className='text-muted-foreground size-5' />
@@ -657,6 +911,18 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                     ) : (
                       props.proxies.map((proxy) => (
                         <TableRow key={proxy.id}>
+                          {selectionMode && (
+                            <TableCell className='w-12'>
+                              <Checkbox
+                                checked={selectedProxyIds.has(proxy.id)}
+                                disabled={props.batchOperating}
+                                aria-label={`选择代理 ${proxy.name}`}
+                                onCheckedChange={(checked) =>
+                                  toggleProxySelection(proxy.id, !!checked)
+                                }
+                              />
+                            </TableCell>
+                          )}
                           <TableCell className='min-w-40'>
                             <div className='flex flex-wrap items-center gap-1.5'>
                               <span className='font-medium'>{proxy.name}</span>

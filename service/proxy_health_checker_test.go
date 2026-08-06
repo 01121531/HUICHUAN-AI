@@ -187,6 +187,39 @@ func TestRunProxyHealthCheckTaskProcessesDueProxy(t *testing.T) {
 	require.Greater(t, proxy.LastCheckAt, int64(0))
 }
 
+func TestRunProxyFullHealthCheckTaskReportsProgress(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ip":"203.0.113.11"}`))
+	}))
+	defer proxyServer.Close()
+	parsed, err := url.Parse(proxyServer.URL)
+	require.NoError(t, err)
+	port, err := strconv.Atoi(parsed.Port())
+	require.NoError(t, err)
+	t.Setenv("PROXY_HEALTH_CHECK_URL", "http://health-check.invalid/ip")
+	t.Setenv("PROXY_HEALTH_CHECK_TIMEOUT_SECONDS", "2")
+
+	group := &model.ProxyGroup{Name: "health-progress", Enabled: true}
+	require.NoError(t, model.DB.Create(group).Error)
+	require.NoError(t, model.DB.Create(&model.Proxy{
+		GroupId: group.Id, Name: "health-progress-proxy", Protocol: "http",
+		Host: parsed.Hostname(), Port: port, Enabled: true, Status: model.ProxyStatusAvailable,
+	}).Error)
+
+	progressUpdates := make([][2]int, 0, 2)
+	summary, err := RunProxyFullHealthCheckTaskWithProgress(
+		context.Background(),
+		group.Id,
+		func(processed, total int) {
+			progressUpdates = append(progressUpdates, [2]int{processed, total})
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, summary.Checked)
+	require.Equal(t, [][2]int{{0, 1}, {1, 1}}, progressUpdates)
+}
+
 func TestCoolingProxyUsesRealProbeLogsBeforeRecovery(t *testing.T) {
 	cleanupProxyAnalyzerTestData(t)
 	resetProxyGroupSwitchGatesForTest()

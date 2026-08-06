@@ -323,7 +323,11 @@ func migrateDB() error {
 			return err
 		}
 	}
-	return migrateLegacyChannelProxies()
+	if err := migrateLegacyChannelProxies(); err != nil {
+		return err
+	}
+	_, err = DeduplicateProxies()
+	return err
 }
 
 func migrateDBFast() error {
@@ -407,6 +411,9 @@ func migrateDBFast() error {
 		}
 	}
 	if err := migrateLegacyChannelProxies(); err != nil {
+		return err
+	}
+	if _, err := DeduplicateProxies(); err != nil {
 		return err
 	}
 	common.SysLog("database migrated")

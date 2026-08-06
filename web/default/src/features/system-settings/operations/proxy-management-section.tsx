@@ -45,6 +45,8 @@ import {
   listProxyStateEvents,
   listProxyUpstreamAttempts,
   getProxyHealthSettings,
+  getCurrentProxyHealthTask,
+  getProxyHealthTask,
   resetManagedProxyObservation,
   setManagedProxyPaused,
   switchProxyGroup,
@@ -59,6 +61,7 @@ import type {
   ProxyGroup,
   ProxyGroupInput,
   ProxyHealthSettings,
+  ProxyHealthSystemTask,
   ProxyLogAnalysis,
   ProxyStateEvent,
   ProxyUpstreamAttempt,
@@ -89,6 +92,10 @@ const DEFAULT_PROXY_HEALTH_SETTINGS: ProxyHealthSettings = {
   enabled: true,
   time: '08:00',
   timezone: 'Asia/Shanghai',
+}
+
+function isProxyHealthTaskActive(task?: ProxyHealthSystemTask | null) {
+  return task?.status === 'pending' || task?.status === 'running'
 }
 
 const proxyStatusLabels: Record<string, string> = {
@@ -701,6 +708,61 @@ type DeleteTarget =
   | { kind: 'group'; id: number; name: string; boundChannelCount: number }
   | { kind: 'proxy'; id: number; name: string }
 
+type BatchProxyAction = 'check' | 'resume' | 'pause' | 'reset'
+
+type BatchProxyActionInput = {
+  action: BatchProxyAction
+  proxies: ManagedProxy[]
+}
+
+const batchProxyActionLabels: Record<BatchProxyAction, string> = {
+  check: '批量检测',
+  resume: '批量恢复',
+  pause: '批量暂停',
+  reset: '批量清空计数',
+}
+
+function managedProxyInput(proxy: ManagedProxy, enabled: boolean) {
+  return {
+    group_id: proxy.group_id,
+    name: proxy.name,
+    protocol: proxy.protocol,
+    host: proxy.host,
+    port: proxy.port,
+    username: proxy.username,
+    enabled,
+    sort: proxy.sort,
+    expected_exit_ip: proxy.expected_exit_ip,
+  } satisfies ManagedProxyInput
+}
+
+async function runProxyBatch(
+  proxies: ManagedProxy[],
+  operation: (proxy: ManagedProxy) => Promise<boolean>
+) {
+  let nextIndex = 0
+  let succeeded = 0
+  let failed = 0
+  const workerCount = Math.min(6, proxies.length)
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < proxies.length) {
+        const proxy = proxies[nextIndex++]
+        try {
+          if (await operation(proxy)) {
+            succeeded++
+          } else {
+            failed++
+          }
+        } catch {
+          failed++
+        }
+      }
+    })
+  )
+  return { succeeded, failed }
+}
+
 function deleteTargetDescription(target: DeleteTarget | null) {
   if (!target) return ''
   if (target.kind === 'proxy') {
@@ -723,6 +785,10 @@ export function ProxyManagementSection() {
   const [batchProxyDialogOpen, setBatchProxyDialogOpen] = useState(false)
   const [editingProxy, setEditingProxy] = useState<ManagedProxy | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
+  const [healthCheckTaskId, setHealthCheckTaskId] = useState('')
+  const [batchDeleteTargets, setBatchDeleteTargets] = useState<ManagedProxy[]>(
+    []
+  )
 
   const groupsQuery = useQuery({
     queryKey: ['proxy-groups'],
@@ -735,6 +801,34 @@ export function ProxyManagementSection() {
     queryFn: async () =>
       (await getProxyHealthSettings()).data ?? DEFAULT_PROXY_HEALTH_SETTINGS,
   })
+  const currentHealthCheckTaskQuery = useQuery({
+    queryKey: ['proxy-health-check-task', 'current'],
+    queryFn: async () => (await getCurrentProxyHealthTask()).data ?? null,
+    refetchInterval: 2000,
+  })
+  const healthCheckTaskQuery = useQuery({
+    queryKey: ['proxy-health-check-task', healthCheckTaskId],
+    queryFn: async () =>
+      (await getProxyHealthTask(healthCheckTaskId)).data ?? null,
+    enabled: Boolean(healthCheckTaskId),
+    refetchInterval: (query) =>
+      isProxyHealthTaskActive(query.state.data) ? 1000 : false,
+  })
+
+  useEffect(() => {
+    const currentTask = currentHealthCheckTaskQuery.data
+    if (
+      currentTask &&
+      isProxyHealthTaskActive(currentTask) &&
+      currentTask.task_id !== healthCheckTaskId
+    ) {
+      setHealthCheckTaskId(currentTask.task_id)
+    }
+  }, [currentHealthCheckTaskQuery.data, healthCheckTaskId])
+
+  const healthCheckTask =
+    healthCheckTaskQuery.data ?? currentHealthCheckTaskQuery.data
+  const healthCheckRunning = isProxyHealthTaskActive(healthCheckTask)
 
   useEffect(() => {
     if (!groups.length) {
@@ -836,6 +930,12 @@ export function ProxyManagementSection() {
     mutationFn: (groupId: number) =>
       groupId > 0 ? checkProxyGroup(groupId) : checkAllManagedProxies(),
     onSuccess: (response, groupId) => {
+      if (response.data?.task_id) {
+        setHealthCheckTaskId(response.data.task_id)
+        queryClient.invalidateQueries({
+          queryKey: ['proxy-health-check-task', 'current'],
+        })
+      }
       let message = '已有代理检测任务正在运行'
       if (response.data?.created) {
         message =
@@ -864,6 +964,64 @@ export function ProxyManagementSection() {
     mutationFn: (proxyId: number) => resetManagedProxyObservation(proxyId),
     onSuccess: () => {
       toast.success('当前观察计数已清空')
+      refresh()
+    },
+  })
+  const batchProxyActionMutation = useMutation({
+    mutationFn: async ({ action, proxies }: BatchProxyActionInput) => {
+      return runProxyBatch(proxies, async (proxy) => {
+        if (action === 'check') {
+          const response = await checkManagedProxy(proxy.id)
+          return response.data?.success === true
+        }
+        if (action === 'resume') {
+          if (!proxy.enabled) {
+            await updateManagedProxy(proxy.id, managedProxyInput(proxy, true))
+          }
+          await setManagedProxyPaused(proxy.id, false)
+        } else if (action === 'pause') {
+          await setManagedProxyPaused(proxy.id, true)
+        } else {
+          await resetManagedProxyObservation(proxy.id)
+        }
+        return true
+      })
+    },
+    onSuccess: (result, variables) => {
+      const label = batchProxyActionLabels[variables.action]
+      if (result.failed > 0) {
+        toast.warning(
+          `${label}完成：成功 ${result.succeeded} 个，失败 ${result.failed} 个`
+        )
+      } else {
+        toast.success(`${label}完成：已处理 ${result.succeeded} 个代理`)
+      }
+      refresh()
+    },
+  })
+  const batchDeleteMutation = useMutation({
+    mutationFn: async (proxies: ManagedProxy[]) => {
+      let succeeded = 0
+      let failed = 0
+      for (const proxy of proxies) {
+        try {
+          await deleteManagedProxy(proxy.id)
+          succeeded++
+        } catch {
+          failed++
+        }
+      }
+      return { succeeded, failed }
+    },
+    onSuccess: (result) => {
+      if (result.failed > 0) {
+        toast.warning(
+          `批量删除完成：成功 ${result.succeeded} 个，失败 ${result.failed} 个`
+        )
+      } else {
+        toast.success(`已删除 ${result.succeeded} 个代理`)
+      }
+      setBatchDeleteTargets([])
       refresh()
     },
   })
@@ -948,13 +1106,18 @@ export function ProxyManagementSection() {
             proxies={proxies}
             switching={switchMutation.isPending}
             checking={checkMutation.isPending}
-            checkingAll={checkAllMutation.isPending}
+            checkingAll={checkAllMutation.isPending || healthCheckRunning}
+            healthCheckTask={healthCheckTask}
             savingHealthSettings={healthSettingsMutation.isPending}
             healthSettings={
               healthSettingsQuery.data ?? DEFAULT_PROXY_HEALTH_SETTINGS
             }
             pausing={pauseMutation.isPending}
             resetting={resetObservationMutation.isPending}
+            batchOperating={
+              batchProxyActionMutation.isPending ||
+              batchDeleteMutation.isPending
+            }
             onSelectGroup={setSelectedGroupId}
             onCreateGroup={() => {
               setEditingGroup(null)
@@ -1009,6 +1172,25 @@ export function ProxyManagementSection() {
                 name: proxy.name,
               })
             }
+            onBatchCheck={(batchProxies) =>
+              batchProxyActionMutation.mutate({
+                action: 'check',
+                proxies: batchProxies,
+              })
+            }
+            onBatchSetPaused={(batchProxies, paused) =>
+              batchProxyActionMutation.mutate({
+                action: paused ? 'pause' : 'resume',
+                proxies: batchProxies,
+              })
+            }
+            onBatchReset={(batchProxies) =>
+              batchProxyActionMutation.mutate({
+                action: 'reset',
+                proxies: batchProxies,
+              })
+            }
+            onBatchDelete={setBatchDeleteTargets}
           />
         </TabsContent>
 
@@ -1272,6 +1454,16 @@ export function ProxyManagementSection() {
         handleConfirm={() =>
           deleteTarget && deleteMutation.mutate(deleteTarget)
         }
+      />
+      <ConfirmDialog
+        open={batchDeleteTargets.length > 0}
+        onOpenChange={(open) => !open && setBatchDeleteTargets([])}
+        title='确认批量删除代理'
+        desc={`确定删除已选择的 ${batchDeleteTargets.length} 个代理吗？此操作无法撤销。`}
+        confirmText='批量删除'
+        destructive
+        isLoading={batchDeleteMutation.isPending}
+        handleConfirm={() => batchDeleteMutation.mutate(batchDeleteTargets)}
       />
     </section>
   )

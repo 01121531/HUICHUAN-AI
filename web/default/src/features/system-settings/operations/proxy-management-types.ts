@@ -146,6 +146,34 @@ export type ProxyHealthTaskResult = {
   created: boolean
 }
 
+export type ProxyHealthTaskState = {
+  total: number
+  processed: number
+  progress: number
+}
+
+export type ProxyHealthTaskSummary = {
+  checked: number
+  healthy: number
+  failed: number
+  unavailable: number
+  recovering: number
+  switched: number
+  recovered_switches: number
+}
+
+export type ProxyHealthSystemTask = {
+  task_id: string
+  type: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  payload?: { group_id?: number }
+  state?: ProxyHealthTaskState
+  result?: ProxyHealthTaskSummary
+  error?: string
+  created_at: number
+  updated_at: number
+}
+
 export type ProxyLogAnalysis = {
   id: number
   request_id: string
