@@ -84,6 +84,28 @@ func TestFullProxyHealthFailureImmediatelyMarksUnavailable(t *testing.T) {
 	require.Equal(t, 1, first.HealthFailures)
 }
 
+func TestFullProxyHealthSuccessImmediatelyRestoresAutoDisabledProxy(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	_, first, _ := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	require.NoError(t, model.DB.Model(first).UpdateColumns(map[string]interface{}{
+		"status":                   model.ProxyStatusUnavailable,
+		"health_failures":          2,
+		"last_health_error":        "request_failed",
+		"recovery_failures":        1,
+		"recovery_probe_remaining": 2,
+	}).Error)
+
+	transition, err := model.ApplyProxyFullHealthCheckResult(first.Id, true, 85, "203.0.113.9", "")
+	require.NoError(t, err)
+	require.Equal(t, model.ProxyStatusAvailable, transition.ToStatus)
+	require.False(t, transition.ProbeRequired)
+	require.NoError(t, model.DB.First(first, first.Id).Error)
+	require.Equal(t, model.ProxyStatusAvailable, first.Status)
+	require.Zero(t, first.HealthFailures)
+	require.Zero(t, first.RecoveryFailures)
+	require.Empty(t, first.LastHealthError)
+}
+
 func TestListAllEnabledProxyHealthChecksIncludesAutoDisabledOnly(t *testing.T) {
 	cleanupProxyAnalyzerTestData(t)
 	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)

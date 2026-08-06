@@ -123,7 +123,20 @@ func applyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 		if success {
 			updates["health_failures"] = 0
 			updates["last_health_error"] = ""
-			if proxy.Enabled && (proxy.Status == ProxyStatusUnavailable || (proxy.Status == ProxyStatusCooling && proxy.CooldownUntil <= now)) {
+			if disableImmediately && proxy.Enabled &&
+				(proxy.Status == ProxyStatusUnavailable || proxy.Status == ProxyStatusCooling || proxy.Status == ProxyStatusRecovering) {
+				result.ToStatus = ProxyStatusAvailable
+				updates["status"] = result.ToStatus
+				updates["cooldown_until"] = 0
+				updates["recovery_failures"] = 0
+				updates["recovery_successes"] = 0
+				updates["recovery_probe_remaining"] = 0
+				updates["health_epoch_at"] = now
+				updates["consecutive_timeouts"] = 0
+				updates["window_samples"] = 0
+				updates["window_timeouts"] = 0
+				updates["window_timeout_ratio"] = 0
+			} else if proxy.Enabled && (proxy.Status == ProxyStatusUnavailable || (proxy.Status == ProxyStatusCooling && proxy.CooldownUntil <= now)) {
 				var recoveringCount int64
 				if err := tx.Model(&Proxy{}).
 					Where("group_id = ? AND id <> ? AND enabled = ? AND status = ?", group.Id, proxy.Id, true, ProxyStatusRecovering).
@@ -196,6 +209,9 @@ func applyProxyHealthCheckResult(proxyId int, success bool, latencyMs int, exitI
 			eventType := "health_status_changed"
 			if result.ToStatus == ProxyStatusRecovering {
 				eventType = "recovery_started"
+			} else if result.ToStatus == ProxyStatusAvailable &&
+				(result.FromStatus == ProxyStatusUnavailable || result.FromStatus == ProxyStatusCooling || result.FromStatus == ProxyStatusRecovering) {
+				eventType = "recovery_succeeded"
 			} else if result.ToStatus == ProxyStatusCooling {
 				eventType = "recovery_failed"
 			} else if result.ToStatus == ProxyStatusUnavailable {

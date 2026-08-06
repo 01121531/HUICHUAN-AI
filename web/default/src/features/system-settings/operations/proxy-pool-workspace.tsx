@@ -91,6 +91,12 @@ function isProxyAvailable(proxy: ManagedProxy) {
   )
 }
 
+function proxyHealthCheckLabel(proxy: ManagedProxy) {
+  if (proxy.last_check_at <= 0) return '尚未检测'
+  if (proxy.last_health_error) return '连接检测失败'
+  return `检测 ${proxy.last_check_latency_ms} ms`
+}
+
 type ProxyPoolWorkspaceProps = {
   groups: ProxyGroup[]
   selectedGroupId: number
@@ -600,9 +606,7 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                               {proxyStatusLabel(proxy)}
                             </Badge>
                             <div className='text-muted-foreground mt-1 text-xs tabular-nums'>
-                              {proxy.last_check_at > 0
-                                ? `检测 ${proxy.last_check_latency_ms} ms`
-                                : '尚未检测'}
+                              {proxyHealthCheckLabel(proxy)}
                             </div>
                           </TableCell>
                           <TableCell className='min-w-44 text-xs tabular-nums'>
