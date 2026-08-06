@@ -40,10 +40,18 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -163,7 +171,137 @@ function SummaryCard(props: {
   )
 }
 
+function ProxyGroupManagerDialog(props: {
+  open: boolean
+  groups: ProxyGroup[]
+  selectedGroupId: number
+  onOpenChange: (open: boolean) => void
+  onSelect: (groupId: number) => void
+  onCreate: () => void
+  onEdit: (group: ProxyGroup) => void
+  onDelete: (group: ProxyGroup) => void
+}) {
+  return (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className='max-h-[85vh] sm:max-w-2xl'>
+        <DialogHeader>
+          <div className='flex items-start justify-between gap-4 pr-8'>
+            <div>
+              <DialogTitle>管理代理分组</DialogTitle>
+              <DialogDescription className='mt-1'>
+                在这里选择、新建、编辑或删除代理分组。
+              </DialogDescription>
+            </div>
+            <Button
+              size='sm'
+              onClick={() => {
+                props.onOpenChange(false)
+                props.onCreate()
+              }}
+            >
+              <Plus />
+              新建分组
+            </Button>
+          </div>
+        </DialogHeader>
+
+        {!props.groups.length ? (
+          <div className='flex min-h-64 flex-col items-center justify-center rounded-xl border border-dashed text-center'>
+            <div className='bg-muted flex size-11 items-center justify-center rounded-xl'>
+              <Layers3 className='text-muted-foreground size-5' />
+            </div>
+            <p className='mt-3 text-sm font-medium'>还没有代理分组</p>
+            <p className='text-muted-foreground mt-1 text-xs'>
+              创建分组后即可集中添加和管理代理。
+            </p>
+          </div>
+        ) : (
+          <ScrollArea className='max-h-[60vh] pr-3'>
+            <div className='space-y-2'>
+              {props.groups.map((group) => {
+                const selected = group.id === props.selectedGroupId
+                return (
+                  <div
+                    key={group.id}
+                    className={`flex flex-col gap-3 rounded-xl border p-3 sm:flex-row sm:items-center sm:justify-between ${
+                      selected ? 'border-primary/50 bg-primary/5' : ''
+                    }`}
+                  >
+                    <button
+                      type='button'
+                      className='focus-visible:ring-ring min-w-0 flex-1 rounded-lg text-left outline-none focus-visible:ring-2'
+                      onClick={() => {
+                        props.onSelect(group.id)
+                        props.onOpenChange(false)
+                      }}
+                    >
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <span className='truncate text-sm font-semibold'>
+                          {group.name}
+                        </span>
+                        {selected && <Badge>当前选择</Badge>}
+                        <Badge
+                          variant={group.enabled ? 'secondary' : 'outline'}
+                        >
+                          {proxyGroupStatusLabel(group)}
+                        </Badge>
+                      </div>
+                      <div className='text-muted-foreground mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums'>
+                        <span>{group.proxy_count ?? 0} 个代理</span>
+                        <span>{group.available_proxy_count ?? 0} 个可用</span>
+                        <span>{group.bound_channel_count} 个渠道</span>
+                      </div>
+                    </button>
+                    <div className='flex shrink-0 items-center gap-1 self-end sm:self-auto'>
+                      {!selected && (
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          onClick={() => {
+                            props.onSelect(group.id)
+                            props.onOpenChange(false)
+                          }}
+                        >
+                          选择
+                        </Button>
+                      )}
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        onClick={() => {
+                          props.onOpenChange(false)
+                          props.onEdit(group)
+                        }}
+                      >
+                        <Pencil />
+                        编辑
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='sm'
+                        className='text-destructive hover:text-destructive'
+                        onClick={() => {
+                          props.onOpenChange(false)
+                          props.onDelete(group)
+                        }}
+                      >
+                        <Trash2 />
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
+  const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [dailyCheckEnabled, setDailyCheckEnabled] = useState(
     props.healthSettings.enabled
   )
@@ -277,106 +415,65 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
         />
       </div>
 
-      <div className='grid items-start gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]'>
-        <Card className='overflow-hidden shadow-none xl:sticky xl:top-4'>
-          <CardHeader className='flex flex-row items-start justify-between gap-3 border-b'>
-            <div>
-              <CardTitle className='text-base'>代理分组</CardTitle>
-              <p className='text-muted-foreground mt-1 text-xs'>
-                选择分组后管理其中的代理
-              </p>
+      <div className='space-y-4'>
+        <div className='bg-card flex flex-col gap-3 rounded-xl border px-4 py-3 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center'>
+            <div className='flex shrink-0 items-center gap-2'>
+              <Layers3 className='text-muted-foreground size-4' />
+              <span className='text-sm font-medium'>当前分组</span>
             </div>
+            <NativeSelect
+              className='w-full sm:max-w-72'
+              value={
+                props.selectedGroupId > 0 ? String(props.selectedGroupId) : ''
+              }
+              disabled={!props.groups.length}
+              aria-label='选择代理分组'
+              onChange={(event) =>
+                props.onSelectGroup(Number(event.target.value))
+              }
+            >
+              {!props.groups.length && (
+                <NativeSelectOption value=''>暂无代理分组</NativeSelectOption>
+              )}
+              {props.groups.map((group) => (
+                <NativeSelectOption key={group.id} value={String(group.id)}>
+                  {group.name}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
+            {props.selectedGroup && (
+              <div className='text-muted-foreground flex flex-wrap items-center gap-2 text-xs tabular-nums'>
+                <Badge
+                  variant={
+                    props.selectedGroup.enabled ? 'secondary' : 'outline'
+                  }
+                >
+                  {proxyGroupStatusLabel(props.selectedGroup)}
+                </Badge>
+                <span>{props.selectedGroup.proxy_count ?? 0} 个代理</span>
+                <span>
+                  {props.selectedGroup.available_proxy_count ?? 0} 个可用
+                </span>
+                <span>{props.selectedGroup.bound_channel_count} 个渠道</span>
+              </div>
+            )}
+          </div>
+          <div className='flex shrink-0 flex-wrap gap-2'>
+            <Button
+              variant='outline'
+              size='sm'
+              onClick={() => setGroupManagerOpen(true)}
+            >
+              <Layers3 />
+              管理分组
+            </Button>
             <Button size='sm' onClick={props.onCreateGroup}>
               <Plus />
-              新建
+              新建分组
             </Button>
-          </CardHeader>
-          <CardContent className='p-2'>
-            {!props.groups.length ? (
-              <div className='flex min-h-56 flex-col items-center justify-center px-5 text-center'>
-                <div className='bg-muted flex size-11 items-center justify-center rounded-xl'>
-                  <Layers3 className='text-muted-foreground size-5' />
-                </div>
-                <p className='mt-3 text-sm font-medium'>还没有代理分组</p>
-                <p className='text-muted-foreground mt-1 text-xs leading-5'>
-                  先创建分组，再向分组中添加代理并绑定渠道。
-                </p>
-                <Button
-                  className='mt-4'
-                  size='sm'
-                  onClick={props.onCreateGroup}
-                >
-                  <Plus />
-                  创建第一个分组
-                </Button>
-              </div>
-            ) : (
-              <ScrollArea className='h-72 xl:h-[min(34rem,62vh)]'>
-                <div className='space-y-2 pr-2'>
-                  {props.groups.map((group) => {
-                    const selected = group.id === props.selectedGroupId
-                    return (
-                      <div
-                        key={group.id}
-                        className={`overflow-hidden rounded-xl border transition-colors ${
-                          selected
-                            ? 'border-primary/50 bg-primary/5'
-                            : 'hover:bg-muted/40'
-                        }`}
-                      >
-                        <button
-                          type='button'
-                          className='focus-visible:ring-ring w-full px-3 py-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset'
-                          onClick={() => props.onSelectGroup(group.id)}
-                        >
-                          <div className='flex items-start justify-between gap-2'>
-                            <span className='min-w-0 truncate text-sm font-semibold'>
-                              {group.name}
-                            </span>
-                            <Badge
-                              variant={group.enabled ? 'secondary' : 'outline'}
-                              className='shrink-0'
-                            >
-                              {proxyGroupStatusLabel(group)}
-                            </Badge>
-                          </div>
-                          <div className='text-muted-foreground mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums'>
-                            <span>{group.proxy_count ?? 0} 个代理</span>
-                            <span>
-                              {group.available_proxy_count ?? 0} 个可用
-                            </span>
-                            <span>{group.bound_channel_count} 个渠道</span>
-                          </div>
-                        </button>
-                        <div className='border-t px-2 py-1.5'>
-                          <div className='flex items-center justify-end gap-1'>
-                            <Button
-                              variant='ghost'
-                              size='sm'
-                              onClick={() => props.onEditGroup(group)}
-                            >
-                              <Pencil />
-                              编辑
-                            </Button>
-                            <Button
-                              variant='ghost'
-                              size='sm'
-                              className='text-destructive hover:text-destructive'
-                              onClick={() => props.onDeleteGroup(group)}
-                            >
-                              <Trash2 />
-                              删除
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </ScrollArea>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
         {!props.selectedGroup ? (
           <Card className='shadow-none'>
@@ -386,7 +483,7 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
               </div>
               <h3 className='mt-4 text-base font-semibold'>请选择代理分组</h3>
               <p className='text-muted-foreground mt-1 max-w-sm text-sm'>
-                选择左侧分组查看代理，或者新建一个分组开始配置。
+                使用上方分组选择器查看代理，或者新建一个分组开始配置。
               </p>
             </CardContent>
           </Card>
@@ -448,17 +545,6 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
                   >
                     <Pencil />
                     编辑设置
-                  </Button>
-                  <Button
-                    variant='destructive'
-                    size='sm'
-                    onClick={() =>
-                      props.selectedGroup &&
-                      props.onDeleteGroup(props.selectedGroup)
-                    }
-                  >
-                    <Trash2 />
-                    删除分组
                   </Button>
                 </div>
               </div>
@@ -704,6 +790,16 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
           </Card>
         )}
       </div>
+      <ProxyGroupManagerDialog
+        open={groupManagerOpen}
+        groups={props.groups}
+        selectedGroupId={props.selectedGroupId}
+        onOpenChange={setGroupManagerOpen}
+        onSelect={props.onSelectGroup}
+        onCreate={props.onCreateGroup}
+        onEdit={props.onEditGroup}
+        onDelete={props.onDeleteGroup}
+      />
     </div>
   )
 }
