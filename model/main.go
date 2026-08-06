@@ -1,6 +1,7 @@
 package model
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/url"
@@ -200,9 +201,9 @@ func InitDB() (err error) {
 		if err != nil {
 			return err
 		}
-		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
-		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
-		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		if err := configureConnectionPool(sqlDB, dbType); err != nil {
+			return err
+		}
 
 		if !common.IsMasterNode {
 			return nil
@@ -244,9 +245,9 @@ func InitLogDB() (err error) {
 		if err != nil {
 			return err
 		}
-		sqlDB.SetMaxIdleConns(common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100))
-		sqlDB.SetMaxOpenConns(common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000))
-		sqlDB.SetConnMaxLifetime(time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60)))
+		if err := configureConnectionPool(sqlDB, dbType); err != nil {
+			return err
+		}
 
 		if !common.IsMasterNode {
 			return nil
@@ -258,6 +259,37 @@ func InitLogDB() (err error) {
 		common.FatalLog(err)
 	}
 	return err
+}
+
+func configureConnectionPool(sqlDB *sql.DB, databaseType common.DatabaseType) error {
+	maxIdleConns := common.GetEnvOrDefault("SQL_MAX_IDLE_CONNS", 100)
+	maxOpenConns := common.GetEnvOrDefault("SQL_MAX_OPEN_CONNS", 1000)
+	connectionLifetime := time.Second * time.Duration(common.GetEnvOrDefault("SQL_MAX_LIFETIME", 60))
+	if databaseType == common.DatabaseTypeSQLite {
+		// SQLite permits only one writer. A single pooled connection prevents
+		// concurrent deferred transactions from failing with SQLITE_BUSY while
+		// still allowing network work (such as proxy checks) to run concurrently.
+		maxOpenConns = common.GetEnvOrDefault("SQLITE_MAX_OPEN_CONNS", 1)
+		if maxOpenConns < 1 {
+			maxOpenConns = 1
+		}
+		maxIdleConns = maxOpenConns
+		// Keep the configured connection alive so connection-scoped PRAGMAs are
+		// not lost when the generic SQL_MAX_LIFETIME interval elapses.
+		connectionLifetime = 0
+	}
+	sqlDB.SetMaxIdleConns(maxIdleConns)
+	sqlDB.SetMaxOpenConns(maxOpenConns)
+	sqlDB.SetConnMaxLifetime(connectionLifetime)
+	if databaseType == common.DatabaseTypeSQLite {
+		busyTimeoutMs := common.GetEnvOrDefault("SQLITE_BUSY_TIMEOUT_MS", 30000)
+		if busyTimeoutMs < 0 {
+			busyTimeoutMs = 0
+		}
+		_, err := sqlDB.Exec(fmt.Sprintf("PRAGMA busy_timeout = %d", busyTimeoutMs))
+		return err
+	}
+	return nil
 }
 
 func migrateDB() error {
