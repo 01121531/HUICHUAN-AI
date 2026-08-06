@@ -210,3 +210,33 @@ func TestBatchCreateProxiesCreatesAllWithoutLeakingPasswords(t *testing.T) {
 	require.NoError(t, model.DB.Model(&model.Proxy{}).Where("group_id = ?", group.Id).Count(&count).Error)
 	require.EqualValues(t, 2, count)
 }
+
+func TestGetProxyTrendReturnsCountedRecordsForRequestedGroup(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupProxyControllerTestDB(t)
+	group := &model.ProxyGroup{Name: "trend-controller-group", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	require.NoError(t, model.DB.Create(group).Error)
+	proxy := &model.Proxy{GroupId: group.Id, Name: "trend-proxy", Protocol: "http", Host: "127.0.0.1", Port: 18080, Enabled: true}
+	require.NoError(t, model.DB.Create(proxy).Error)
+	require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+		AnalysisKey: "trend-controller-counted", LogCreatedAt: 100, ProxyId: proxy.Id,
+		ProxyGroupId: group.Id, Counted: true, IsStream: true, FirstResponseTimeMs: 5_000,
+		CompletionTokens: 100, TokensPerSecond: 30,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+		AnalysisKey: "trend-controller-ignored", LogCreatedAt: 101, ProxyId: proxy.Id,
+		ProxyGroupId: group.Id, Counted: false, CompletionTokens: 10, UseTimeSeconds: 30,
+	}).Error)
+
+	context, recorder := proxyJSONContext(t, http.MethodGet, nil)
+	context.Request = httptest.NewRequest(http.MethodGet, fmt.Sprintf("/?group_id=%d&limit=100", group.Id), nil)
+	GetProxyTrend(context)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Contains(t, recorder.Body.String(), `"sample_count":1`)
+	require.Contains(t, recorder.Body.String(), `"current_score":80`)
+
+	invalidContext, invalidRecorder := proxyJSONContext(t, http.MethodGet, nil)
+	invalidContext.Request = httptest.NewRequest(http.MethodGet, "/?group_id=bad", nil)
+	GetProxyTrend(invalidContext)
+	require.Equal(t, http.StatusBadRequest, invalidRecorder.Code)
+}

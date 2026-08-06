@@ -398,6 +398,33 @@ func ListProxyLogAnalyses(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": analyses})
 }
 
+func GetProxyTrend(c *gin.Context) {
+	groupId, err := strconv.Atoi(c.Query("group_id"))
+	if err != nil || groupId <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "group_id must be a positive integer"})
+		return
+	}
+	proxyId := 0
+	if rawProxyId := c.Query("proxy_id"); rawProxyId != "" {
+		proxyId, err = strconv.Atoi(rawProxyId)
+		if err != nil || proxyId <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "proxy_id must be a positive integer"})
+			return
+		}
+	}
+	limit, err := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	if err != nil || limit <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "limit must be a positive integer"})
+		return
+	}
+	trend, err := service.GetProxyTrend(groupId, proxyId, limit)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": trend})
+}
+
 func ListProxyStateEvents(c *gin.Context) {
 	proxyId, _ := strconv.Atoi(c.Query("proxy_id"))
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))

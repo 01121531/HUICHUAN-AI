@@ -42,6 +42,72 @@ func TestEvaluateProxyLogTimingMatchesGenericLogRedRules(t *testing.T) {
 	}
 }
 
+func TestCalculateProxyRequestHealthScore(t *testing.T) {
+	tests := []struct {
+		name     string
+		analysis *model.ProxyLogAnalysis
+		expected int
+	}{
+		{name: "first response boundary", analysis: &model.ProxyLogAnalysis{IsStream: true, FirstResponseTimeMs: 10_000, CompletionTokens: 100, TokensPerSecond: 30}, expected: 60},
+		{name: "small output duration boundary", analysis: &model.ProxyLogAnalysis{UseTimeSeconds: 30, CompletionTokens: 99}, expected: 60},
+		{name: "throughput boundary", analysis: &model.ProxyLogAnalysis{CompletionTokens: 100, TokensPerSecond: 15}, expected: 60},
+		{name: "excellent request caps at one hundred", analysis: &model.ProxyLogAnalysis{IsStream: true, FirstResponseTimeMs: 1, CompletionTokens: 100, TokensPerSecond: 60}, expected: 100},
+		{name: "slow throughput falls below threshold", analysis: &model.ProxyLogAnalysis{CompletionTokens: 100, TokensPerSecond: 10}, expected: 40},
+		{name: "composite request uses lowest score", analysis: &model.ProxyLogAnalysis{IsStream: true, FirstResponseTimeMs: 5_000, CompletionTokens: 20, UseTimeSeconds: 25}, expected: 67},
+		{name: "timeout score is capped", analysis: &model.ProxyLogAnalysis{CompletionTokens: 100, TokensPerSecond: 30, IsTimeout: true}, expected: 59},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			require.Equal(t, test.expected, CalculateProxyRequestHealthScore(test.analysis))
+		})
+	}
+}
+
+func TestGetProxyTrendFiltersAndReturnsLatestChronologically(t *testing.T) {
+	cleanupProxyAnalyzerTestData(t)
+	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)
+	otherGroup := &model.ProxyGroup{Name: "other-trend-group", Enabled: true, Status: model.ProxyGroupStatusAvailable}
+	require.NoError(t, model.DB.Create(otherGroup).Error)
+	otherProxy := &model.Proxy{GroupId: otherGroup.Id, Name: "other", Protocol: "http", Host: "127.0.0.3", Port: 18083, Enabled: true, Status: model.ProxyStatusAvailable}
+	require.NoError(t, model.DB.Create(otherProxy).Error)
+
+	for index := 0; index < 105; index++ {
+		proxyId := first.Id
+		if index%2 == 1 {
+			proxyId = second.Id
+		}
+		require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+			AnalysisKey: fmt.Sprintf("trend-%03d", index), LogCreatedAt: int64(1_000 + index),
+			ProxyId: proxyId, ProxyGroupId: group.Id, Counted: true,
+			CompletionTokens: 20, UseTimeSeconds: 1,
+		}).Error)
+	}
+	require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+		AnalysisKey: "trend-not-counted", LogCreatedAt: 9_999, ProxyId: first.Id,
+		ProxyGroupId: group.Id, Counted: false, CompletionTokens: 20, UseTimeSeconds: 1,
+	}).Error)
+	require.NoError(t, model.DB.Create(&model.ProxyLogAnalysis{
+		AnalysisKey: "trend-other-group", LogCreatedAt: 10_000, ProxyId: otherProxy.Id,
+		ProxyGroupId: otherGroup.Id, Counted: true, CompletionTokens: 20, UseTimeSeconds: 1,
+	}).Error)
+
+	groupTrend, err := GetProxyTrend(group.Id, 0, 100)
+	require.NoError(t, err)
+	require.Equal(t, 100, groupTrend.SampleCount)
+	require.EqualValues(t, 1_005, groupTrend.Points[0].Timestamp)
+	require.EqualValues(t, 1_104, groupTrend.Points[99].Timestamp)
+	for index := 1; index < len(groupTrend.Points); index++ {
+		require.Less(t, groupTrend.Points[index-1].Timestamp, groupTrend.Points[index].Timestamp)
+	}
+
+	proxyTrend, err := GetProxyTrend(group.Id, first.Id, 100)
+	require.NoError(t, err)
+	require.Equal(t, 53, proxyTrend.SampleCount)
+	for _, point := range proxyTrend.Points {
+		require.Equal(t, first.Id, point.ProxyId)
+	}
+}
+
 func TestProxyLogAnalyzerPausesAndSwitchesAfterThreeConsecutiveRedLogs(t *testing.T) {
 	cleanupProxyAnalyzerTestData(t)
 	group, first, second := seedProxyAnalyzerGroup(t, 3, 10, 0.6)

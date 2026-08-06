@@ -14,6 +14,7 @@ import type {
   ProxyHealthSettings,
   ProxyHealthTaskResult,
   ProxyLogAnalysis,
+  ProxyTrendResponse,
   ProxyStateEvent,
   ProxyUpstreamAttempt,
 } from './proxy-management-types'
@@ -178,6 +179,20 @@ export async function listProxyLogAnalyses(proxyId: number, limit = 50) {
   const response = await api.get<ProxyApiResponse<ProxyLogAnalysis[]>>(
     '/api/proxy/analyses',
     { params: { proxy_id: proxyId, limit } }
+  )
+  return response.data
+}
+
+export async function getProxyTrend(groupId: number, proxyId = 0, limit = 100) {
+  const response = await api.get<ProxyApiResponse<ProxyTrendResponse>>(
+    '/api/proxy/trend',
+    {
+      params: {
+        group_id: groupId,
+        ...(proxyId > 0 ? { proxy_id: proxyId } : {}),
+        limit,
+      },
+    }
   )
   return response.data
 }

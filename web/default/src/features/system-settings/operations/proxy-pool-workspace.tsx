@@ -63,6 +63,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 
+import { ProxyLatencyTrendChart } from './proxy-latency-trend-chart'
 import type {
   ManagedProxy,
   ProxyGroup,
@@ -582,6 +583,11 @@ export function ProxyPoolWorkspace(props: ProxyPoolWorkspaceProps) {
             </CardHeader>
 
             <CardContent className='space-y-4 p-4'>
+              <ProxyLatencyTrendChart
+                groupId={props.selectedGroup.id}
+                proxies={props.proxies}
+              />
+
               <div className='flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between'>
                 <div>
                   <h3 className='text-sm font-semibold'>分组内代理</h3>

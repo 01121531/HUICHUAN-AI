@@ -164,6 +164,29 @@ export type ProxyLogAnalysis = {
   reason: string
 }
 
+export type ProxyTrendPoint = {
+  timestamp: number
+  proxy_id: number
+  score: number
+  key_latency_ms: number
+  first_response_time_ms: number
+  total_duration_ms: number
+  tokens_per_second: number
+  is_timeout: boolean
+  reason: string
+}
+
+export type ProxyTrendResponse = {
+  group_id: number
+  proxy_id: number
+  limit: number
+  sample_count: number
+  current_score: number
+  average_score: number
+  timeout_count: number
+  points: ProxyTrendPoint[]
+}
+
 export type ProxyStateEvent = {
   id: number
   proxy_id: number

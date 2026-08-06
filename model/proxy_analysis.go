@@ -113,6 +113,28 @@ func ListProxyLogAnalyses(proxyId int, limit int) ([]*ProxyLogAnalysis, error) {
 	return analyses, err
 }
 
+func ListProxyTrendAnalyses(groupId int, proxyId int, limit int) ([]*ProxyLogAnalysis, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	query := DB.Model(&ProxyLogAnalysis{}).
+		Where("proxy_group_id = ? AND counted = ?", groupId, true)
+	if proxyId > 0 {
+		query = query.Where("proxy_id = ?", proxyId)
+	}
+	var analyses []*ProxyLogAnalysis
+	if err := query.Order("log_created_at desc, id desc").Limit(limit).Find(&analyses).Error; err != nil {
+		return nil, err
+	}
+	for left, right := 0, len(analyses)-1; left < right; left, right = left+1, right-1 {
+		analyses[left], analyses[right] = analyses[right], analyses[left]
+	}
+	return analyses, nil
+}
+
 func ListProxyStateEvents(proxyId int, limit int) ([]*ProxyStateEvent, error) {
 	if limit <= 0 {
 		limit = 50
