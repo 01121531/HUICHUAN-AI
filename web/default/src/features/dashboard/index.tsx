@@ -64,7 +64,7 @@ const LOG_STAT_CARD_FALLBACK_KEYS = [
   'count',
   'quota',
   'tokens',
-  'average-rpm',
+  'peak-concurrency',
   'average-tpm',
 ] as const
 const PERFORMANCE_METRIC_FALLBACK_KEYS = [

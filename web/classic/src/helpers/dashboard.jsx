@@ -70,6 +70,10 @@ export const updateMapValue = (map, key, value) => {
   map.set(key, map.get(key) + value);
 };
 
+export const updateMapMax = (map, key, value) => {
+  map.set(key, Math.max(map.get(key) || 0, Number(value) || 0));
+};
+
 export const initializeMaps = (key, ...maps) => {
   maps.forEach((map) => {
     if (!map.has(key)) {
@@ -258,6 +262,7 @@ export const processRawData = (
     timeQuotaMap: new Map(),
     timeTokensMap: new Map(),
     timeCountMap: new Map(),
+    timeConcurrencyMap: new Map(),
   };
 
   // 检查数据是否跨年
@@ -283,10 +288,12 @@ export const processRawData = (
       result.timeQuotaMap,
       result.timeTokensMap,
       result.timeCountMap,
+      result.timeConcurrencyMap,
     );
     updateMapValue(result.timeQuotaMap, timeKey, item.quota);
     updateMapValue(result.timeTokensMap, timeKey, item.token_used);
     updateMapValue(result.timeCountMap, timeKey, item.count);
+    updateMapMax(result.timeConcurrencyMap, timeKey, item.concurrency);
   });
 
   result.timePoints.sort();
@@ -298,20 +305,22 @@ export const calculateTrendData = (
   timeQuotaMap,
   timeTokensMap,
   timeCountMap,
+  timeConcurrencyMap,
   dataExportDefaultTime,
 ) => {
   const quotaTrend = timePoints.map((time) => timeQuotaMap.get(time) || 0);
   const tokensTrend = timePoints.map((time) => timeTokensMap.get(time) || 0);
   const countTrend = timePoints.map((time) => timeCountMap.get(time) || 0);
+  const concurrencyTrend = timePoints.map(
+    (time) => timeConcurrencyMap.get(time) || 0,
+  );
 
-  const rpmTrend = [];
   const tpmTrend = [];
 
   if (timePoints.length >= 2) {
     const interval = getTimeInterval(dataExportDefaultTime);
 
     for (let i = 0; i < timePoints.length; i++) {
-      rpmTrend.push(timeCountMap.get(timePoints[i]) / interval);
       tpmTrend.push(timeTokensMap.get(timePoints[i]) / interval);
     }
   }
@@ -323,7 +332,7 @@ export const calculateTrendData = (
     times: countTrend,
     consumeQuota: quotaTrend,
     tokens: tokensTrend,
-    rpm: rpmTrend,
+    concurrency: concurrencyTrend,
     tpm: tpmTrend,
   };
 };

@@ -37,6 +37,12 @@ func GetAllQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	concurrency, err := model.GetPeakConcurrencyByHour(startTimestamp, endTimestamp, 0, username)
+	if err != nil {
+		common.SysError("failed to calculate dashboard concurrency: " + err.Error())
+		concurrency = map[int64]int{}
+	}
+	model.AttachConcurrencyToQuotaData(dates, concurrency)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
@@ -77,6 +83,12 @@ func GetUserQuotaDates(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	concurrency, err := model.GetPeakConcurrencyByHour(startTimestamp, endTimestamp, userId, "")
+	if err != nil {
+		common.SysError("failed to calculate dashboard concurrency: " + err.Error())
+		concurrency = map[int64]int{}
+	}
+	model.AttachConcurrencyToQuotaData(dates, concurrency)
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

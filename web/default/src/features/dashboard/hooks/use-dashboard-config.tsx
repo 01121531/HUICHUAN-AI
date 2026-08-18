@@ -51,7 +51,7 @@ export function useModelStatCardsConfig(): StatCardConfig[] {
       description: t('Statistical count'),
       icon: Hash,
       iconTone: 'info',
-      getValue: (stat) => stat?.rpm ?? 0,
+      getValue: (stat) => stat?.requestCount ?? 0,
     },
     {
       key: 'quota',
@@ -70,13 +70,12 @@ export function useModelStatCardsConfig(): StatCardConfig[] {
       getValue: (stat) => stat?.tpm ?? 0,
     },
     {
-      key: 'avgRpm',
-      title: t('Average RPM'),
-      description: t('Requests per minute'),
+      key: 'peakConcurrency',
+      title: t('Peak Concurrency'),
+      description: t('Maximum simultaneous requests'),
       icon: Gauge,
       iconTone: 'chart-2',
-      getValue: (stat, timeRangeMinutes = 1) =>
-        safeDivide(stat?.rpm ?? 0, timeRangeMinutes),
+      getValue: (stat) => stat?.concurrency ?? 0,
     },
     {
       key: 'avgTpm',

@@ -1638,6 +1638,7 @@
     "频率惩罚，减少重复词汇的出现": "Frequency penalty, reduces repeated vocabulary",
     "频率限制的周期（分钟）": "Rate limit period (minutes)",
     "平均RPM": "Average RPM",
+    "峰值并发": "Peak Concurrency",
     "平均TPM": "Average TPM",
     "平台": "platform",
     "平移": "Pan",

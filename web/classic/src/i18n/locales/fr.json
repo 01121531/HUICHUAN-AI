@@ -1570,6 +1570,7 @@
     "频率惩罚，减少重复词汇的出现": "Pénalité de fréquence, réduit la répétition des mots",
     "频率限制的周期（分钟）": "Période de limitation de débit (minutes)",
     "平均RPM": "RPM moyen",
+    "峰值并发": "Pic de requêtes simultanées",
     "平均TPM": "TPM moyen",
     "平台": "plateforme",
     "平移": "Panoramique",

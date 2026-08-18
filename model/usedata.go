@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -11,18 +12,128 @@ import (
 
 // QuotaData 柱状图数据
 type QuotaData struct {
-	Id        int    `json:"id"`
-	UserID    int    `json:"user_id" gorm:"index"`
-	Username  string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;size:64;default:''"`
-	ModelName string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
-	CreatedAt int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at,priority:2"`
-	UseGroup  string `json:"use_group" gorm:"index;size:64;default:''"`
-	TokenID   int    `json:"token_id" gorm:"index;default:0"`
-	ChannelID int    `json:"channel_id" gorm:"index;default:0"`
-	NodeName  string `json:"node_name" gorm:"index;size:64;default:''"`
-	TokenUsed int    `json:"token_used" gorm:"default:0"`
-	Count     int    `json:"count" gorm:"default:0"`
-	Quota     int    `json:"quota" gorm:"default:0"`
+	Id          int    `json:"id"`
+	UserID      int    `json:"user_id" gorm:"index"`
+	Username    string `json:"username" gorm:"index:idx_qdt_model_user_name,priority:2;size:64;default:''"`
+	ModelName   string `json:"model_name" gorm:"index:idx_qdt_model_user_name,priority:1;size:64;default:''"`
+	CreatedAt   int64  `json:"created_at" gorm:"bigint;index:idx_qdt_created_at,priority:2"`
+	UseGroup    string `json:"use_group" gorm:"index;size:64;default:''"`
+	TokenID     int    `json:"token_id" gorm:"index;default:0"`
+	ChannelID   int    `json:"channel_id" gorm:"index;default:0"`
+	NodeName    string `json:"node_name" gorm:"index;size:64;default:''"`
+	TokenUsed   int    `json:"token_used" gorm:"default:0"`
+	Count       int    `json:"count" gorm:"default:0"`
+	Quota       int    `json:"quota" gorm:"default:0"`
+	Concurrency int    `json:"concurrency" gorm:"-"`
+}
+
+type concurrencyLogInterval struct {
+	CreatedAt int64
+	UseTime   int
+}
+
+type concurrencyEvent struct {
+	timestamp int64
+	delta     int
+}
+
+// calculatePeakConcurrencyByHour reconstructs request intervals from usage
+// logs. Log timestamps are completion times, so each interval is
+// [created_at-use_time, created_at).
+func calculatePeakConcurrencyByHour(logs []concurrencyLogInterval, startTime, endTime int64) map[int64]int {
+	result := make(map[int64]int)
+	if endTime < startTime {
+		return result
+	}
+
+	eventsByHour := make(map[int64][]concurrencyEvent)
+	rangeEnd := endTime + 1
+	for _, log := range logs {
+		duration := int64(log.UseTime)
+		if duration < 1 {
+			duration = 1
+		}
+		intervalStart := log.CreatedAt - duration
+		intervalEnd := log.CreatedAt
+		if intervalStart < startTime {
+			intervalStart = startTime
+		}
+		if intervalEnd > rangeEnd {
+			intervalEnd = rangeEnd
+		}
+		if intervalEnd <= intervalStart {
+			continue
+		}
+
+		firstHour := intervalStart - intervalStart%3600
+		lastSecond := intervalEnd - 1
+		lastHour := lastSecond - lastSecond%3600
+		for hour := firstHour; hour <= lastHour; hour += 3600 {
+			segmentStart := intervalStart
+			if segmentStart < hour {
+				segmentStart = hour
+			}
+			segmentEnd := intervalEnd
+			if hourEnd := hour + 3600; segmentEnd > hourEnd {
+				segmentEnd = hourEnd
+			}
+			eventsByHour[hour] = append(eventsByHour[hour],
+				concurrencyEvent{timestamp: segmentStart, delta: 1},
+				concurrencyEvent{timestamp: segmentEnd, delta: -1},
+			)
+		}
+	}
+
+	for hour, events := range eventsByHour {
+		sort.Slice(events, func(i, j int) bool {
+			if events[i].timestamp == events[j].timestamp {
+				return events[i].delta < events[j].delta
+			}
+			return events[i].timestamp < events[j].timestamp
+		})
+
+		active, peak := 0, 0
+		for _, event := range events {
+			active += event.delta
+			if active > peak {
+				peak = active
+			}
+		}
+		result[hour] = peak
+	}
+	return result
+}
+
+func GetPeakConcurrencyByHour(startTime, endTime int64, userID int, username string) (map[int64]int, error) {
+	var logs []concurrencyLogInterval
+	tx := LOG_DB.Model(&Log{}).
+		Select("created_at, use_time").
+		Where("type = ?", LogTypeConsume).
+		Where("created_at >= ? AND created_at <= ?", startTime, endTime)
+	if userID > 0 {
+		tx = tx.Where("user_id = ?", userID)
+	} else if username != "" {
+		tx = tx.Where("username = ?", username)
+	}
+	if err := tx.Find(&logs).Error; err != nil {
+		return nil, err
+	}
+	return calculatePeakConcurrencyByHour(logs, startTime, endTime), nil
+}
+
+func AttachConcurrencyToQuotaData(data []*QuotaData, concurrency map[int64]int) {
+	assigned := make(map[int64]bool)
+	for _, item := range data {
+		if item == nil {
+			continue
+		}
+		hour := item.CreatedAt - item.CreatedAt%3600
+		if assigned[hour] {
+			continue
+		}
+		item.Concurrency = concurrency[hour]
+		assigned[hour] = true
+	}
 }
 
 type QuotaDataLogParams struct {

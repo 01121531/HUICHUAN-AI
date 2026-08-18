@@ -67,6 +67,7 @@ export function LogStatCards(props: LogStatCardsProps) {
     totalQuota: number
     totalCount: number
     totalTokens: number
+    peakConcurrency: number
   } | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
@@ -116,7 +117,8 @@ export function LogStatCards(props: LogStatCardsProps) {
   }, [filters, isAdmin, onDataUpdate])
 
   const adaptedStats = {
-    rpm: stats?.totalCount ?? 0,
+    requestCount: stats?.totalCount ?? 0,
+    concurrency: stats?.peakConcurrency ?? 0,
     quota: stats?.totalQuota ?? 0,
     tpm: stats?.totalTokens ?? 0,
   }

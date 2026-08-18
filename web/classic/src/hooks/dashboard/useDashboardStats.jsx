@@ -115,11 +115,11 @@ export const useDashboardStats = (
         color: 'bg-indigo-50',
         items: [
           {
-            title: t('平均RPM'),
-            value: performanceMetrics.avgRPM,
+            title: t('峰值并发'),
+            value: performanceMetrics.peakConcurrency,
             icon: <IconStopwatchStroked />,
             avatarColor: 'indigo',
-            trendData: trendData.rpm,
+            trendData: trendData.concurrency,
             trendColor: '#6366f1',
           },
           {
